@@ -687,13 +687,19 @@ class MainWindow(QMainWindow):
         self.block_combo = QComboBox()
         self.block_combo.addItems(chars.BLOCKS)
         self.block_combo.setMinimumWidth(240)
-        self.block_combo.currentTextChanged.connect(lambda _: self._draw_block())
-        row.addWidget(QLabel("Block"))
+        self.block_combo.currentTextChanged.connect(lambda _: self._block_changed())
+        label = QLabel("Block")
+        label.setObjectName("FieldLabel")
+        row.addWidget(label)
         row.addWidget(self.block_combo, 1)
 
+        # Offering all 209 families here invites picking one with no coverage,
+        # which answers nothing. Only faces that have some of the block appear.
         self.browse_font = QComboBox()
-        self.browse_font.currentTextChanged.connect(lambda _: self._draw_block())
-        row.addWidget(QLabel("drawn in"))
+        self.browse_font.currentIndexChanged.connect(lambda _: self._draw_block())
+        label = QLabel("drawn in")
+        label.setObjectName("FieldLabel")
+        row.addWidget(label)
         row.addWidget(self.browse_font, 1)
         layout.addLayout(row)
 
@@ -776,15 +782,7 @@ class MainWindow(QMainWindow):
         elapsed = time.perf_counter() - self.started
         families = sorted(self.index.families)
         self.inspector.index = self.index
-        self.browse_font.blockSignals(True)
-        self.browse_font.addItems(families)
-        default = next(
-            (f for f in ("Segoe UI Symbol", "Quivira", "DejaVu Sans", "Arial Unicode MS")
-             if f in self.index.families),
-            families[0] if families else "",
-        )
-        self.browse_font.setCurrentText(default)
-        self.browse_font.blockSignals(False)
+        self._block_changed()
 
         note = f"{len(self.index.faces)} faces · {len(families)} families · {elapsed:.1f} s"
         if self.index.errors:
@@ -1122,13 +1120,36 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------- browse
 
+    def _block_changed(self):
+        """Rebuild the face picker for the chosen block, best coverage first."""
+        name = self.block_combo.currentText()
+        if not self.index.faces or not chars.block_range(name):
+            return
+        assigned = fontindex.assigned_by_block().get(name, [])
+        ranked = fontindex.best_per_family(self.index.coverage_counts(assigned))
+        covering = [(face, have) for face, have in ranked if have]
+
+        previous = self.browse_font.currentData()
+        self.browse_font.blockSignals(True)
+        self.browse_font.clear()
+        for face, have in covering:
+            self.browse_font.addItem(
+                f"{face.family}  ·  {have}/{len(assigned)}", face.family
+            )
+        if not covering:
+            self.browse_font.addItem("nothing installed covers this block", "")
+        found = self.browse_font.findData(previous)
+        self.browse_font.setCurrentIndex(found if found >= 0 else 0)
+        self.browse_font.blockSignals(False)
+        self._draw_block()
+
     def _draw_block(self):
         name = self.block_combo.currentText()
         bounds = chars.block_range(name)
         if not bounds:
             return
         lo, hi = bounds
-        family = self.browse_font.currentText()
+        family = self.browse_font.currentData() or ""
         face = self.index.find_face(family) if family else None
         codepoints = list(range(lo, hi + 1))
 
@@ -1141,30 +1162,55 @@ class MainWindow(QMainWindow):
 
         assigned = covered = 0
         for i, cp in enumerate(codepoints):
-            item = QTableWidgetItem(chr(cp) if not chars.standin(cp) else "")
+            is_assigned = unicodedata.category(chr(cp)) != "Cn"
+            has = bool(face) and cp in face.codepoints
+            assigned += is_assigned
+            covered += has
+
+            # Never draw a glyph this face cannot produce. Qt would happily fall
+            # back to another font, and the grid would then contradict the count
+            # printed above it — the one mistake this tool must not make.
+            if has:
+                text = "" if chars.standin(cp) else chr(cp)
+            elif is_assigned:
+                text = "·"
+            else:
+                text = ""
+
+            item = QTableWidgetItem(text)
             item.setFont(cell)
             item.setTextAlignment(Qt.AlignCenter)
             item.setData(Qt.UserRole, cp)
-            item.setToolTip(f"U+{cp:04X}  {chars.char_name(chr(cp))}")
-            is_assigned = unicodedata.category(chr(cp)) != "Cn"
-            has = face and cp in face.codepoints
-            assigned += is_assigned
-            covered += bool(has)
-            if not is_assigned or not has:
+            item.setToolTip(
+                f"U+{cp:04X}  {chars.char_name(chr(cp))}"
+                + ("" if has else f"  —  not in {family}" if is_assigned else "")
+            )
+            if not has:
                 item.setForeground(Qt.gray)
             self.grid.setItem(i // columns, i % columns, item)
         self.grid.resizeColumnsToContents()
         self.grid.resizeRowsToContents()
 
         palette = DARK if self.dark else LIGHT
-        self.browse_note.setText(
-            f"<span style='color:{palette['faint']}'>U+{lo:04X}…U+{hi:04X} · "
-            f"{assigned} assigned · </span>"
+        drawn = (
             f"<span style='color:{palette['lapis']}'>{covered} drawn by "
             f"{esc(family)}</span>"
+            if face else
+            f"<span style='color:{palette['madder']}'>no installed face has any "
+            "of it</span>"
+        )
+        self.browse_note.setText(
+            f"<span style='color:{palette['faint']}'>U+{lo:04X}…U+{hi:04X} · "
+            f"{assigned} assigned · </span>{drawn}"
         )
         if face:
             self.inspector.show_face(face)
+        else:
+            self.inspector.show_message(
+                name,
+                f"{assigned} assigned characters, and nothing installed on this "
+                "machine maps any of them.",
+            )
 
     def _grid_selected(self):
         items = self.grid.selectedItems()
@@ -1299,7 +1345,7 @@ class MainWindow(QMainWindow):
         if n == 3 and not quiet:
             self._ensure_languages()
         if n == 2 and self.grid.rowCount() == 0 and self.index.faces:
-            self._draw_block()
+            self._block_changed()
         if n == 1 and not self.convert_input.toPlainText():
             self.convert_input.setPlainText(self.omni.text())
 

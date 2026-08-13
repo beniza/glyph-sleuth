@@ -209,6 +209,18 @@ class FontIndex:
     def count_faces_with(self, cp):
         return sum(1 for f in self.faces if cp in f.codepoints)
 
+    def coverage_counts(self, needed):
+        """[(face, have)] best first, skipping the missing sets.
+
+        coverage() builds a sorted list of what each face lacks, which is wasted
+        work when all you want is a ranking — and expensive on a 20,000
+        codepoint block like CJK.
+        """
+        needed = frozenset(needed)
+        rows = [(f, len(needed & f.codepoints)) for f in self.faces]
+        rows.sort(key=lambda r: (-r[1], -r[0].glyphs, r[0].family.lower()))
+        return rows
+
     def find_face(self, family, style=None):
         """One face from a family — the plainest one, not the alphabetically first."""
         matches = [

@@ -109,7 +109,36 @@ def main():
     window.block_combo.setCurrentText("Dingbats")
     assert window.grid.rowCount() == 12, window.grid.rowCount()
     assert window.grid.item(0, 0).data(Qt.UserRole) == 0x2700
-    print("  ok  browse — Dingbats grid")
+
+    # the picker offers only faces that actually have some of the block
+    offered = [window.browse_font.itemData(i)
+               for i in range(window.browse_font.count())]
+    assert offered, "some face must cover Dingbats"
+    for fam in offered:
+        face = window.index.find_face(fam)
+        assert any(cp in face.codepoints for cp in range(0x2700, 0x27C0)), fam
+    print(f"  ok  browse — Dingbats grid, {len(offered)} families offered")
+
+    # and the grid never renders a glyph the chosen face lacks: Qt would fall
+    # back to another font and silently contradict the count above it
+    for block, expect_empty in (("Malayalam", True), ("Basic Latin", False)):
+        window.block_combo.setCurrentText(block)
+        family = window.browse_font.currentData()
+        face = window.index.find_face(family)
+        drawn = missing_shown = 0
+        for r in range(window.grid.rowCount()):
+            for c in range(window.grid.columnCount()):
+                item = window.grid.item(r, c)
+                cp = item.data(Qt.UserRole)
+                if not item.text() or item.text() == "·":
+                    continue
+                drawn += 1
+                if cp not in face.codepoints:
+                    missing_shown += 1
+        assert missing_shown == 0, \
+            f"{block}: {missing_shown} glyphs drawn that {family} does not have"
+        assert drawn > 0, block
+    print("  ok  browse — no glyph is drawn that the chosen face lacks")
 
     # language coverage, the whole point
     window._set_mode(3)
