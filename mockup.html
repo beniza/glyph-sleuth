@@ -1,0 +1,559 @@
+<title>Glyph Sleuth</title>
+
+<style>
+  /* ============================================================
+     Palette: manuscript pigments — vellum, lapis ultramarine,
+     madder red, gold leaf. Grounded in the subject (scripts and
+     letterforms) rather than a default dark-plus-one-accent.
+     ============================================================ */
+  :root {
+    --vellum:#EAE7DD; --panel:#F7F5EF; --sunk:#E2DED2; --rail:#DFDACB;
+    --line:#CBC5B2; --hair:#DCD7C7;
+    --ink:#191A22; --ink-2:#4B4C58; --faint:#7E7C79;
+    --lapis:#2B3E9B; --lapis-ink:#F2F4FF; --lapis-wash:#DCE0F6;
+    --gold:#8A6410; --gold-wash:#EFE3C4;
+    --madder:#9C2B22; --madder-wash:#F0DCD6;
+    --lift:0 1px 2px rgba(25,26,34,.10), 0 18px 44px -18px rgba(25,26,34,.34);
+    --display:"Sitka Display","Sitka Heading",Sitka,Constantia,Georgia,"Palatino Linotype",serif;
+    --text:"Sitka Text",Sitka,Constantia,Georgia,serif;
+    --chrome:Bahnschrift,"DIN Alternate","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --data:"Cascadia Mono",Consolas,"DejaVu Sans Mono",ui-monospace,monospace;
+    --glyph:"Segoe UI Symbol","Segoe UI Emoji",Quivira,"MS Gothic",serif;
+  }
+  @media (prefers-color-scheme:dark) {
+    :root:not([data-theme="light"]) {
+      --vellum:#14141A; --panel:#1B1B23; --sunk:#101015; --rail:#0E0E13;
+      --line:#32323F; --hair:#26262F;
+      --ink:#EDEBE3; --ink-2:#B7B5AE; --faint:#83817C;
+      --lapis:#8C9BF2; --lapis-ink:#0F1024; --lapis-wash:#1E2144;
+      --gold:#D2A238; --gold-wash:#33280F;
+      --madder:#DE7264; --madder-wash:#3A1A16;
+      --lift:0 1px 0 rgba(255,250,235,.05), 0 24px 56px -20px rgba(0,0,0,.85);
+    }
+  }
+  :root[data-theme="dark"] {
+    --vellum:#14141A; --panel:#1B1B23; --sunk:#101015; --rail:#0E0E13;
+    --line:#32323F; --hair:#26262F;
+    --ink:#EDEBE3; --ink-2:#B7B5AE; --faint:#83817C;
+    --lapis:#8C9BF2; --lapis-ink:#0F1024; --lapis-wash:#1E2144;
+    --gold:#D2A238; --gold-wash:#33280F;
+    --madder:#DE7264; --madder-wash:#3A1A16;
+    --lift:0 1px 0 rgba(255,250,235,.05), 0 24px 56px -20px rgba(0,0,0,.85);
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--vellum); color:var(--ink);
+    font-family:var(--text); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1220px; margin:0 auto; padding:40px 22px 64px; }
+  ::selection { background:var(--lapis-wash); }
+
+  /* ---------- masthead ---------- */
+  .mast { display:flex; align-items:flex-end; justify-content:space-between; gap:30px; flex-wrap:wrap; margin-bottom:20px; }
+  .mast h1 {
+    font-family:var(--display); font-weight:400; font-size:42px; line-height:1;
+    margin:0 0 6px; letter-spacing:-.012em;
+  }
+  .mast h1 .mark { color:var(--lapis); font-family:var(--glyph); font-size:.78em; margin-right:.12em; }
+  .mast .sub { margin:0; color:var(--faint); max-width:52ch; font-size:14.5px; }
+  .mast .creed {
+    font-family:var(--chrome); font-size:12px; letter-spacing:.03em; line-height:1.7;
+    text-align:right; color:var(--ink-2); border-right:2px solid var(--lapis); padding-right:12px;
+  }
+  .mast .creed b { color:var(--lapis); font-weight:600; }
+
+  /* ---------- app ---------- */
+  .app {
+    background:var(--panel); border:1px solid var(--line); border-radius:11px;
+    box-shadow:var(--lift); overflow:hidden;
+  }
+  .chrome {
+    display:flex; align-items:center; gap:11px; padding:0 14px; height:36px;
+    background:var(--rail); border-bottom:1px solid var(--line);
+    font-family:var(--chrome); font-size:11.5px; color:var(--faint); letter-spacing:.04em;
+  }
+  .chrome .dots { display:flex; gap:6px; }
+  .chrome .dots i { width:9px; height:9px; border-radius:50%; background:var(--line); display:block; }
+  .chrome .nm { font-family:var(--data); color:var(--ink-2); }
+  .chrome .rt { margin-left:auto; display:flex; gap:16px; align-items:center; }
+  .chrome .rt .live::before {
+    content:""; display:inline-block; width:6px; height:6px; border-radius:50%;
+    background:var(--lapis); margin-right:6px; vertical-align:1px;
+  }
+
+  /* ---------- command bar ---------- */
+  .cmd { padding:16px 18px 0; border-bottom:1px solid var(--hair); background:var(--panel); }
+  .cmdrow { display:flex; gap:10px; align-items:stretch; }
+  .modes { display:flex; gap:2px; background:var(--sunk); border:1px solid var(--line); border-radius:8px; padding:2px; }
+  .mode {
+    all:unset; cursor:pointer; padding:0 13px; display:grid; place-items:center;
+    font-family:var(--chrome); font-size:12.5px; letter-spacing:.03em; color:var(--ink-2); border-radius:6px;
+  }
+  .mode:hover { background:var(--panel); color:var(--ink); }
+  .mode:focus-visible { outline:2px solid var(--lapis); outline-offset:1px; }
+  .mode[aria-selected="true"] { background:var(--lapis); color:var(--lapis-ink); font-weight:600; }
+  .mode[disabled] { opacity:.42; cursor:default; }
+  .mode[disabled]::after {
+    content:"soon"; font-size:9px; margin-left:6px; padding:1px 4px; border-radius:3px;
+    background:var(--gold-wash); color:var(--gold); letter-spacing:.06em;
+  }
+  .omni {
+    flex:1; display:flex; align-items:center; gap:12px; min-width:0;
+    background:var(--sunk); border:1px solid var(--line); border-radius:8px; padding:10px 14px;
+  }
+  .omni .sig { font-family:var(--glyph); color:var(--lapis); font-size:17px; }
+  .omni input {
+    all:unset; flex:1; min-width:0; font-family:var(--data); font-size:16px; color:var(--ink);
+  }
+  .omni .caret { width:1.5px; height:19px; background:var(--lapis); animation:blink 1.15s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+  @media (prefers-reduced-motion:reduce) { .omni .caret{animation:none} }
+  .omni kbd {
+    font-family:var(--chrome); font-size:10.5px; color:var(--faint);
+    border:1px solid var(--line); border-radius:4px; padding:1px 5px;
+  }
+
+  /* the signature element: the parse echo */
+  .parse {
+    display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+    padding:9px 2px 12px; font-family:var(--chrome); font-size:12px; color:var(--faint);
+  }
+  .parse .lead { letter-spacing:.11em; text-transform:uppercase; font-size:10px; }
+  .parse .tok {
+    font-family:var(--data); font-size:12px; padding:2px 8px; border-radius:5px;
+    background:var(--lapis-wash); color:var(--lapis); font-weight:600;
+  }
+  .parse .arrow { color:var(--line); }
+  .parse .alt { color:var(--faint); }
+  .parse .alt b { color:var(--ink-2); font-weight:400; font-family:var(--data); }
+
+  /* ---------- body: results | inspector ---------- */
+  .body { display:grid; grid-template-columns:1fr 392px; min-height:600px; }
+  .body.solo { grid-template-columns:1fr; }
+  .left { border-right:1px solid var(--hair); min-width:0; }
+  .body.solo .left { border-right:0; }
+  .insp { background:var(--sunk); min-width:0; }
+  .panehead {
+    display:flex; align-items:baseline; gap:10px; padding:13px 18px;
+    border-bottom:1px solid var(--hair); font-family:var(--chrome);
+    font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--faint);
+  }
+  .panehead b { color:var(--ink); font-size:13px; letter-spacing:.02em; text-transform:none; font-weight:600; }
+  .panehead .rt { margin-left:auto; letter-spacing:.04em; font-family:var(--data); text-transform:none; font-size:11px; }
+  .scrollpane { padding:0; }
+
+  /* result rows */
+  .row {
+    display:grid; grid-template-columns:52px 1fr auto; align-items:center; gap:15px;
+    padding:12px 18px; border-bottom:1px solid var(--hair); cursor:pointer;
+  }
+  .row:hover { background:var(--sunk); }
+  .row[data-sel] { background:var(--lapis-wash); }
+  .row[data-sel] .rank { color:var(--lapis); }
+  .row .prev { font-size:31px; line-height:1; text-align:center; }
+  .row .fam { font-weight:600; font-size:14.5px; }
+  .row .sty { color:var(--faint); font-weight:400; }
+  .row .path { font-family:var(--data); font-size:11px; color:var(--faint); margin-top:2px; }
+  .row .n { font-family:var(--data); font-size:12px; color:var(--ink-2); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .row .n em { display:block; font-style:normal; font-size:9.5px; color:var(--faint); letter-spacing:.1em; text-transform:uppercase; font-family:var(--chrome); }
+  .f-symbol{font-family:"Segoe UI Symbol",serif} .f-quivira{font-family:Quivira,serif}
+  .f-gothic{font-family:"MS Gothic",serif} .f-emoji{font-family:"Segoe UI Emoji",serif}
+
+  /* ---------- inspector ---------- */
+  .isec { padding:16px 18px; border-bottom:1px solid var(--hair); }
+  .isec > h3 {
+    font-family:var(--chrome); font-size:10px; letter-spacing:.13em; text-transform:uppercase;
+    color:var(--faint); margin:0 0 11px; font-weight:600;
+  }
+  .plate { display:flex; gap:16px; align-items:center; }
+  .plate .big {
+    font-family:var(--glyph); font-size:78px; line-height:.95; color:var(--ink);
+    background:var(--panel); border:1px solid var(--line); border-radius:9px;
+    width:124px; height:124px; display:grid; place-items:center; flex:none;
+  }
+  .plate .id { min-width:0; }
+  .plate .cp { font-family:var(--data); font-size:19px; color:var(--lapis); font-weight:600; }
+  .plate .nm { font-family:var(--display); font-size:19px; line-height:1.2; margin:3px 0 8px; text-wrap:balance; }
+  .plate .where { font-family:var(--chrome); font-size:12px; color:var(--faint); line-height:1.6; }
+
+  /* SIGNATURE: same codepoint, every face that has it, side by side */
+  .strip { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--hair);
+           border:1px solid var(--hair); border-radius:8px; overflow:hidden; }
+  .strip figure { margin:0; background:var(--panel); padding:11px 4px 8px; text-align:center; }
+  .strip .g { font-size:40px; line-height:1.05; display:block; }
+  .strip figcaption { font-family:var(--chrome); font-size:9.5px; color:var(--faint); margin-top:6px; line-height:1.3; }
+
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:5px 14px; font-size:13px; }
+  .kv dt { font-family:var(--chrome); font-size:11px; color:var(--faint); letter-spacing:.04em; }
+  .kv dd { margin:0; font-family:var(--data); font-size:12.5px; word-break:break-all; }
+  .kv dd.pl { font-family:var(--text); font-size:13px; }
+
+  .chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .chip { font-family:var(--data); font-size:11.5px; padding:3px 8px; border-radius:5px;
+          background:var(--lapis-wash); color:var(--lapis); }
+  .chip.no { background:transparent; border:1px solid var(--hair); color:var(--faint); }
+  .chip.gold { background:var(--gold-wash); color:var(--gold); }
+
+  .vstrip { display:flex; gap:6px; flex-wrap:wrap; }
+  .vstrip a {
+    text-decoration:none; color:inherit; display:grid; place-items:center; gap:1px;
+    width:46px; padding:6px 2px; border:1px solid var(--hair); border-radius:6px; background:var(--panel);
+  }
+  .vstrip a:hover { border-color:var(--lapis); }
+  .vstrip a[data-cur] { border-color:var(--lapis); background:var(--lapis-wash); }
+  .vstrip .g { font-family:var(--glyph); font-size:20px; line-height:1.1; }
+  .vstrip .c { font-family:var(--data); font-size:9px; color:var(--faint); }
+  .vstrip .c.rare { color:var(--madder); }
+
+  /* coverage bars */
+  .cov { display:flex; flex-direction:column; gap:7px; }
+  .covrow { display:grid; grid-template-columns:1fr 96px 60px; gap:11px; align-items:center; font-size:13px; }
+  .covrow .lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar { height:6px; background:var(--sunk); border:1px solid var(--hair); border-radius:4px; overflow:hidden; }
+  .left .bar { background:var(--vellum); }
+  .bar i { display:block; height:100%; background:var(--lapis); }
+  .bar i.full { background:var(--gold); }
+  .bar i.low { background:var(--madder); }
+  .covrow .v { font-family:var(--data); font-size:11.5px; color:var(--faint); text-align:right; font-variant-numeric:tabular-nums; }
+
+  /* block grid */
+  .bgrid { display:grid; grid-template-columns:repeat(16,1fr); gap:1px; background:var(--hair); }
+  .bgrid b {
+    background:var(--panel); aspect-ratio:1; display:grid; place-items:center;
+    font-family:var(--glyph); font-size:18px; font-weight:400; cursor:pointer;
+  }
+  .bgrid b:hover { background:var(--lapis-wash); }
+  .bgrid b.off { color:var(--faint); opacity:.25; background:var(--sunk); }
+  .bgrid b.cur { background:var(--lapis); color:var(--lapis-ink); }
+
+  /* tables */
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:9px 14px; border-bottom:1px solid var(--hair); white-space:nowrap; }
+  th { font-family:var(--chrome); font-size:10px; letter-spacing:.11em; text-transform:uppercase;
+       color:var(--faint); font-weight:600; background:var(--sunk); }
+  tbody tr:last-child td { border-bottom:0; }
+  td.mono,th.mono { font-family:var(--data); font-variant-numeric:tabular-nums; }
+  td.gly { font-family:var(--glyph); font-size:21px; }
+  td .ghost { color:var(--faint); font-family:var(--chrome); font-size:11px; }
+
+  /* status bar */
+  .status {
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+    padding:8px 18px; background:var(--rail); border-top:1px solid var(--line);
+    font-family:var(--data); font-size:11px; color:var(--faint);
+  }
+  .status .k { color:var(--ink-2); }
+  .status .rt { margin-left:auto; }
+
+  .pane[hidden] { display:none; }
+
+  .after { margin-top:26px; display:grid; grid-template-columns:1fr 1fr; gap:26px; }
+  .after h4 { font-family:var(--chrome); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase;
+              color:var(--faint); margin:0 0 8px; font-weight:600; }
+  .after p { margin:0 0 8px; font-size:13.5px; color:var(--ink-2); max-width:60ch; }
+  .after b { color:var(--ink); }
+
+  @media (max-width:980px) {
+    .body { grid-template-columns:1fr; }
+    .left { border-right:0; border-bottom:1px solid var(--hair); }
+    .cmdrow { flex-wrap:wrap; }
+    .omni { order:-1; width:100%; }
+    .bgrid { grid-template-columns:repeat(8,1fr); }
+    .after { grid-template-columns:1fr; }
+    .mast .creed { text-align:left; border-right:0; border-left:2px solid var(--lapis); padding:0 0 0 12px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <div>
+      <h1><span class="mark">✱</span>Glyph Sleuth</h1>
+      <p class="sub">One field. Type a character, a codepoint, a Unicode name, a <span style="font-family:var(--data)">\p{…}</span> property, or a font — it works out which you meant and shows you what's installed that can draw it.</p>
+    </div>
+    <p class="creed">
+      If it answers a question, <b>it's in</b>.<br>
+      If it changes a file, <b>it's out</b>.
+    </p>
+  </header>
+
+  <div class="app">
+    <div class="chrome">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="nm">glyph-sleuth</span>
+      <span class="rt">
+        <span class="live">374 faces indexed · cache warm · 1.9 s</span>
+        <span>◐</span>
+      </span>
+    </div>
+
+    <!-- ============ COMMAND BAR ============ -->
+    <div class="cmd">
+      <div class="cmdrow">
+        <div class="modes" role="tablist" aria-label="Mode">
+          <button class="mode" role="tab" aria-selected="true"  aria-controls="m-search" id="t-search">Search</button>
+          <button class="mode" role="tab" aria-selected="false" aria-controls="m-convert" id="t-convert">Convert</button>
+          <button class="mode" role="tab" aria-selected="false" aria-controls="m-browse" id="t-browse">Browse</button>
+          <button class="mode" disabled>Language</button>
+        </div>
+        <label class="omni">
+          <span class="sig">✱</span>
+          <input id="omni" value="U+2731" readonly aria-label="Search characters, properties, or fonts">
+          <span class="caret"></span>
+          <kbd>Ctrl F</kbd>
+        </label>
+      </div>
+      <div class="parse" id="parse"></div>
+    </div>
+
+    <!-- ============ SEARCH ============ -->
+    <div class="pane" id="m-search" role="tabpanel" aria-labelledby="t-search">
+      <div class="body">
+        <div class="left">
+          <div class="panehead"><b>Fonts that can draw it</b><span class="rt">4 of 374 · 6 ms</span></div>
+
+          <div id="res-char">
+            <div class="row" data-sel>
+              <span class="prev f-symbol">✱</span>
+              <span><span class="fam">Segoe UI Symbol</span> <span class="sty">Regular</span>
+                <span class="path">C:\Windows\Fonts\seguisym.ttf</span></span>
+              <span class="n">7 536<em>glyphs</em></span>
+            </div>
+            <div class="row">
+              <span class="prev f-quivira">✱</span>
+              <span><span class="fam">Quivira</span> <span class="sty">Regular</span>
+                <span class="path">C:\Windows\Fonts\Quivira.otf</span></span>
+              <span class="n">11 091<em>glyphs</em></span>
+            </div>
+            <div class="row">
+              <span class="prev f-gothic">✱</span>
+              <span><span class="fam">MS Gothic</span> <span class="sty">Regular · ttc 0</span>
+                <span class="path">C:\Windows\Fonts\msgothic.ttc</span></span>
+              <span class="n">16 127<em>glyphs</em></span>
+            </div>
+            <div class="row">
+              <span class="prev f-emoji">✱</span>
+              <span><span class="fam">Segoe UI Emoji</span> <span class="sty">Regular</span>
+                <span class="path">C:\Windows\Fonts\seguiemj.ttf</span></span>
+              <span class="n">2 025<em>glyphs</em></span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="insp">
+          <div class="isec">
+            <div class="plate">
+              <span class="big">✱</span>
+              <span class="id">
+                <span class="cp">U+2731</span>
+                <div class="nm">Heavy Asterisk</div>
+                <span class="where">Dingbats · Common script<br>Symbol, other (So) · 10033</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="isec">
+            <h3>Drawn side by side</h3>
+            <div class="strip">
+              <figure><span class="g f-symbol">✱</span><figcaption>Segoe UI Symbol</figcaption></figure>
+              <figure><span class="g f-quivira">✱</span><figcaption>Quivira</figcaption></figure>
+              <figure><span class="g f-gothic">✱</span><figcaption>MS Gothic</figcaption></figure>
+              <figure><span class="g f-emoji">✱</span><figcaption>Segoe UI Emoji</figcaption></figure>
+            </div>
+          </div>
+
+          <div class="isec">
+            <h3>Encodings</h3>
+            <dl class="kv">
+              <dt>UTF-8</dt><dd>E2 9C B1</dd>
+              <dt>UTF-16</dt><dd>2731</dd>
+              <dt>HTML</dt><dd>&amp;#10033;</dd>
+              <dt>Escape</dt><dd>\u2731</dd>
+              <dt>Bidi</dt><dd class="pl">Other neutral (ON)</dd>
+            </dl>
+          </div>
+
+          <div class="isec">
+            <h3>Matches 10 of 185 properties</h3>
+            <div class="chips">
+              <span class="chip">\p{So}</span><span class="chip">\p{S}</span>
+              <span class="chip">\p{Block=Dingbats}</span><span class="chip">\p{Script=Common}</span>
+              <span class="chip">\p{Grapheme_Base}</span><span class="chip">\p{Bidi_Class=ON}</span>
+              <span class="chip">\p{Pattern_Syntax}</span><span class="chip">\p{Assigned}</span>
+              <span class="chip no">\p{Alphabetic}</span><span class="chip no">\p{Emoji}</span>
+              <span class="chip no">\p{Math}</span>
+            </div>
+          </div>
+
+          <div class="isec">
+            <h3>45 share the name ASTERISK</h3>
+            <div class="vstrip">
+              <a href="#"><span class="g">*</span><span class="c">361</span></a>
+              <a href="#"><span class="g">⁎</span><span class="c">12</span></a>
+              <a href="#"><span class="g">∗</span><span class="c rare">5</span></a>
+              <a href="#" data-cur><span class="g">✱</span><span class="c rare">4</span></a>
+              <a href="#"><span class="g">✲</span><span class="c rare">4</span></a>
+              <a href="#"><span class="g">✳</span><span class="c rare">3</span></a>
+              <a href="#"><span class="g">✻</span><span class="c rare">3</span></a>
+              <a href="#"><span class="g">✽</span><span class="c rare">6</span></a>
+              <a href="#"><span class="g">❋</span><span class="c rare">3</span></a>
+              <a href="#"><span class="g">꙳</span><span class="c">19</span></a>
+              <a href="#"><span class="g">﹡</span><span class="c">7</span></a>
+              <a href="#"><span class="g">＊</span><span class="c">16</span></a>
+              <a href="#"><span class="g">🞲</span><span class="c rare">2</span></a>
+              <a href="#"><span class="g">𒋬</span><span class="c rare">1</span></a>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ CONVERT ============ -->
+    <div class="pane" id="m-convert" role="tabpanel" aria-labelledby="t-convert" hidden>
+      <div class="body solo">
+        <div class="left">
+          <div class="panehead"><b>Text → codepoints</b><span class="rt">5 characters · 3 scripts</span></div>
+          <div class="scroll">
+            <table>
+              <thead><tr>
+                <th></th><th class="mono">Codepoint</th><th>Name</th><th class="mono">Dec</th>
+                <th class="mono">Cat</th><th class="mono">Script</th><th class="mono">UTF-8</th><th class="mono">Escape</th>
+              </tr></thead>
+              <tbody>
+                <tr><td class="gly">✱</td><td class="mono">U+2731</td><td>HEAVY ASTERISK</td><td class="mono">10033</td><td class="mono">So</td><td class="mono">Common</td><td class="mono">E2 9C B1</td><td class="mono">\u2731</td></tr>
+                <tr><td><span class="ghost">SP</span></td><td class="mono">U+0020</td><td>SPACE</td><td class="mono">32</td><td class="mono">Zs</td><td class="mono">Common</td><td class="mono">20</td><td class="mono">\u0020</td></tr>
+                <tr><td class="gly">Ǎ</td><td class="mono">U+01CD</td><td>LATIN CAPITAL LETTER A WITH CARON</td><td class="mono">461</td><td class="mono">Lu</td><td class="mono">Latin</td><td class="mono">C7 8D</td><td class="mono">\u01cd</td></tr>
+                <tr><td><span class="ghost">SP</span></td><td class="mono">U+0020</td><td>SPACE</td><td class="mono">32</td><td class="mono">Zs</td><td class="mono">Common</td><td class="mono">20</td><td class="mono">\u0020</td></tr>
+                <tr><td class="gly">ა</td><td class="mono">U+10D0</td><td>GEORGIAN LETTER AN</td><td class="mono">4304</td><td class="mono">Lo</td><td class="mono">Georgian</td><td class="mono">E1 83 90</td><td class="mono">\u10d0</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="panehead" style="border-top:1px solid var(--hair)"><b>Codepoints → text</b><span class="rt">any notation, mixed freely</span></div>
+          <div class="scroll">
+            <table><tbody>
+              <tr><td class="mono" style="width:46%">U+2731 0x1F7B2 10033</td><td class="gly">✱🞲✱</td><td class="mono" style="color:var(--faint)">3 chars · 10 bytes utf-8</td></tr>
+              <tr><td class="mono">\u0041\u030C</td><td class="gly">Ǎ</td><td class="mono" style="color:var(--faint)">2 chars · 1 grapheme · NFC → U+01CD</td></tr>
+              <tr><td class="mono">e2 9c b1</td><td class="gly">✱</td><td class="mono" style="color:var(--faint)">read as utf-8 bytes</td></tr>
+            </tbody></table>
+          </div>
+
+          <div class="isec" style="border-bottom:0">
+            <h3>Normalization</h3>
+            <dl class="kv">
+              <dt>NFC</dt><dd>2731 0020 01CD 0020 10D0</dd>
+              <dt>NFD</dt><dd>2731 0020 0041 <span style="color:var(--madder)">030C</span> 0020 10D0</dd>
+              <dt>NFKC</dt><dd>2731 0020 01CD 0020 10D0</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ BROWSE ============ -->
+    <div class="pane" id="m-browse" role="tabpanel" aria-labelledby="t-browse" hidden>
+      <div class="body">
+        <div class="left">
+          <div class="panehead"><b>Dingbats</b> U+2700…U+27BF<span class="rt">drawn in Quivira · 160 of 192</span></div>
+          <div class="bgrid f-quivira">
+            <b class="off">✀</b><b>✁</b><b>✂</b><b>✃</b><b>✄</b><b class="off">✅</b><b>✆</b><b>✇</b><b>✈</b><b>✉</b><b class="off">✊</b><b class="off">✋</b><b>✌</b><b>✍</b><b class="off">✎</b><b>✏</b>
+            <b>✐</b><b>✑</b><b>✒</b><b>✓</b><b>✔</b><b>✕</b><b>✖</b><b>✗</b><b>✘</b><b>✙</b><b>✚</b><b>✛</b><b>✜</b><b>✝</b><b>✞</b><b>✟</b>
+            <b>✠</b><b>✡</b><b>✢</b><b>✣</b><b>✤</b><b>✥</b><b>✦</b><b>✧</b><b class="off">✨</b><b>✩</b><b>✪</b><b>✫</b><b>✬</b><b>✭</b><b>✮</b><b>✯</b>
+            <b>✰</b><b class="cur">✱</b><b>✲</b><b>✳</b><b>✴</b><b>✵</b><b>✶</b><b>✷</b><b>✸</b><b>✹</b><b>✺</b><b>✻</b><b>✼</b><b>✽</b><b>✾</b><b>✿</b>
+            <b>❀</b><b>❁</b><b>❂</b><b>❃</b><b>❄</b><b class="off">❅</b><b>❆</b><b class="off">❇</b><b class="off">❈</b><b>❉</b><b>❊</b><b>❋</b><b class="off">❌</b><b>❍</b><b class="off">❎</b><b>❏</b>
+            <b>❐</b><b>❑</b><b>❒</b><b class="off">❓</b><b class="off">❔</b><b class="off">❕</b><b>❖</b><b>❗</b><b>❘</b><b>❙</b><b>❚</b><b>❛</b><b>❜</b><b>❝</b><b>❞</b><b>❟</b>
+          </div>
+        </div>
+
+        <aside class="insp">
+          <div class="isec">
+            <div class="plate">
+              <span class="big f-quivira" style="font-size:58px">Qg✱</span>
+              <span class="id">
+                <span class="cp">Quivira</span>
+                <div class="nm">Regular</div>
+                <span class="where">OpenType/CFF · 11 091 glyphs<br>141 blocks touched, 62 complete</span>
+              </span>
+            </div>
+          </div>
+          <div class="isec">
+            <h3>Block coverage</h3>
+            <div class="cov">
+              <div class="covrow"><span class="lbl">Cyrillic</span><span class="bar"><i class="full" style="width:100%"></i></span><span class="v">256/256</span></div>
+              <div class="covrow"><span class="lbl">Mathematical Operators</span><span class="bar"><i class="full" style="width:100%"></i></span><span class="v">256/256</span></div>
+              <div class="covrow"><span class="lbl">Combining Diacriticals</span><span class="bar"><i class="full" style="width:100%"></i></span><span class="v">112/112</span></div>
+              <div class="covrow"><span class="lbl">IPA Extensions</span><span class="bar"><i class="full" style="width:100%"></i></span><span class="v">96/96</span></div>
+              <div class="covrow"><span class="lbl">Greek and Coptic</span><span class="bar"><i style="width:93.8%"></i></span><span class="v">135/144</span></div>
+              <div class="covrow"><span class="lbl">General Punctuation</span><span class="bar"><i style="width:93.8%"></i></span><span class="v">105/112</span></div>
+              <div class="covrow"><span class="lbl">Dingbats</span><span class="bar"><i style="width:83.3%"></i></span><span class="v">160/192</span></div>
+              <div class="covrow"><span class="lbl">Latin-1 Supplement</span><span class="bar"><i style="width:75%"></i></span><span class="v">96/128</span></div>
+              <div class="covrow"><span class="lbl">Basic Latin</span><span class="bar"><i style="width:74.2%"></i></span><span class="v">95/128</span></div>
+              <div class="covrow"><span class="lbl">Devanagari</span><span class="bar"><i class="low" style="width:2%"></i></span><span class="v">0/128</span></div>
+            </div>
+          </div>
+          <div class="isec" style="border-bottom:0">
+            <h3>Missing from a pasted sample</h3>
+            <p style="margin:0 0 9px; font-size:13px; color:var(--ink-2)">Paste a paragraph and this lists exactly what drops to fallback.</p>
+            <div class="chips">
+              <span class="chip gold">U+0928 न</span><span class="chip gold">U+094D ्</span>
+              <span class="chip gold">U+092E म</span><span class="chip gold">U+0938 स</span>
+              <span class="chip no">+4 more</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="status">
+      <span><span class="k">index</span> 374 faces · 26 s cold · 1.9 s cached</span>
+      <span><span class="k">unicode</span> 16.0</span>
+      <span><span class="k">query</span> 6 ms</span>
+      <span class="rt">Ctrl+C copies the selected row</span>
+    </div>
+  </div>
+
+  <div class="after">
+    <div>
+      <h4>What changed</h4>
+      <p><b>Six tabs became one field.</b> Variants, properties and font details were never separate modes — they're facets of whatever you just looked up, so they live in a permanent inspector on the right instead of behind a tab you have to leave.</p>
+      <p><b>The parse echo</b> under the field shows how your input was read, and what else it could have meant. It teaches the syntax without a help page.</p>
+    </div>
+    <div>
+      <h4>Real data</h4>
+      <p>Every number here came from scanning the <b>374 faces installed on this machine</b>. Four of them can draw U+2731. Quivira's block coverage and the Dingbats ranking are measured, not sketched.</p>
+      <p><b>Language</b> is greyed on purpose — that's SIL langtags/SLDR exemplars answering “which fonts can set this language”, and it's the next thing worth building.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const PARSES = {
+    'm-search':  ['U+2731', 'codepoint', 'also try: <b>✱</b> · <b>heavy asterisk</b> · <b>\\p{Block=Dingbats}</b> · <b>Quivira</b>'],
+    'm-convert': ['✱ Ǎ ა', 'text · 5 chars', 'paste codepoints instead and it converts the other way'],
+    'm-browse':  ['Dingbats', 'unicode block', 'also try: <b>U+2700..U+27BF</b> · <b>\\p{Script=Georgian}</b>']
+  };
+  const omni = document.getElementById('omni'), parse = document.getElementById('parse');
+  const modes = [...document.querySelectorAll('.mode:not([disabled])')];
+
+  function show(btn) {
+    modes.forEach(m => {
+      const on = m === btn;
+      m.setAttribute('aria-selected', on);
+      document.getElementById(m.getAttribute('aria-controls')).hidden = !on;
+    });
+    const [val, kind, hint] = PARSES[btn.getAttribute('aria-controls')];
+    omni.value = val;
+    parse.innerHTML = `<span class="lead">read as</span><span class="tok">${kind}</span>
+      <span class="arrow">→</span><span class="alt">${hint}</span>`;
+  }
+  modes.forEach(m => m.addEventListener('click', () => show(m)));
+  show(modes[0]);
+
+  document.querySelectorAll('#res-char .row').forEach(r =>
+    r.addEventListener('click', () => {
+      document.querySelectorAll('#res-char .row').forEach(x => x.removeAttribute('data-sel'));
+      r.setAttribute('data-sel', '');
+    }));
+</script>
