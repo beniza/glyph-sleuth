@@ -36,105 +36,138 @@ APP_NAME = "Glyph Sleuth"
 
 # ---------------------------------------------------------------- appearance
 
+# A proof sheet on a light table, not a page of parchment: cool bright paper,
+# and three pigments that each mean one thing — lapis for what you are looking
+# at, gold for complete, madder for absent. Nothing else is allowed colour.
 LIGHT = dict(
-    vellum="#EAE7DD", panel="#F7F5EF", sunk="#E2DED2", rail="#DFDACB",
-    line="#CBC5B2", hair="#DCD7C7", ink="#191A22", ink2="#4B4C58", faint="#7E7C79",
-    lapis="#2B3E9B", lapisink="#F2F4FF", lapiswash="#DCE0F6",
-    gold="#8A6410", goldwash="#EFE3C4", madder="#9C2B22", madderwash="#F0DCD6",
+    panel="#FBFBF9", sunk="#F1F2EF", rail="#EDEEEA",
+    line="#D7D8D1", hair="#E6E7E1",
+    ink="#15161A", ink2="#41434A", faint="#83847D",
+    lapis="#26389A", lapisink="#F4F5FF", lapiswash="#E0E3F5",
+    gold="#7E5A0C", goldwash="#F0E7CC", madder="#9E2419", madderwash="#F5DFDA",
 )
 DARK = dict(
-    vellum="#14141A", panel="#1B1B23", sunk="#101015", rail="#0E0E13",
-    line="#32323F", hair="#26262F", ink="#EDEBE3", ink2="#B7B5AE", faint="#83817C",
-    lapis="#8C9BF2", lapisink="#0F1024", lapiswash="#1E2144",
-    gold="#D2A238", goldwash="#33280F", madder="#DE7264", madderwash="#3A1A16",
+    panel="#17181D", sunk="#111216", rail="#0E0F13",
+    line="#2E3038", hair="#22242A",
+    ink="#ECEBE4", ink2="#B2B2AA", faint="#7C7D76",
+    lapis="#96A2F7", lapisink="#0E1026", lapiswash="#1B1E3B",
+    gold="#D4A33D", goldwash="#31270F", madder="#E07362", madderwash="#3A1A15",
 )
 
-DISPLAY_FONT = "Sitka Display, Sitka Heading, Constantia, Georgia, serif"
-CHROME_FONT = "Bahnschrift, Segoe UI, system-ui, sans-serif"
+# Sitka is Matthew Carter's, it has optical sizes, and almost nothing uses it —
+# the right display face for a tool about letterforms.
+DISPLAY_FONT = "Sitka Display, Sitka Heading, Sitka, Constantia, Georgia, serif"
+TEXT_FONT = "Sitka Text, Sitka, Constantia, Georgia, serif"
+CHROME_FONT = "Bahnschrift, Segoe UI Variable Text, Segoe UI, system-ui, sans-serif"
 DATA_FONT = "Cascadia Mono, Consolas, DejaVu Sans Mono, monospace"
 
 QSS = """
 QMainWindow, QWidget {{ background: {panel}; color: {ink};
     font-family: {chrome}; font-size: 13px; }}
-QSplitter::handle {{ background: {hair}; width: 1px; }}
+QSplitter::handle {{ background: {line}; width: 1px; }}
 
-#CommandBar {{ background: {panel}; border-bottom: 1px solid {hair}; }}
-#Omni {{ background: {sunk}; border: 1px solid {line}; border-radius: 7px;
-    padding: 9px 13px; font-family: {data}; font-size: 15px;
+/* The search field is the product, so it gets the masthead line to itself:
+   no box, no radius, just a rule that lights up when it has focus. */
+#CommandBar {{ background: {panel}; border-bottom: 1px solid {line}; }}
+#Omni {{ background: transparent; border: 0; border-bottom: 1px solid transparent;
+    padding: 3px 0 5px; font-family: {data}; font-size: 21px; color: {ink};
     selection-background-color: {lapiswash}; selection-color: {ink}; }}
-#Omni:focus {{ border-color: {lapis}; }}
-#ParseEcho {{ color: {faint}; font-size: 12px; padding: 2px 3px 0; }}
+#Omni:focus {{ border-bottom-color: {lapis}; }}
+#Mark {{ color: {lapis}; font-size: 21px; padding-right: 2px; }}
+#ParseEcho {{ color: {faint}; font-size: 12px; }}
 
-QPushButton#Mode {{ background: {sunk}; border: 1px solid {line};
-    border-radius: 6px; padding: 8px 15px; color: {ink2}; }}
-QPushButton#Mode:hover {{ background: {panel}; color: {ink}; }}
-QPushButton#Mode:checked {{ background: {lapis}; color: {lapisink};
-    border-color: {lapis}; font-weight: 600; }}
+/* Modes read as text with a marker, not as buttons in a segmented control. */
+QPushButton#Mode {{ background: transparent; border: 0;
+    border-bottom: 2px solid transparent; padding: 3px 1px 2px;
+    margin-left: 20px; color: {faint}; font-size: 12px; }}
+QPushButton#Mode:hover {{ color: {ink}; }}
+QPushButton#Mode:checked {{ color: {ink}; border-bottom-color: {lapis};
+    font-weight: 600; }}
 QPushButton#Ghost {{ background: transparent; border: 1px solid {line};
-    border-radius: 6px; padding: 7px 12px; color: {ink2}; }}
+    border-radius: 2px; padding: 5px 11px; color: {ink2}; font-size: 12px; }}
 QPushButton#Ghost:hover {{ border-color: {lapis}; color: {lapis}; }}
+QPushButton#Ghost:checked {{ border-color: {lapis}; color: {lapis};
+    background: {lapiswash}; }}
 
+/* Hairline rows, generous height. Zebra striping is a spreadsheet tell. */
 QTreeWidget, QTableWidget {{ background: {panel}; border: 0;
-    alternate-background-color: {sunk}; gridline-color: {hair};
-    selection-background-color: {lapiswash}; selection-color: {ink}; outline: 0; }}
-QTreeWidget::item, QTableWidget::item {{ padding: 5px 4px; border: 0; }}
+    gridline-color: {hair}; outline: 0;
+    selection-background-color: {lapiswash}; selection-color: {ink}; }}
+QTreeWidget::item {{ padding: 9px 4px; border: 0;
+    border-bottom: 1px solid {hair}; }}
+QTableWidget::item {{ padding: 7px 4px; border: 0; }}
 QTreeWidget::item:selected, QTableWidget::item:selected {{
     background: {lapiswash}; color: {ink}; }}
-QHeaderView::section {{ background: {sunk}; color: {faint}; border: 0;
-    border-bottom: 1px solid {hair}; padding: 7px 8px;
+QTreeWidget::item:hover, QTableWidget::item:hover {{ background: {sunk}; }}
+QHeaderView::section {{ background: {panel}; color: {faint}; border: 0;
+    border-bottom: 1px solid {line}; padding: 6px 8px 8px;
     font-size: 10px; font-weight: 600; }}
-QTableCornerButton::section {{ background: {sunk}; border: 0; }}
+QTableCornerButton::section {{ background: {panel}; border: 0; }}
 
 QTextBrowser {{ background: {sunk}; border: 0; }}
-QPlainTextEdit {{ background: {sunk}; border: 1px solid {line}; border-radius: 7px;
-    padding: 8px 10px; font-family: {data}; font-size: 14px;
+QPlainTextEdit {{ background: {panel}; border: 0; border-left: 2px solid {line};
+    padding: 6px 12px; font-family: {data}; font-size: 15px;
     selection-background-color: {lapiswash}; selection-color: {ink}; }}
-QLineEdit {{ background: {sunk}; border: 1px solid {line}; border-radius: 6px;
-    padding: 6px 10px; color: {ink}; }}
-QComboBox {{ background: {sunk}; border: 1px solid {line}; border-radius: 6px;
-    padding: 6px 10px; color: {ink}; min-width: 150px; }}
-QComboBox::drop-down {{ border: 0; width: 18px; }}
+QPlainTextEdit:focus {{ border-left-color: {lapis}; }}
+QLineEdit {{ background: transparent; border: 0;
+    border-bottom: 1px solid {line}; padding: 5px 1px; color: {ink};
+    selection-background-color: {lapiswash}; selection-color: {ink}; }}
+QLineEdit:focus {{ border-bottom-color: {lapis}; }}
+QComboBox {{ background: transparent; border: 0; border-bottom: 1px solid {line};
+    padding: 5px 1px; color: {ink}; min-width: 150px;
+    font-family: {data}; font-size: 13px; }}
+QComboBox:focus, QComboBox:on {{ border-bottom-color: {lapis}; }}
+QComboBox::drop-down {{ border: 0; width: 16px; }}
 QComboBox QAbstractItemView {{ background: {panel}; border: 1px solid {line};
-    selection-background-color: {lapiswash}; selection-color: {ink}; }}
+    padding: 3px; selection-background-color: {lapiswash}; selection-color: {ink}; }}
+QLabel#FieldLabel {{ color: {faint}; font-size: 11px; }}
 
-QStatusBar {{ background: {rail}; border-top: 1px solid {line};
+QStatusBar {{ background: {panel}; border-top: 1px solid {line};
     color: {faint}; font-family: {data}; font-size: 11px; }}
 QStatusBar::item {{ border: 0; }}
-QProgressBar {{ background: {sunk}; border: 1px solid {line}; border-radius: 4px;
-    height: 8px; text-align: center; color: transparent; }}
-QProgressBar::chunk {{ background: {lapis}; border-radius: 3px; }}
-QScrollBar:vertical {{ background: transparent; width: 11px; margin: 0; }}
-QScrollBar::handle:vertical {{ background: {line}; border-radius: 5px; min-height: 30px; }}
+QProgressBar {{ background: {hair}; border: 0; height: 2px;
+    text-align: center; color: transparent; }}
+QProgressBar::chunk {{ background: {lapis}; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
+QScrollBar::handle:vertical {{ background: {line}; min-height: 32px; }}
 QScrollBar::handle:vertical:hover {{ background: {faint}; }}
-QScrollBar:horizontal {{ background: transparent; height: 11px; margin: 0; }}
-QScrollBar::handle:horizontal {{ background: {line}; border-radius: 5px; min-width: 30px; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 0; }}
+QScrollBar::handle:horizontal {{ background: {line}; min-width: 32px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
-QToolTip {{ background: {panel}; color: {ink}; border: 1px solid {line}; padding: 5px; }}
+QToolTip {{ background: {panel}; color: {ink}; border: 1px solid {line};
+    padding: 5px; }}
 """
 
 DOC_CSS = """
 body {{ color: {ink}; font-family: {chrome}; font-size: 13px; }}
-a {{ color: {lapis}; text-decoration: none; }}
-h3 {{ font-size: 10px; color: {faint}; letter-spacing: 1px;
-     text-transform: uppercase; margin: 0 0 6px; }}
-.cp {{ font-family: {data}; font-size: 17px; color: {lapis}; font-weight: bold; }}
-.nm {{ font-family: {display}; font-size: 17px; color: {ink}; }}
-.where {{ color: {faint}; font-size: 12px; }}
-.big {{ font-size: 62px; color: {ink}; }}
+a {{ color: {ink}; text-decoration: none; }}
+a.q {{ color: {lapis}; }}
+h3 {{ font-family: {display}; font-size: 15px; color: {ink};
+     margin: 0 0 8px; font-weight: 400; }}
+hr {{ background-color: {hair}; color: {hair}; border: 0; height: 1px; }}
+.spec {{ color: {ink}; }}
+.cp {{ font-family: {data}; font-size: 14px; color: {lapis}; }}
+.nm {{ font-family: {display}; font-size: 27px; color: {ink}; }}
+.nm2 {{ font-family: {display}; font-size: 19px; color: {ink}; }}
+.where {{ font-family: {text}; color: {faint}; font-size: 13px; }}
 .k {{ color: {faint}; font-size: 11px; }}
 .v {{ font-family: {data}; font-size: 12px; color: {ink}; }}
+.n {{ font-family: {data}; font-size: 11px; color: {faint}; }}
 .chip {{ background: {lapiswash}; color: {lapis}; font-family: {data};
         font-size: 11px; }}
 .chipno {{ color: {faint}; font-family: {data}; font-size: 11px; }}
-.gold {{ background: {goldwash}; color: {gold}; font-family: {data}; font-size: 11px; }}
-.miss {{ background: {madderwash}; color: {madder}; font-family: {data}; font-size: 12px; }}
+.gold {{ background: {goldwash}; color: {gold}; }}
+.lapis {{ background: {lapiswash}; }}
+.miss {{ background: {madderwash}; color: {madder}; font-family: {data};
+        font-size: 12px; }}
 .rare {{ color: {madder}; font-family: {data}; font-size: 10px; }}
 .count {{ color: {faint}; font-family: {data}; font-size: 10px; }}
 .cap {{ color: {faint}; font-size: 10px; }}
 .glyph {{ color: {ink}; }}
 .track {{ background: {hair}; }}
-.gap {{ font-size: 6px; }}
+.gap {{ font-size: 7px; }}
+.lead {{ font-family: {text}; font-size: 13px; color: {ink2}; }}
 """
 
 
@@ -211,6 +244,21 @@ def section(title, body):
     return f'<div class="gap">&nbsp;</div><h3>{esc(title)}</h3>{body}<hr>'
 
 
+def specimen(mark, cp_line, name, meta):
+    """The head of every inspector view: the thing itself, large, then its facts.
+
+    A specimen sheet leads with the letterform at a size you can actually judge,
+    so the glyph is unboxed and given the width — the data sits under it.
+    """
+    return (
+        f'<div class="spec">{mark}</div>'
+        f'<div class="gap">&nbsp;</div>'
+        f'<div class="cp">{cp_line}</div>'
+        f'<div class="nm">{esc(name)}</div>'
+        f'<div class="where">{meta}</div><hr>'
+    )
+
+
 def bar(fraction, css):
     """A coverage bar with a visible track behind it."""
     width = max(int(fraction * 100), 1)
@@ -244,8 +292,8 @@ class Inspector(QTextBrowser):
         self.setOpenLinks(False)
         self.setOpenExternalLinks(False)
         self.document().setDefaultStyleSheet(
-            DOC_CSS.format(display=DISPLAY_FONT, chrome=CHROME_FONT,
-                           data=DATA_FONT, **palette)
+            DOC_CSS.format(display=DISPLAY_FONT, text=TEXT_FONT,
+                           chrome=CHROME_FONT, data=DATA_FONT, **palette)
         )
         self.anchorClicked.connect(self._clicked)
         self.index = None
@@ -255,8 +303,8 @@ class Inspector(QTextBrowser):
         """Qt applies a default stylesheet only to HTML set afterwards, so the
         current view has to be drawn again or it keeps the old theme's colours."""
         self.document().setDefaultStyleSheet(
-            DOC_CSS.format(display=DISPLAY_FONT, chrome=CHROME_FONT,
-                           data=DATA_FONT, **palette)
+            DOC_CSS.format(display=DISPLAY_FONT, text=TEXT_FONT,
+                           chrome=CHROME_FONT, data=DATA_FONT, **palette)
         )
         if self._last:
             method, args = self._last
@@ -279,40 +327,38 @@ class Inspector(QTextBrowser):
         parts = []
 
         preview = faces[0].family if faces else None
-        plate = (
-            f'<table cellspacing="0" cellpadding="0" width="100%"><tr>'
-            f'<td width="118" align="center">{glyph_or_standin(cp, preview, 62)}</td>'
-            f'<td valign="middle">'
-            f'<div class="cp">U+{cp:04X}</div>'
-            f'<div class="nm">{esc(info.name.title() if info.name.isupper() else info.name)}</div>'
-            f'<div class="where">{esc(info.block or "—")} &middot; '
-            f'{esc(info.script or "—")} script<br>'
-            f'{esc(chars.CATEGORY_NAMES.get(info.category, info.category))} '
-            f'({esc(info.category)}) &middot; {info.decimal}</div>'
-            f"</td></tr></table>"
-        )
-        parts.append(plate + '<table cellpadding="6"><tr><td></td></tr></table>')
+        name = info.name.title() if info.name.isupper() else info.name
+        parts.append(specimen(
+            glyph_or_standin(cp, preview, 132),
+            f"U+{cp:04X}",
+            name,
+            f'{esc(info.block or "—")} &middot; {esc(info.script or "—")} &middot; '
+            f'{esc(chars.CATEGORY_NAMES.get(info.category, info.category))}',
+        ))
 
         if faces:
+            # A comparative plate: the same sort cut by different hands.
+            width = 100 // min(len(faces), 4)
             cells = "".join(
-                f'<td align="center" width="{100 // min(len(faces), 4)}%">'
-                f'<a href="font:{esc(f.family)}">{glyph_or_standin(cp, f.family, 34)}</a>'
+                f'<td align="center" width="{width}%">'
+                f'<a href="font:{esc(f.family)}">{glyph_or_standin(cp, f.family, 52)}</a>'
                 f'<div class="cap">{esc(f.family)}</div></td>'
                 for f in faces[:4]
             )
+            total = f" of {len(self.index.faces)}" if self.index else ""
             parts.append(section(
-                f"Drawn side by side · {len(faces)} of {len(self.index.faces)} faces"
-                if self.index else "Drawn side by side",
-                f'<table width="100%" cellspacing="4"><tr>{cells}</tr></table>',
+                f"Drawn by {len(faces)}{total} faces",
+                f'<table width="100%" cellspacing="8"><tr>{cells}</tr></table>',
             ))
         else:
             parts.append(section(
-                "No installed font can draw it",
-                '<div class="where">Every face on this machine would fall back '
+                "Nothing you have can draw it",
+                '<div class="lead">Every face on this machine would fall back '
                 "for this character.</div>",
             ))
 
         parts.append(section("Encodings", kv_table([
+            ("Decimal", info.decimal),
             ("UTF-8", info.utf8),
             ("UTF-16", info.utf16),
             ("HTML", info.html),
@@ -325,7 +371,7 @@ class Inspector(QTextBrowser):
 
         matched, unmatched = chars.properties_of(ch)
         parts.append(section(
-            f"Matches {len(matched)} of {len(matched) + len(unmatched)} properties",
+            f"Properties · {len(matched)} of {len(matched) + len(unmatched)}",
             chip_row(matched, "chip", lambda p: f"prop:{p}")
             + " " + chip_row(unmatched[:10], "chipno"),
         ))
@@ -364,23 +410,18 @@ class Inspector(QTextBrowser):
         self._last = ("show_face", (face,))
         coverage = self.index.block_coverage(face) if self.index else []
 
-        sample = "".join(chr(cp) for cp in (0x41, 0x67, 0x51) if cp in face.codepoints)
+        sample = "".join(chr(cp) for cp in (0x48, 0x61, 0x6D, 0x62) if cp in face.codepoints)
         if not sample:
-            sample = chr(min(face.codepoints)) if face.codepoints else "?"
+            sample = "".join(chr(cp) for cp in sorted(face.codepoints)[:4])
 
-        plate = (
-            f'<table cellspacing="0" cellpadding="0" width="100%"><tr>'
-            f'<td width="118" align="center">{font_span(face.family, sample, 46)}</td>'
-            f'<td valign="middle">'
-            f'<div class="cp">{esc(face.family)}</div>'
-            f'<div class="nm">{esc(face.style or "Regular")}</div>'
-            f'<div class="where">{esc(face.format)} &middot; '
-            f'{face.glyphs:,} mapped codepoints<br>'
-            f'{len(coverage)} blocks touched, '
-            f'{sum(1 for _n, h, t in coverage if h == t)} complete</div>'
-            f"</td></tr></table>"
-        )
-        parts = [plate + '<table cellpadding="6"><tr><td></td></tr></table>']
+        complete = sum(1 for _n, h, t in coverage if h == t)
+        parts = [specimen(
+            font_span(face.family, sample, 76),
+            f'{face.glyphs:,} codepoints',
+            face.family,
+            f'{esc(face.style or "Regular")} &middot; {esc(face.format)}<br>'
+            f'{len(coverage)} blocks touched, {complete} complete',
+        )]
         parts.append(section("File", f'<div class="v">{esc(face.path)}</div>'))
 
         rows = []
@@ -406,37 +447,34 @@ class Inspector(QTextBrowser):
         best, missing = families[0] if families else (None, needed)
         able = [f for f, m in families if not m]
 
-        plate = (
-            f'<div class="cp">{esc(lang.tag)}</div>'
-            f'<div class="nm">{esc(lang.name)}</div>'
-            f'<div class="where">{esc(lang.full)} &middot; '
-            f'{len(needed)} characters needed</div>'
-        )
-        parts = [plate]
-
-        if able:
-            names = ", ".join(f.family for f, _m in families if not _m)
-            body = (
-                f'<div class="v">{len(able)} of {len(families)} families cover '
-                f"it completely.</div>"
-                f'<div class="cap">{esc(names[:180])}</div>'
-            )
-        else:
-            body = ('<div class="miss">&nbsp;No installed family covers this '
-                    "language completely.&nbsp;</div>")
-        parts.append(section("Verdict", body))
-
         # Combining marks get a dotted circle to sit on, the way a specimen
         # sheet shows them — otherwise they stack onto whatever precedes them.
         sample = "".join(
             ("◌" + c if unicodedata.combining(c) else c)
             for c in sorted(needed)
-        )[:200]
-        if best and not missing:
-            parts.append(section(
-                f"Set in {best.family}",
-                f'<div>{font_span(best.family, sample, 22)}</div>',
-            ))
+        )[:120]
+        mark = (
+            font_span(best.family, sample, 27) if best and not missing
+            else f'<span class="glyph" style="font-size:27px">{esc(sample)}</span>'
+        )
+        parts = [specimen(
+            mark,
+            esc(lang.tag),
+            lang.name,
+            f'{esc(lang.full)} &middot; {len(needed)} characters needed',
+        )]
+
+        if able:
+            names = ", ".join(f.family for f, _m in families if not _m)
+            body = (
+                f'<div class="lead">{len(able)} of {len(families)} families can '
+                f"set it.</div>"
+                f'<div class="v">{esc(names[:180])}</div>'
+            )
+        else:
+            body = ('<div class="miss">&nbsp;No installed family can set this '
+                    "language.&nbsp;</div>")
+        parts.append(section("Verdict", body))
 
         if missing:
             parts.append(section(
@@ -537,42 +575,55 @@ class MainWindow(QMainWindow):
         bar = QWidget()
         bar.setObjectName("CommandBar")
         layout = QVBoxLayout(bar)
-        layout.setContentsMargins(16, 14, 16, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(20, 14, 24, 9)
+        layout.setSpacing(7)
 
-        row = QHBoxLayout()
-        row.setSpacing(8)
+        # The field owns the whole first line — it is the product, not a control.
+        top = QHBoxLayout()
+        top.setSpacing(9)
+        mark = QLabel("✱")
+        mark.setObjectName("Mark")
+        top.addWidget(mark)
+
+        self.omni = QLineEdit()
+        self.omni.setObjectName("Omni")
+        self.omni.setPlaceholderText(
+            "a character, U+2731, heavy asterisk, \\p{Script=Devanagari}, Quivira…"
+        )
+        self.omni.returnPressed.connect(self._run_query)
+        self.omni.textChanged.connect(self._echo_parse)
+        top.addWidget(self.omni, 1)
+
+        layout.addLayout(top)
+
+        # Second line: what the field made of your input, and where you are.
+        under = QHBoxLayout()
+        under.setSpacing(0)
+        self.echo = QLabel("")
+        self.echo.setObjectName("ParseEcho")
+        self.echo.setTextFormat(Qt.RichText)
+        self.echo.linkActivated.connect(self._echo_link)
+        under.addWidget(self.echo, 1)
+
         self.mode_buttons = []
         for i, name in enumerate(("Search", "Convert", "Browse", "Language")):
             button = QPushButton(name)
             button.setObjectName("Mode")
             button.setCheckable(True)
             button.setChecked(i == 0)
+            button.setCursor(Qt.PointingHandCursor)
             button.clicked.connect(lambda _=False, n=i: self._set_mode(n))
             self.mode_buttons.append(button)
-            row.addWidget(button)
+            under.addWidget(button)
 
-        self.omni = QLineEdit()
-        self.omni.setObjectName("Omni")
-        self.omni.setPlaceholderText(
-            "a character, U+2731, 10033, heavy asterisk, \\p{Script=Devanagari}, Quivira…"
-        )
-        self.omni.returnPressed.connect(self._run_query)
-        self.omni.textChanged.connect(self._echo_parse)
-        row.addWidget(self.omni, 1)
-
-        self.theme_button = QPushButton("◐")
-        self.theme_button.setObjectName("Ghost")
+        # A word, not an icon: this app exists because glyphs go missing.
+        self.theme_button = QPushButton()
+        self.theme_button.setObjectName("Mode")
+        self.theme_button.setCursor(Qt.PointingHandCursor)
         self.theme_button.setToolTip("Switch between light and dark")
         self.theme_button.clicked.connect(self._toggle_theme)
-        row.addWidget(self.theme_button)
-
-        layout.addLayout(row)
-        self.echo = QLabel("")
-        self.echo.setObjectName("ParseEcho")
-        self.echo.setTextFormat(Qt.RichText)
-        self.echo.linkActivated.connect(self._echo_link)
-        layout.addWidget(self.echo)
+        under.addWidget(self.theme_button)
+        layout.addLayout(under)
         return bar
 
     def _search_pane(self):
@@ -580,12 +631,13 @@ class MainWindow(QMainWindow):
         self.results.setColumnCount(5)
         self.results.setHeaderLabels(["", "Family", "Style", "Mapped", "File"])
         self.results.setRootIsDecorated(False)
-        self.results.setAlternatingRowColors(True)
+        self.results.setAlternatingRowColors(False)
         self.results.setSortingEnabled(False)
+        self.results.setUniformRowHeights(True)
         self.results.itemSelectionChanged.connect(self._result_selected)
         header = self.results.header()
         header.setSectionResizeMode(0, QHeaderView.Fixed)
-        header.resizeSection(0, 56)
+        header.resizeSection(0, 72)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
@@ -616,7 +668,8 @@ class MainWindow(QMainWindow):
             ["", "Codepoint", "Name", "Dec", "Cat", "Script", "UTF-8", "Escape"]
         )
         self.convert_table.verticalHeader().hide()
-        self.convert_table.setAlternatingRowColors(True)
+        self.convert_table.setAlternatingRowColors(False)
+        self.convert_table.setShowGrid(False)
         self.convert_table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.Stretch
         )
@@ -650,7 +703,7 @@ class MainWindow(QMainWindow):
         self.grid = QTableWidget(0, 16)
         self.grid.horizontalHeader().hide()
         self.grid.verticalHeader().hide()
-        self.grid.setShowGrid(True)
+        self.grid.setShowGrid(False)
         self.grid.itemSelectionChanged.connect(self._grid_selected)
         layout.addWidget(self.grid, 1)
         return pane
@@ -683,7 +736,7 @@ class MainWindow(QMainWindow):
         self.lang_list.setColumnCount(4)
         self.lang_list.setHeaderLabels(["Language", "Tag", "Script", "SLDR"])
         self.lang_list.setRootIsDecorated(False)
-        self.lang_list.setAlternatingRowColors(True)
+        self.lang_list.setAlternatingRowColors(False)
         self.lang_list.itemSelectionChanged.connect(self._language_selected)
         self.lang_list.header().setSectionResizeMode(0, QHeaderView.Stretch)
         layout.addWidget(self.lang_list, 1)
@@ -696,6 +749,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(QSS.format(chrome=CHROME_FONT, data=DATA_FONT, **palette))
         self.inspector.restyle(palette)
         self.echo.setStyleSheet(f"color: {palette['faint']};")
+        self.theme_button.setText("Light" if self.dark else "Dark")
         self._echo_parse(self.omni.text())
 
     def _toggle_theme(self):
@@ -778,21 +832,22 @@ class MainWindow(QMainWindow):
         if query.kind == "empty":
             self.echo.setText(
                 f"<span style='color:{palette['faint']}'>"
-                "Type a character, a codepoint, a name, a property, or a font.</span>"
+                "a character, a codepoint, a name, a property, or a font</span>"
             )
             return
         bits = [
-            "<span style='letter-spacing:1px'>READ AS</span> ",
-            f"<span style='color:{palette['lapis']};font-family:{DATA_FONT}'>"
-            f"<b>{esc(query.label)}</b></span>",
+            f"<span style='color:{palette['faint']}'>reading this as </span>",
+            f"<span style='color:{palette['lapis']}'>{esc(query.label)}</span>",
         ]
         if query.alternates:
             alts = " &middot; ".join(
-                f"<a href='alt:{i}' style='color:{palette['ink2']};"
-                f"text-decoration:none'>{esc(a.label)}</a>"
+                f"<a href='alt:{i}' style='color:{palette['ink2']}'>"
+                f"{esc(a.label)}</a>"
                 for i, a in enumerate(query.alternates)
             )
-            bits.append(f"<span style='color:{palette['hair']}'> — or </span>{alts}")
+            bits.append(
+                f"<span style='color:{palette['faint']}'> &nbsp;or &nbsp;</span>{alts}"
+            )
         self.echo.setText("".join(bits))
 
     def _echo_link(self, href):
@@ -855,7 +910,7 @@ class MainWindow(QMainWindow):
             ])
             if glyph_cp:
                 preview = QFont(face.family)
-                preview.setPointSize(19)
+                preview.setPointSize(24)
                 if face.style:
                     preview.setStyleName(face.style)
                 item.setFont(0, preview)
@@ -979,7 +1034,7 @@ class MainWindow(QMainWindow):
                  chars.char_name(chr(cp)), str(n), ""]
             )
             preview = QFont()
-            preview.setPointSize(19)
+            preview.setPointSize(24)
             item.setFont(0, preview)
             item.setTextAlignment(0, Qt.AlignCenter)
             item.setTextAlignment(3, Qt.AlignRight | Qt.AlignVCenter)
@@ -1038,7 +1093,7 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(value)
                 if column == 0 and not label:
                     big = QFont()
-                    big.setPointSize(17)
+                    big.setPointSize(21)
                     item.setFont(big)
                     item.setTextAlignment(Qt.AlignCenter)
                 item.setData(Qt.UserRole, info.cp)
@@ -1082,7 +1137,7 @@ class MainWindow(QMainWindow):
         self.grid.setRowCount(rows)
         self.grid.setColumnCount(columns)
         cell = QFont(family) if family else QFont()
-        cell.setPointSize(17)
+        cell.setPointSize(20)
 
         assigned = covered = 0
         for i, cp in enumerate(codepoints):
