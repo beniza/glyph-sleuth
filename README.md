@@ -4,6 +4,8 @@ The window you keep open beside your editor to answer *which font has this, what
 is this character, and what would break* — in seconds, without touching a file.
 
 ```
+git clone https://github.com/beniza/glyph-sleuth
+cd glyph-sleuth
 pip install -r requirements.txt
 python app.py
 ```
