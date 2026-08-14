@@ -22,7 +22,8 @@ on first run; on macOS and Linux, `chmod +x` the file first.
 
 ## Scope
 
-> **If it answers a question, it's in. If it changes a file, it's out.**
+> **It tells you what a character is and which of your fonts can draw it —
+> and never touches a font file to do it.**
 
 That decides every future feature. Read-only inspection is in scope; anything
 that writes a font, a UFO, or a PDF belongs in `pysilfont` and `smith`, which
