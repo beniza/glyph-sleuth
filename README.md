@@ -10,6 +10,16 @@ pip install -r requirements.txt
 python app.py
 ```
 
+## Download
+
+One file, nothing to install — [Windows](https://github.com/beniza/glyph-sleuth/releases/download/v0.1.0/glyph-sleuth-windows-x64.exe)
+· [macOS (Apple silicon)](https://github.com/beniza/glyph-sleuth/releases/download/v0.1.0/glyph-sleuth-macos-arm64)
+· [Linux](https://github.com/beniza/glyph-sleuth/releases/download/v0.1.0/glyph-sleuth-linux-x64)
+· [all releases](https://github.com/beniza/glyph-sleuth/releases)
+
+The builds are unsigned, so Windows SmartScreen and macOS Gatekeeper will warn
+on first run; on macOS and Linux, `chmod +x` the file first.
+
 ## Scope
 
 > **If it answers a question, it's in. If it changes a file, it's out.**
