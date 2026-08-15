@@ -469,6 +469,90 @@ def udhr_sample(entry, paragraphs=3):
     return "\n\n".join(text[:paragraphs]) or None
 
 
+# ------------------------------------------------------------------ scripts
+
+# Scripts nobody writes a living language in still belong in the index — they are
+# exactly what a font hunt for a historic text needs — but these two are not
+# scripts at all in the sense the app means.
+NOT_SCRIPTS = {"Zyyy", "Zinh", "Zzzz", "Zsym", "Zxxx", "Qaai"}
+
+
+def script_names():
+    """ISO 15924 code -> the name the regex engine knows it by (Mlym -> Malayalam)."""
+    names = {}
+    for (kind, value), label in ucd_module().VALUE_NAMES.items():
+        if kind == "sc" and len(value) == 4:
+            names[value.title()] = label
+    return names
+
+
+def ucd_module():
+    import ucd
+    return ucd
+
+
+def script_blocks(engine_name):
+    """[(block, ranges, chars)] for every UCD block this script appears in.
+
+    A script is not one block: Devanagari takes three, Tamil two, Arabic nine —
+    which is exactly the thing a font can cover half of. The ranges travel to the
+    client so it can measure any font against any block without another download.
+    """
+    import regex
+
+    matcher = regex.compile(r"\p{Script=%s}" % engine_name)
+    out = []
+    for lo, hi, name in ucd_module().BLOCKS:
+        if lo > 0x2FFFF:
+            break
+        found = [cp for cp in range(lo, hi + 1) if matcher.fullmatch(chr(cp))]
+        if found:
+            out.append((name, ranges_from(found), len(found)))
+    return out
+
+
+def script_index(languages):
+    """Every script SIL records a language for, with where it lives in Unicode.
+
+    ponytail: the codespace scan is the slow part (a minute or so for ~150
+    scripts). It runs once per build, not once per visitor.
+    """
+    names = script_names()
+    used = collections.defaultdict(list)
+    for lang in languages:
+        for code in lang.get("scripts", ()):
+            used[code].append(lang["id"])
+
+    out = []
+    for code in sorted(used):
+        engine_name = names.get(code)
+        if not engine_name:
+            continue
+        blocks = script_blocks(engine_name)
+        if not blocks:
+            continue
+        out.append({
+            "code": code,
+            "name": engine_name.replace("_", " "),
+            "blocks": [{"name": name, "ranges": ranges, "chars": chars}
+                       for name, ranges, chars in blocks],
+            "chars": sum(count for _name, _ranges, count in blocks),
+            "languages": sorted(used[code]),
+        })
+    return out
+
+
+def scripts_for(tags):
+    """{iso639-3: [script codes]} straight out of SIL langtags."""
+    found = collections.defaultdict(set)
+    for tag in tags:
+        if not tag.script or tag.script in NOT_SCRIPTS:
+            continue
+        base = tag.tag.split("-")[0]
+        found[base].add(tag.script)
+    return found
+
+
 def disambiguate(languages):
     """UDHR ships more than one translation for some languages, and two rows
     reading "Malayalam" is a puzzle, not a choice.
@@ -595,8 +679,22 @@ def main():
     print("Languages (UDHR text + SLDR exemplars)")
     entries = udhr_languages(args.limit)
     languages = disambiguate(in_parallel(entries, language, "languages"))
+
+    # SIL records which scripts each language is written in: Malayalam is not
+    # only Mlym but also Arab (Arabi-Malayalam) and Brai.
+    by_tag = scripts_for(langs.languages())
+    for lang in languages:
+        codes = by_tag.get(lang["tag"].split("-")[0]) or by_tag.get(lang["iso"]) or set()
+        lang["scripts"] = sorted(codes)
     write(os.path.join(OUT_DATA, "languages.json"),
           {"languages": languages, "count": len(languages)})
+
+    print("Scripts (Unicode blocks each one spans)")
+    scripts = script_index(languages)
+    print(f"  scripts: {len(scripts)} with "
+          f"{sum(len(s['blocks']) for s in scripts)} blocks between them")
+    write(os.path.join(OUT_DATA, "scripts.json"),
+          {"scripts": scripts, "count": len(scripts)})
 
 
 def prune_fonts(fonts):

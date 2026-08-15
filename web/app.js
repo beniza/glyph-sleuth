@@ -119,7 +119,7 @@ function toggleEmbed(button, font) {
 
 /** One entry per face: who made it, what it costs you, how it sets your text.
  *  The specimen gets the width and the size; everything else is a caption. */
-function specimen(font, sample, missing) {
+function specimen(font, sample, missing, status) {
   const meta = el("span", { className: "spec-meta",
                             textContent: FOUNDRIES[font.source] || font.source });
   if (font.licence) {
@@ -133,7 +133,10 @@ function specimen(font, sample, missing) {
               textContent: font.name }),
     meta);
 
-  if (missing) {
+  if (status) {
+    head.append(el("span", { className: `spec-status ${status.ok ? "ok" : "gap"}`,
+                             textContent: status.text }));
+  } else if (missing) {
     head.append(missing.size
       ? el("span", { className: "spec-status gap" }, `${missing.size} missing`,
            el("span", { className: "chars", textContent: [...missing].slice(0, 10).join(" ") }))
@@ -145,7 +148,7 @@ function specimen(font, sample, missing) {
   head.append(actions(font));
 
   const single = [...sample].length === 1;
-  const body = el("div", { className: "spec-sample" + (single ? " one" : ""),
+  const body = el("div", { className: "spec-sample" + (single ? " one" : ""), dir: "auto",
                            style: `font-family:${stack(font)}`, textContent: sample });
   return el("article", { className: "spec" }, head, body);
 }
@@ -155,7 +158,9 @@ function specimenList(rows, full) {
   const sample = core.trimToSpecimen(full);
   ensureFonts(rows.map((r) => r.font), sample);
   const list = el("div", { className: "specimens" });
-  for (const { font, missing } of rows) list.append(specimen(font, sample, missing));
+  for (const { font, missing, status } of rows) {
+    list.append(specimen(font, sample, missing, status));
+  }
   return list;
 }
 
@@ -203,6 +208,7 @@ function showSearch(query) {
     select($("#browse-block"), query.value);
     return switchMode("browse");
   }
+  if (query.kind === "script") return openScript(query.value);
   if (query.kind === "name") return showNameSearch(query.value);
   if (query.kind === "prop") return showProperty(query.value);
   if (query.kind === "range") return showCodepoints(rangeList(...query.value), query.label);
@@ -507,43 +513,197 @@ function drawBlock() {
 
 // ---------------------------------------------------------------- language
 
+// A language is not a script. Malayalam is written in Malayalam, in Arabic
+// (Arabi-Malayalam) and in Braille; the Malayalam script in turn serves Jeseri,
+// Paniya and others. The left column holds the language and points into scripts;
+// the right column is the script's own page, and points back.
+
 function setupLanguage() {
   const picker = $("#lang-pick");
   for (const lang of core.data.languages) {
     picker.append(el("option", { value: lang.id, textContent: `${lang.name} — ${lang.tag}` }));
   }
-  picker.onchange = showLanguage;
-  picker.value = core.data.languages.find((l) => l.iso === "hin")?.id || picker.options[0].value;
+  picker.onchange = () => { fillScripts(); showLanguage(); };
+  $("#script-pick").onchange = showScript;
+  picker.value = core.data.languages.find((l) => l.iso === "mal")?.id
+    || core.data.languages.find((l) => l.iso === "hin")?.id
+    || picker.options[0].value;
+}
+
+function currentLanguage() {
+  return core.data.languages.find((l) => l.id === $("#lang-pick").value) || null;
+}
+
+/** Jump straight to a script's page, picking a language that uses it so the
+ *  left column has something to say. */
+function openScript(code) {
+  const script = core.scriptByCode(code);
+  if (!script) return;
+  const lang = core.data.languages.find((l) => (l.scripts || []).includes(code));
+  if (lang) $("#lang-pick").value = lang.id;
+  fillScripts(code);
+  switchMode("language");
+  showLanguage();
+}
+
+/** The scripts this language is written in, SIL's list, primary one first. */
+function fillScripts(prefer) {
+  const picker = $("#script-pick");
+  const lang = currentLanguage();
+  const scripts = lang ? core.scriptsOf(lang) : [];
+  const previous = prefer || picker.value;
+  picker.replaceChildren();
+  for (const script of scripts) {
+    picker.append(el("option", { value: script.code,
+                                 textContent: `${script.name} — ${script.code}` }));
+  }
+  picker.disabled = !scripts.length;
+  if (!scripts.length) {
+    picker.append(el("option", { value: "", textContent: "no script recorded" }));
+  } else if (scripts.some((s) => s.code === previous)) {
+    picker.value = previous;
+  }
 }
 
 function showLanguage() {
-  const lang = core.data.languages.find((l) => l.id === $("#lang-pick").value);
-  const out = $("#lang-results");
-  out.replaceChildren();
+  const lang = currentLanguage();
+  const side = $("#lang-side");
+  side.replaceChildren();
   if (!lang) return;
 
-  // Exemplars are what the language needs; the UDHR text is only prose, so
-  // coverage is judged on the exemplars when SLDR gave us any.
-  const wanted = lang.exemplars || core.stripFormatting(lang.sample || "");
-  if (!wanted) {
-    out.append(el("p", { className: "status" }, "No exemplar characters or sample text for this language."));
+  side.append(el("h2", { textContent: "Language" }),
+    el("div", { className: "lang-name", textContent: lang.name }),
+    el("p", { className: "lang-tag", textContent: `${lang.tag} · ${lang.iso}` }));
+
+  const scripts = core.scriptsOf(lang);
+  if (scripts.length) {
+    side.append(el("h2", { textContent: `Written in ${scripts.length === 1 ? "one script" : `${scripts.length} scripts`}` }));
+    const list = el("div", { className: "stack" });
+    for (const script of scripts) {
+      const row = el("button", { className: "rowlink" + (script.code === $("#script-pick").value ? " on" : ""),
+                                 type: "button" },
+        el("span", { textContent: script.name }),
+        el("span", { className: "r", textContent: script.code }));
+      row.onclick = () => { $("#script-pick").value = script.code; showScript(); showLanguage(); };
+      list.append(row);
+    }
+    side.append(list);
+  } else {
+    side.append(el("p", { className: "status" }, "SIL records no script for this language."));
+  }
+
+  if (lang.exemplars) {
+    const inScript = core.scriptOfText(lang.exemplars, scripts);
+    side.append(el("h2", { textContent: "Exemplar characters" }),
+      el("p", { className: "exemplars", dir: "auto", textContent: lang.exemplars }),
+      el("p", { className: "count",
+                textContent: `${[...lang.exemplars].length} characters from SIL SLDR`
+                  + (inScript ? `, for the ${inScript.name} orthography` : "") }));
+  }
+
+  side.append(el("h2", { textContent: "Read about the language" }), linkRow(core.languageLinks(lang)));
+  showScript();
+}
+
+function linkRow(links) {
+  const row = el("div", { className: "links" });
+  for (const { label, url } of links) {
+    row.append(el("a", { href: url, target: "_blank", rel: "noopener", textContent: label }));
+  }
+  return row;
+}
+
+/** The script's own page: where it lives in Unicode, which fonts cover it, who
+ *  else writes with it, and where to read more. */
+function showScript() {
+  const main = $("#script-main");
+  main.replaceChildren();
+  const script = core.scriptByCode($("#script-pick").value);
+  const lang = currentLanguage();
+  if (!script) {
+    main.append(el("p", { className: "status" },
+      "No script recorded for this language, so there is nothing to measure fonts against."));
     return;
   }
-  const ranked = core.rankFonts(wanted);
-  const complete = ranked.filter((r) => !r.missing.size);
-  out.append(el("p", { className: "count" },
-    `${lang.exemplars ? `${[...new Set([...wanted])].length} exemplar characters (SIL SLDR)` : "no exemplars — judged on the sample text"}`
-    + ` · ${complete.length.toLocaleString()} of ${core.data.fonts.length.toLocaleString()} families can set it`));
 
-  if (lang.sample) {
-    const best = complete[0]?.font || ranked[0].font;
-    ensureFonts([best], lang.sample);
-    out.append(el("h2", { textContent: `Sample — ${lang.name}, set in ${best.name}` }),
-      el("p", { className: "sample", dir: lang.dir, style: `font-family:${stack(best)}`,
-                textContent: lang.sample.slice(0, 400) }));
+  main.append(el("div", { className: "script-head" },
+    el("span", { className: "script-name", textContent: script.name }),
+    el("span", { className: "script-tag", textContent: `${script.code} · ${script.chars} characters` })));
+
+  const rows = core.fontsForScript(script);
+  const complete = rows.filter((row) => row.covered === row.chars);
+
+  // The support matrix: one row per block, because a script is rarely one block
+  // and support usually stops at the older one.
+  main.append(el("h2", { textContent: "Where it lives in Unicode" }));
+  const matrix = el("div", { className: "blocks" });
+  for (const [index, block] of script.blocks.entries()) {
+    const covering = rows.filter((row) => row.blocks[index].covered === block.chars).length;
+    const state = covering === 0 ? "none" : covering < 5 ? "thin" : "ok";
+    const share = Math.round((covering / Math.max(rows.length, 1)) * 100);
+    const chart = core.blockChart(block);
+    matrix.append(el("div", { className: "block" },
+      el("span", { className: "nm" },
+        el("a", { href: chart, target: "_blank", rel: "noopener", textContent: block.name }),
+        el("i", { textContent: `U+${core.hex(block.ranges[0][0])}–U+${core.hex(block.ranges.at(-1)[1])}` })),
+      el("span", { className: "bar" }, el("i", { className: state, style: `width:${Math.max(share, 2)}%` })),
+      el("span", { className: `n ${state}`,
+                   textContent: `${covering} of ${rows.length} fonts · ${block.chars} chars` })));
   }
-  out.append(el("h2", { textContent: "Families" }),
-    specimenList(ranked.slice(0, MAX_ROWS), lang.sample || wanted));
+  main.append(matrix);
+
+  const gaps = script.blocks.filter((block, index) =>
+    !rows.some((row) => row.blocks[index].covered === block.chars));
+  if (gaps.length) {
+    main.append(el("p", { className: "verdict gap" },
+      `No indexed family covers ${gaps.map((b) => b.name).join(", ")} — text using ${
+        gaps.length === 1 ? "it" : "them"} falls back everywhere.`));
+  }
+
+  main.append(el("h2", { textContent: `Fonts for ${script.name}` }),
+    el("p", { className: "count" },
+      el("b", { textContent: complete.length.toLocaleString() }),
+      ` of ${core.data.fonts.length.toLocaleString()} families cover the whole script`
+      + (rows.length > complete.length ? `; ${rows.length - complete.length} cover part of it` : "")));
+
+  const sample = scriptSample(script, lang);
+  main.append(specimenList((complete.length ? complete : rows).slice(0, MAX_ROWS)
+    .map(({ font, covered, chars }) => ({
+      font,
+      status: covered === chars
+        ? { ok: true, text: "covers the whole script" }
+        : { ok: false, text: `${covered} of ${chars} characters` },
+    })), sample));
+
+  const others = core.languagesUsing(script, 12).filter((other) => other.id !== lang?.id);
+  if (others.length) {
+    main.append(el("h2", { textContent: "Also written in this script" }));
+    const list = el("div", { className: "links" });
+    for (const other of others) {
+      const button = el("button", { className: "act", type: "button", textContent: other.name });
+      button.onclick = () => {
+        $("#lang-pick").value = other.id;
+        fillScripts(script.code);
+        showLanguage();
+      };
+      list.append(button);
+    }
+    main.append(list);
+  }
+
+  main.append(el("h2", { textContent: "Read about the script" }), linkRow(core.scriptLinks(script)));
+}
+
+/** Text to set the specimens in: the language's own sample when it is written
+ *  in this script, otherwise the first characters of the script itself. */
+function scriptSample(script, lang) {
+  if (lang?.sample) {
+    const head = core.stripFormatting(lang.sample.slice(0, 40));
+    const inScript = [...head].some((ch) => script.blocks.some((block) =>
+      block.ranges.some(([first, last]) => ch.codePointAt(0) >= first && ch.codePointAt(0) <= last)));
+    if (inScript) return core.trimToSpecimen(lang.sample);
+  }
+  return core.scriptLetters(script).join(" ");
 }
 
 // ----------------------------------------------------------------- convert
@@ -627,7 +787,7 @@ function switchMode(mode) {
   $("#specimen-bar").hidden = !SPECIMEN_MODES.has(mode);
   // Rendered on first sight, not at startup: each mode pulls webfonts to draw
   // its specimens, and a tab nobody opened should cost nothing.
-  if (mode === "language") showLanguage();
+  if (mode === "language") { fillScripts(); showLanguage(); }
   if (mode === "browse") showBrowse();
   if (mode === "preview") runPreview();
 }
@@ -656,7 +816,7 @@ function runQuery(text) {
 
 function update() {
   const query = core.parse($("#omni").value,
-    { fonts: core.data.fonts, languages: core.data.languages });
+    { fonts: core.data.fonts, languages: core.data.languages, scripts: core.data.scripts });
   echo(query);
   showSearch(query);
   const url = new URL(location);
@@ -683,6 +843,7 @@ async function main() {
   setupPreview();
   setupBrowse();
   setupLanguage();
+  fillScripts();
   setupConvert();
   let timer;
   $("#omni").oninput = () => { clearTimeout(timer); timer = setTimeout(update, 120); };

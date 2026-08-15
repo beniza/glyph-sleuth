@@ -91,6 +91,18 @@ actually set it — naming exactly which characters would drop to fallback.
 Coverage counts a precomposed character as present when the face has the pieces
 to build it.
 
+On the web, **Language & script** goes further, because a language is not a
+script. Malayalam is written in Malayalam, in Arabic (Arabi-Malayalam) and in
+Braille; the Malayalam script in turn serves Jeseri, Paniya and others. The
+language names its scripts, each script gets its own page — every Unicode block
+it spans, how many families cover each one, the fonts that cover the whole
+thing, the languages that share it — and links out to ScriptSource, Richard
+Ishida's script notes and Uniview, Wikipedia and Omniglot.
+
+A script is rarely one block, which is where support quietly dies: Devanagari
+takes three blocks, Tamil two, Arabic nine. Of 1,885 families, 15 cover the main
+Tamil block and **one** covers Tamil Supplement.
+
 On this machine, of 209 families: Hindi is covered by 2, Amharic by 1, Burmese
 by 1. Coverage is a cliff, not a slope.
 
@@ -107,7 +119,7 @@ by 1. Coverage is a cliff, not a slope.
 | `web/core.js` | the port of `chars.py`: same query readings, same coverage rule |
 | `web/app.js` | the page — Search, Preview, Browse, Language, Convert |
 | `web/style.css` | the specimen sheet: chrome stays small so the fonts are the only large voice |
-| `scripts/gen_web_index.py` | builds the web index: font coverage, UDHR samples, name tables |
+| `scripts/gen_web_index.py` | builds the web index: font coverage, UDHR samples, name tables, and every script's Unicode blocks |
 
 To work on the web app, build its data once and serve the folder:
 

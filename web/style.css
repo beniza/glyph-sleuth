@@ -177,6 +177,66 @@ h2 { font: 400 11px var(--chrome); color: var(--faint); text-transform: uppercas
 .embed .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .embed .row span { color: var(--faint); font-size: 11px; }
 
+/* ------------------------------------------------------ language & script */
+
+/* Two subjects, one screen: the language names its scripts on the left, the
+   script owns the right and points back at the languages that use it. */
+.atlas { display: grid; grid-template-columns: 268px 1fr; gap: 34px; align-items: start; }
+.atlas > aside { border-right: 1px solid var(--hair); padding-right: 26px;
+  position: sticky; top: 128px; }
+@media (max-width: 900px) {
+  .atlas { grid-template-columns: 1fr; gap: 20px; }
+  .atlas > aside { border-right: 0; padding-right: 0; position: static;
+    border-bottom: 1px solid var(--hair); padding-bottom: 18px; }
+}
+.lang-name { font: 600 22px/1.15 var(--display); }
+.lang-tag { font: 12px var(--data); color: var(--faint); margin: 2px 0 0; }
+.exemplars { font-size: 19px; line-height: 1.5; word-break: break-word; margin: 0; }
+
+.stack { display: flex; flex-direction: column; }
+.rowlink { display: flex; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 7px 0; border: 0; border-bottom: 1px solid var(--hair); background: none;
+  color: var(--ink); font: 13px var(--chrome); text-align: left; cursor: pointer; }
+.rowlink:hover { color: var(--lapis); }
+.rowlink.on { color: var(--lapis); font-weight: 600; }
+.rowlink .r { font: 11px var(--data); color: var(--faint); }
+
+.script-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.script-name { font: 600 26px/1.1 var(--display); }
+.script-tag { font: 12px var(--data); color: var(--faint); }
+
+/* The support matrix: one row per Unicode block a script spans, because that is
+   where support stops — the main block is covered and the supplement is not. */
+.blocks { display: flex; flex-direction: column; gap: 9px; }
+.block { display: grid; grid-template-columns: minmax(150px, 240px) 1fr auto; gap: 14px;
+  align-items: center; font-size: 12.5px; }
+.block .nm a { color: var(--ink); text-decoration: none; }
+.block .nm a:hover { color: var(--lapis); text-decoration: underline;
+  text-underline-offset: 2px; }
+.block .nm i { color: var(--faint); font: 10.5px var(--data); font-style: normal;
+  display: block; }
+.bar { height: 9px; background: var(--hair); position: relative; }
+.bar i { position: absolute; inset: 0 auto 0 0; }
+.bar i.ok { background: var(--gold); }
+.bar i.thin { background: var(--lapis); }
+.bar i.none { background: var(--madder); }
+.block .n { font: 11.5px var(--data); text-align: right; white-space: nowrap;
+  font-variant-numeric: tabular-nums; color: var(--ink2); }
+.block .n.ok { color: var(--gold); }
+.block .n.thin { color: var(--lapis); }
+.block .n.none { color: var(--madder); }
+
+/* Reference links: quiet chips, because they lead off the page. */
+.links { display: flex; gap: 6px; flex-wrap: wrap; }
+.links a { font-size: 11.5px; text-decoration: none; border: 1px solid var(--line);
+  border-radius: 2px; padding: 3px 9px; color: var(--ink2); }
+.links a:hover { border-color: var(--lapis); color: var(--lapis); }
+.links a::after { content: " ↗"; color: var(--faint); }
+
+.verdict { font-size: 13px; margin: 12px 0 0; padding-left: 10px;
+  border-left: 2px solid var(--madder); color: var(--ink2); }
+.verdict.gap { color: var(--madder); }
+
 /* ----------------------------------------------------------- glyph wall */
 
 /* One character, many faces: a wall of tiles answers "how does it look"

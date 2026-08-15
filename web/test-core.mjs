@@ -42,9 +42,19 @@ function test_parse() {
   assert.equal(p("").kind, "empty");
 
   // A known font family and a known language win over the generic readings.
-  const known = { fonts: [{ name: "Charis SIL" }], languages: [{ tag: "hi", name: "Hindi" }] };
+  const known = { fonts: [{ name: "Charis SIL" }], languages: [{ tag: "hi", name: "Hindi" }],
+                  scripts: [{ code: "Deva", name: "Devanagari" }] };
   assert.equal(core.parse("Charis SIL", known).kind, "font");
   assert.equal(core.parse("Hindi", known).kind, "lang");
+  // A name that is both a script and a block reads as the script — it spans
+  // three blocks — with the block offered as the alternate reading.
+  const deva = core.parse("Devanagari", known);
+  assert.equal(deva.kind, "script");
+  assert.equal(deva.value, "Deva");
+  assert.deepEqual(deva.alternates.map((a) => a.kind), ["block"]);
+  assert.equal(core.parse("Deva", known).kind, "script");
+  // A block with no script of that name still reads as a block.
+  assert.equal(core.parse("Dingbats", known).kind, "block");
 }
 
 function test_codepoint_conversion() {
@@ -140,6 +150,82 @@ function test_specimen_text() {
   assert.equal(core.trimToSpecimen(unbroken).length, core.SPECIMEN_CHARS + 1);
 }
 
+function test_scripts() {
+  const tamil = {
+    code: "Taml", name: "Tamil",
+    blocks: [{ name: "Tamil", chars: 4, ranges: [[0x0b85, 0x0b88]] },
+             { name: "Tamil Supplement", chars: 2, ranges: [[0x11fc0, 0x11fc1]] }],
+    languages: ["tam"],
+  };
+  const partial = { name: "Covers the old block", ranges: [[0x0b85, 0x0b88]] };
+  const whole = { name: "Covers both", ranges: [[0x0b85, 0x0b88], [0x11fc0, 0x11fc1]] };
+  const none = { name: "Latin only", ranges: [[0x41, 0x5a]] };
+
+  // A script is not one block, so covering Tamil means covering the supplement
+  // too — the distinction the whole support matrix exists to show.
+  const half = core.scriptCoverage(partial, tamil);
+  assert.equal(half.chars, 6);
+  assert.equal(half.covered, 4);
+  assert.deepEqual(half.blocks.map((b) => b.covered), [4, 0]);
+  assert.equal(core.scriptCoverage(whole, tamil).covered, 6);
+
+  const offered = core.fontsForScript(tamil, [none, partial, whole]);
+  assert.deepEqual(offered.map((row) => row.font.name), ["Covers both", "Covers the old block"]);
+  assert.equal(offered[0].covered, 6);
+  assert.equal(offered[1].blocks[1].covered, 0);
+}
+
+function test_script_of_text() {
+  const latn = { code: "Latn", name: "Latin", blocks: [{ name: "Basic Latin", chars: 26,
+                 ranges: [[0x41, 0x5a], [0x61, 0x7a]] }], languages: [] };
+  const deva = { code: "Deva", name: "Devanagari", blocks: [{ name: "Devanagari", chars: 128,
+                 ranges: [[0x900, 0x97f]] }], languages: [] };
+  // Afar's exemplars are Latin even when you are looking at its Arabic page.
+  assert.equal(core.scriptOfText("abcdefghi", [deva, latn]).code, "Latn");
+  assert.equal(core.scriptOfText("कखगघ", [deva, latn]).code, "Deva");
+  assert.equal(core.scriptOfText("✱✱✱", [deva, latn]), null);
+
+  // A specimen of a script shows letters; a row of combining marks is a row of
+  // dotted circles, and digits and punctuation say nothing about the face.
+  const marks = { code: "Test", name: "Test",
+                  blocks: [{ name: "Devanagari", chars: 8, ranges: [[0x0900, 0x0907]] }],
+                  languages: [] };
+  const letters = core.scriptLetters(marks);
+  assert.ok(letters.length > 0);
+  assert.ok(letters.every((ch) => /\p{L}/u.test(ch)), letters.join(""));
+  assert.ok(!letters.includes("ं"));                      // U+0902, a combining mark
+  // Arabic's first block opens with signs and marks; the specimen starts at the
+  // first real letter instead.
+  const arabic = { code: "Arab", name: "Arabic",
+                   blocks: [{ name: "Arabic", chars: 40, ranges: [[0x0600, 0x0627]] }],
+                   languages: [] };
+  assert.equal(core.scriptLetters(arabic)[0], "ؠ");
+}
+
+function test_reading_on() {
+  const script = { code: "Mlym", name: "Malayalam",
+                   blocks: [{ name: "Malayalam", chars: 118, ranges: [[0x0d00, 0x0d7f]] }],
+                   languages: [] };
+  const links = Object.fromEntries(core.scriptLinks(script).map((l) => [l.label, l.url]));
+  assert.match(links.ScriptSource, /key=Mlym$/);
+  assert.equal(links["Script notes"], "https://r12a.github.io/scripts/mlym/");
+  assert.equal(links.Uniview, "https://r12a.github.io/uniview/?blocks=Mlym");
+  assert.equal(links.Wikipedia, "https://en.wikipedia.org/wiki/Malayalam_script");
+  assert.equal(links.Omniglot, "https://www.omniglot.com/writing/malayalam.htm");
+  // A two-word script name has to survive both conventions.
+  const old = core.scriptLinks({ code: "Xsux", name: "Old Persian", blocks: [], languages: [] });
+  assert.match(old[3].url, /Old_Persian_script$/);
+  assert.match(old[4].url, /oldpersian\.htm$/);
+
+  const lang = core.languageLinks({ iso: "mal", name: "Malayalam (chillus)" });
+  assert.match(lang[0].url, /key=mal$/);
+  assert.match(lang[1].url, /Malayalam_language$/);        // the qualifier is not part of it
+
+  // The chart PDF is named for the block's 128-codepoint boundary.
+  assert.equal(core.blockChart({ ranges: [[0x0d02, 0x0d7f]] }),
+               "https://www.unicode.org/charts/PDF/U0D00.pdf");
+}
+
 function test_taking_it_away() {
   const google = { name: "Baloo Chettan 2", source: "google", url: "https://fonts.google.com/specimen/x" };
   const hosted = { name: "RIT Rachana", source: "rit", url: "https://gitlab.com/rit-fonts/RIT-Rachana",
@@ -208,6 +294,7 @@ function test_standin() {
 
 const tests = { test_parse, test_codepoint_conversion, test_coverage, test_ranking,
                 test_range_coverage, test_dominant_block, test_specimen_text,
+                test_scripts, test_script_of_text, test_reading_on,
                 test_taking_it_away, test_properties, test_blocks, test_names, test_encodings,
                 test_standin };
 for (const [name, test] of Object.entries(tests)) {

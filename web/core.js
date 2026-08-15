@@ -7,13 +7,15 @@ export const MAX_CP = 0x110000;
 // ------------------------------------------------------------------ data
 
 // Filled by load(); everything below degrades politely until then.
-export const data = { blocks: [], fonts: [], languages: [], names: null, formulaic: [] };
+export const data = { blocks: [], fonts: [], languages: [], scripts: [],
+                      names: null, formulaic: [] };
 
 export async function load(base = "data/") {
-  const [blocks, fonts, languages, formulaic] = await Promise.all([
+  const [blocks, fonts, languages, scripts, formulaic] = await Promise.all([
     fetch(base + "blocks.json").then((r) => r.json()),
     fetch(base + "fonts.json").then((r) => r.json()),
     fetch(base + "languages.json").then((r) => r.json()),
+    fetch(base + "scripts.json").then((r) => r.json()),
     fetch(base + "names-formulaic.json").then((r) => r.json()),
   ]);
   data.blocks = blocks.blocks;
@@ -21,6 +23,7 @@ export async function load(base = "data/") {
   data.fonts = fonts.fonts;
   data.version = fonts.version || "";
   data.languages = languages.languages;
+  data.scripts = scripts.scripts;
   data.formulaic = formulaic;
   return data;
 }
@@ -171,6 +174,125 @@ export function dominantBlock(font) {
   return best && best.count >= 24 && best.count >= total * 0.5 ? best.block : null;
 }
 
+// ------------------------------------------------------------- scripts
+
+/** How many of a script's codepoints a face covers, block by block.
+ *  Returns { chars, covered, blocks: [{ name, chars, covered }] } — the shape
+ *  the support matrix is drawn from. */
+export function scriptCoverage(font, script) {
+  const blocks = script.blocks.map((block) => ({
+    name: block.name,
+    chars: block.chars,
+    covered: block.ranges.reduce(
+      (total, [first, last]) => total + countInRange(font.ranges, first, last), 0),
+  }));
+  return {
+    chars: blocks.reduce((total, block) => total + block.chars, 0),
+    covered: blocks.reduce((total, block) => total + block.covered, 0),
+    blocks,
+  };
+}
+
+/** Faces with anything to offer this script, the ones that cover all of it
+ *  first. A script is not one block, so "covers Tamil" has to mean every block
+ *  of Tamil — including the supplement almost nothing has. */
+export function fontsForScript(script, fonts = data.fonts) {
+  const rows = [];
+  for (const font of fonts) {
+    const coverage = scriptCoverage(font, script);
+    if (coverage.covered) rows.push({ font, ...coverage });
+  }
+  rows.sort((a, b) => b.covered - a.covered || a.font.name.localeCompare(b.font.name));
+  return rows;
+}
+
+export function scriptByCode(code) {
+  return data.scripts.find((script) => script.code === code) || null;
+}
+
+export function scriptsOf(lang) {
+  return (lang.scripts || []).map(scriptByCode).filter(Boolean);
+}
+
+/** Languages SIL records as written in this script — the reverse of the list on
+ *  a language, and the reason a script deserves its own page. */
+export function languagesUsing(script, limit = 0) {
+  const names = script.languages
+    .map((id) => data.languages.find((lang) => lang.id === id))
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return limit ? names.slice(0, limit) : names;
+}
+
+/** Which of these scripts the text is actually written in — the one covering
+ *  most of its characters. A language's exemplars belong to one orthography,
+ *  and showing Latin letters beside the Arabic page is a lie by placement. */
+export function scriptOfText(text, scripts) {
+  let best = null;
+  for (const script of scripts) {
+    let hits = 0;
+    for (const ch of new Set([...stripFormatting(text)])) {
+      const cp = ch.codePointAt(0);
+      if (script.blocks.some((block) =>
+        block.ranges.some(([first, last]) => cp >= first && cp <= last))) hits++;
+    }
+    if (hits && (!best || hits > best.hits)) best = { script, hits };
+  }
+  return best ? best.script : null;
+}
+
+/** Letters of a script to set as a specimen. Letters only: marks alone are a row
+ *  of dotted circles, and the signs, digits and punctuation a script block also
+ *  holds say nothing about how the face draws the writing system. */
+export function scriptLetters(script, limit = 22) {
+  const letters = [];
+  for (const block of script.blocks) {
+    for (const [first, last] of block.ranges) {
+      for (let cp = first; cp <= last && letters.length < limit; cp++) {
+        const ch = String.fromCodePoint(cp);
+        if (standin(cp) || !/\p{L}/u.test(ch)) continue;
+        letters.push(ch);
+      }
+    }
+    if (letters.length >= limit) break;
+  }
+  return letters;
+}
+
+// ---------------------------------------------------------- reading on
+
+/** Where to read about a script. These four disagree with each other often
+ *  enough to be worth having side by side: SIL's own entry, Richard Ishida's
+ *  script notes and character picker, the encyclopedia, and Omniglot. */
+export function scriptLinks(script) {
+  const slug = script.name.toLowerCase().replace(/ /g, "");
+  return [
+    { label: "ScriptSource",
+      url: `https://scriptsource.org/cms/scripts/page.php?item_id=script_detail&key=${script.code}` },
+    { label: "Script notes", url: `https://r12a.github.io/scripts/${script.code.toLowerCase()}/` },
+    { label: "Uniview", url: `https://r12a.github.io/uniview/?blocks=${script.code}` },
+    { label: "Wikipedia",
+      url: `https://en.wikipedia.org/wiki/${script.name.replace(/ /g, "_")}_script` },
+    { label: "Omniglot", url: `https://www.omniglot.com/writing/${slug}.htm` },
+  ];
+}
+
+export function languageLinks(lang) {
+  return [
+    { label: "ScriptSource",
+      url: `https://scriptsource.org/cms/scripts/page.php?item_id=language_detail&key=${lang.iso}` },
+    { label: "Wikipedia",
+      url: `https://en.wikipedia.org/wiki/${lang.name.replace(/ \(.*\)$/, "").replace(/ /g, "_")}_language` },
+    { label: "Glottolog", url: `https://glottolog.org/glottolog?iso=${lang.iso}` },
+  ];
+}
+
+/** The Unicode chart PDF for a block — the authority on what is in it. */
+export function blockChart(block) {
+  const first = block.ranges[0][0];
+  return `https://www.unicode.org/charts/PDF/U${hex(first - (first % 0x80))}.pdf`;
+}
+
 // --------------------------------------------------------- taking it away
 
 /** Where to get the actual font files. Google serves a zip of the family; every
@@ -304,7 +426,7 @@ const query = (kind, value, label, alternates = []) => ({ kind, value, label, al
 
 /** Work out what the user meant. Mirrors chars.parse, including the alternates
  *  that get shown under the box as the readings we rejected. */
-export function parse(text, { fonts = [], languages = [] } = {}) {
+export function parse(text, { fonts = [], languages = [], scripts = [] } = {}) {
   const raw = text.trim();
   if (!raw) return query("empty", null, "nothing yet");
 
@@ -345,7 +467,15 @@ export function parse(text, { fonts = [], languages = [] } = {}) {
 
   const lowered = raw.toLowerCase();
 
+  // "Devanagari" is both a script and a block, and the script is the bigger
+  // answer — it spans three blocks. The block stays on offer as the alternate.
   const block = data.blocks.find((b) => b[2].toLowerCase() === lowered.replace(/_/g, " "));
+  const script = scripts.find((s) => s.name.toLowerCase() === lowered
+    || s.code.toLowerCase() === lowered);
+  if (script) {
+    return query("script", script.code, "script",
+                 block ? [query("block", block[2], "unicode block")] : []);
+  }
   if (block) return query("block", block[2], "unicode block");
 
   const font = fonts.find((f) => f.name.toLowerCase() === lowered);

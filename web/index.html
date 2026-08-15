@@ -28,7 +28,7 @@
     <button role="tab" data-mode="search" aria-selected="true">Search</button>
     <button role="tab" data-mode="preview" aria-selected="false">Preview</button>
     <button role="tab" data-mode="browse" aria-selected="false">Browse</button>
-    <button role="tab" data-mode="language" aria-selected="false">Language</button>
+    <button role="tab" data-mode="language" aria-selected="false">Language &amp; script</button>
     <button role="tab" data-mode="convert" aria-selected="false">Convert</button>
   </nav>
   <div id="specimen-bar" hidden>
@@ -78,8 +78,13 @@
     <div class="controls">
       <label for="lang-pick">Language</label>
       <select id="lang-pick"></select>
+      <label for="script-pick">Script</label>
+      <select id="script-pick"></select>
     </div>
-    <div id="lang-results"></div>
+    <div class="atlas">
+      <aside id="lang-side"></aside>
+      <div id="script-main"></div>
+    </div>
   </section>
 
   <section id="convert" hidden>
