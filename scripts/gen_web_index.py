@@ -4,12 +4,13 @@
     python scripts/gen_web_index.py --limit 40 # a slice, for development
 
 Writes web/data/fonts.json and web/data/languages.json, plus web/fonts/*.woff2 for
-the SIL faces Google Fonts doesn't carry. Nothing here reads your machine — the
-desktop app answers "which of *my* fonts", this answers "which public font".
+the faces Google Fonts doesn't carry — SIL, SMC and Rachana. Nothing here reads
+your machine: the desktop app answers "which of *my* fonts", this answers "which
+freely available font".
 
 ponytail: Google publishes each family's coverage as codepoint ranges, so the
 whole Google corpus costs ~2000 small JSON fetches and no font downloads. Only
-the handful of SIL-only faces get downloaded and read with fontTools.
+the other foundries' faces get downloaded and read with fontTools.
 """
 import argparse
 import io
@@ -31,16 +32,38 @@ GF_FAMILY = "https://fonts.google.com/metadata/fonts/{family}"
 GF_SPECIMEN = "https://fonts.google.com/specimen/{slug}"
 UDHR_INDEX = "https://raw.githubusercontent.com/unicode-org/udhr/main/data/udhr/index.xml"
 UDHR_TEXT = "https://raw.githubusercontent.com/unicode-org/udhr/main/data/udhr/udhr_{f}.xml"
-SIL_REPOS = "https://api.github.com/orgs/silnrsi/repos?per_page=100&page={page}"
-SIL_RELEASE = "https://api.github.com/repos/silnrsi/{repo}/releases/latest"
+GITHUB_REPOS = "https://api.github.com/orgs/{org}/repos?per_page=100&page={page}"
+GITHUB_RELEASE = "https://api.github.com/repos/{org}/{project}/releases/latest"
+GITLAB_PROJECTS = "https://gitlab.com/api/v4/groups/{group}/projects?per_page=100&page={page}"
+GITLAB_RELEASES = "https://gitlab.com/api/v4/projects/{project}/releases"
 
-# silnrsi/font-* is mostly fonts, but not entirely — these are tooling, tests and
-# proposals. Everything else is taken as a face; the 27 families Google already
-# carries (Charis, Gentium, Andika, Scheherazade New, Padauk, ...) are dropped
-# later by name, so this list only has to catch what isn't a font at all.
-NOT_FONTS = {"font-ttf", "font-ttf-scripts", "font-arab-tools", "font-keymanweb-osk",
-             "font-lcg", "font-line-spacing-test", "font-stroke-test", "font-symchar",
-             "font-sympub", "font-bloom-show-inv", "font-leke-proposal"}
+# The font foundries that publish releases we can read. Google is handled
+# separately — it publishes coverage directly, so it needs no downloads at all.
+# Everything here ships built fonts in a release archive: take the upright face,
+# read its cmap, re-emit it as woff2. All of these licences (OFL, GPL+FE) permit
+# that redistribution; nothing else is hosted.
+SOURCES = [
+    {"id": "sil", "host": "github", "org": "silnrsi", "prefix": "font-",
+     "page": "https://github.com/silnrsi/{project}/releases/latest",
+     # silnrsi/font-* is mostly fonts, but not entirely — these are tooling,
+     # tests and proposals. Families Google already carries are dropped later by
+     # name, so this list only has to catch what isn't a font at all.
+     "skip": {"font-ttf", "font-ttf-scripts", "font-arab-tools", "font-keymanweb-osk",
+              "font-lcg", "font-line-spacing-test", "font-stroke-test", "font-symchar",
+              "font-sympub", "font-bloom-show-inv", "font-leke-proposal"}},
+    # Swathanthra Malayalam Computing — Manjari, Gayathri, Meera, Rachana.
+    # Their own site lists every font as woff2 in a stylesheet, which is both
+    # more complete and less work than their GitLab releases (half of which
+    # publish no built binary at all).
+    {"id": "smc", "host": "css", "index": "https://smc.org.in/css/fonts.css",
+     "base": "https://smc.org.in", "page": "https://smc.org.in/fonts/#/{project}",
+     "skip": set()},
+    # Rachana Institute of Typography (rachana.org.in) — RIT Rachana, Panmana.
+    {"id": "rit", "host": "gitlab", "group": "rit-fonts",
+     "page": "https://gitlab.com/rit-fonts/{project}",
+     "skip": {"malayalam-shaping", "texbook-inside-out", "texsynhl", "tnjoy",
+              "arsenal-math", "Sayahna-font"}},
+]
 
 OUT_DATA = os.path.join("web", "data")
 OUT_FONTS = os.path.join("web", "fonts")
@@ -128,44 +151,99 @@ def google_font(meta):
     }
 
 
-# ---------------------------------------------------------------------- sil
+# ------------------------------------------------------------- the foundries
 
 def squash(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+# Suffixes a foundry adds to a name Google spells shorter (or the reverse):
+# Charis / Charis SIL, Gentium Book / Gentium Book Plus. Anything else that
+# merely shares a prefix is a different family — Meera and Meera Inimai are not
+# the same font, and hiding one behind the other would be a wrong answer.
+FAMILY_SUFFIXES = {"sil", "plus", "lolo", "alu", "wsp"}
+
+
 def same_family(a, b):
-    """SIL and Google name the same face differently — Charis vs Charis SIL,
-    Gentium Book vs Gentium Book Plus. One being a prefix of the other is the
-    cheap test that catches those without matching unrelated families.
-
-    ponytail: prefix, not a similarity score. If it ever mismerges two real
-    families, an explicit alias table is the upgrade.
-    """
-    return a.startswith(b) or b.startswith(a)
+    if a == b:
+        return True
+    long, short = (a, b) if len(a) > len(b) else (b, a)
+    return long.startswith(short) and long[len(short):] in FAMILY_SUFFIXES
 
 
-def sil_repos(token=None):
-    """Every silnrsi font repo, so a new SIL release turns up without an edit."""
+CSS_URL = re.compile(r"""url\(\s*["']?([^"')]+)""")
+
+
+def projects(source, token=None):
+    """Every font project a foundry publishes, so new releases need no edit."""
+    if source["host"] == "css":
+        sheet = fetch(source["index"]).decode("utf-8", "replace")
+        found = [os.path.basename(u).rsplit(".css", 1)[0]
+                 for u in CSS_URL.findall(sheet) if u.endswith(".css")]
+        return sorted(p for p in found if p not in source["skip"])
+
     found = []
     for page in (1, 2, 3):
-        batch = fetch_json(SIL_REPOS.format(page=page), token)
-        found += [r["name"] for r in batch]
+        if source["host"] == "github":
+            batch = fetch_json(GITHUB_REPOS.format(org=source["org"], page=page), token)
+            found += [r["name"] for r in batch]
+        else:
+            group = urllib.parse.quote(source["group"], safe="")
+            batch = fetch_json(GITLAB_PROJECTS.format(group=group, page=page))
+            found += [p["path"] for p in batch]
         if len(batch) < 100:
             break
-    return sorted(r for r in found if r.startswith("font-") and r not in NOT_FONTS)
+    prefix = source.get("prefix", "")
+    return sorted(p for p in found if p.startswith(prefix) and p not in source["skip"])
 
 
-def sil_font(repo, token=None):
-    """Download a silnrsi release, read the cmap, and re-emit the face as woff2."""
-    from fontTools.ttLib import TTFont
+def archive(source, project, token=None):
+    """The release archive holding built fonts, as bytes."""
+    if source["host"] == "css":
+        sheet = fetch(f"{source['base']}/fonts/{project}.css").decode("utf-8", "replace")
+        for url in CSS_URL.findall(sheet):
+            if ".woff2" in url or url.endswith((".ttf", ".otf")):
+                return fetch(url if url.startswith("http") else source["base"] + url)
+        return None
 
-    try:
-        release = fetch_json(SIL_RELEASE.format(repo=repo), token)
+    if source["host"] == "github":
+        release = fetch_json(GITHUB_RELEASE.format(org=source["org"], project=project), token)
         assets = [a for a in release.get("assets", []) if a["name"].endswith((".zip", ".tar.xz"))]
         if not assets:
             return None
-        blob = fetch(sorted(assets, key=lambda a: a["name"].endswith(".zip"))[-1]["browser_download_url"])
+        best = sorted(assets, key=lambda a: a["name"].endswith(".zip"))[-1]
+        return fetch(best["browser_download_url"])
+
+    path = urllib.parse.quote(f"{source['group']}/{project}", safe="")
+    releases = fetch_json(GITLAB_RELEASES.format(project=path))
+    if not releases:
+        return None
+    assets = releases[0].get("assets", {})
+    # Built fonts live in a release zip, in job artifacts, or — SMC does this —
+    # as one link per face. The source archive is the git tree, which for these
+    # projects holds sources, not binaries, so it is the last resort.
+    links = assets.get("links", [])
+    for wanted in (".zip", ".ttf", ".otf"):
+        for link in links:
+            if link["name"].lower().endswith(wanted):
+                return fetch(link["url"])
+    for link in links:
+        if "artifacts" in link["url"]:
+            return fetch(link["url"])
+    for asset in assets.get("sources", []):
+        if asset["format"] == "zip":
+            return fetch(asset["url"])
+    return None
+
+
+def release_font(source, project, token=None):
+    """Read a foundry's latest release: cmap for coverage, woff2 for drawing."""
+    from fontTools.ttLib import TTFont
+
+    try:
+        blob = archive(source, project, token)
+        if not blob:
+            return None
         members = extract_fonts(blob)
         regular = pick_regular(members)
         if not regular:
@@ -179,44 +257,61 @@ def sil_font(repo, token=None):
         out = io.BytesIO()
         font.save(out)
     except Exception as error:
-        print(f"  !! {repo}: {error}")
+        print(f"  !! {source['id']}/{project}: {error}")
         return None
 
-    filename = re.sub(r"[^A-Za-z0-9]", "", name) + ".woff2"
+    # A family can name itself in its own script (RIT Thaara is Malayalam), which
+    # leaves nothing to slug — fall back to the project, which is always ASCII.
+    filename = (re.sub(r"[^A-Za-z0-9]", "", name)
+                or re.sub(r"[^A-Za-z0-9]", "", project)) + ".woff2"
     os.makedirs(OUT_FONTS, exist_ok=True)
     with open(os.path.join(OUT_FONTS, filename), "wb") as handle:
         handle.write(out.getvalue())
     return {
         "name": name,
         "ranges": ranges_from(codepoints),
-        "source": "sil",
+        "source": source["id"],
         "category": "",
-        "designers": ["SIL International"],
-        "url": f"https://github.com/silnrsi/{repo}/releases/latest",
+        "designers": [d for d in [designer(font)] if d],
+        "url": source["page"].format(project=project),
         "file": f"fonts/{filename}",
     }
 
 
 def extract_fonts(blob):
-    """(name, bytes) for every ttf/otf inside a zip or tar.xz release asset."""
+    """(name, bytes) for every ttf/otf in a release asset — archive or bare font."""
+    if blob[:4] in (bytes.fromhex("00010000"), b"OTTO", b"true", b"ttcf", b"wOFF", b"wOF2"):
+        return [("release.ttf", blob)]
     if blob[:2] == b"PK":
-        archive = zipfile.ZipFile(io.BytesIO(blob))
-        names = [n for n in archive.namelist() if n.lower().endswith((".ttf", ".otf"))]
-        return [(n, archive.read(n)) for n in names]
-    archive = tarfile.open(fileobj=io.BytesIO(blob), mode="r:xz")
-    return [(m.name, archive.extractfile(m).read())
-            for m in archive.getmembers()
+        bundle = zipfile.ZipFile(io.BytesIO(blob))
+        names = [n for n in bundle.namelist() if n.lower().endswith((".ttf", ".otf"))]
+        return [(n, bundle.read(n)) for n in names]
+    bundle = tarfile.open(fileobj=io.BytesIO(blob), mode="r:*")
+    return [(m.name, bundle.extractfile(m).read())
+            for m in bundle.getmembers()
             if m.isfile() and m.name.lower().endswith((".ttf", ".otf"))]
 
 
 def pick_regular(members):
-    """The plain upright face — never Bold or Italic, which cover the same set."""
-    for name, data in members:
-        stem = os.path.basename(name).lower()
-        if "bold" in stem or "italic" in stem or "compact" in stem:
-            continue
-        return name, data
-    return members[0] if members else None
+    """The plain upright face — never Bold or Italic, which cover the same set.
+    TrueType before CFF when a release ships both, since woff2 likes it better."""
+    upright = [(n, d) for n, d in members
+               if not any(w in os.path.basename(n).lower()
+                          for w in ("bold", "italic", "oblique", "compact", "thin", "light"))]
+    for candidates in (upright, members):
+        ttf = [m for m in candidates if m[0].lower().endswith(".ttf")]
+        if ttf:
+            return ttf[0]
+        if candidates:
+            return candidates[0]
+    return None
+
+
+def designer(font):
+    for record in font["name"].names:
+        if record.nameID == 9:
+            return str(record)
+    return None
 
 
 def family_name(font):
@@ -329,7 +424,8 @@ def write_names():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, help="only this many families and languages")
-    parser.add_argument("--skip-sil", action="store_true", help="Google Fonts only")
+    parser.add_argument("--google-only", "--skip-sil", dest="google_only",
+                        action="store_true", help="skip the foundry downloads")
     args = parser.parse_args()
     token = os.environ.get("GITHUB_TOKEN")
     os.makedirs(OUT_DATA, exist_ok=True)
@@ -338,16 +434,17 @@ def main():
     families = google_families(args.limit)
     fonts = in_parallel(families, google_font, "coverage")
 
-    if not args.skip_sil:
-        print("SIL fonts Google doesn't carry")
-        repos = sil_repos(token)
-        repos = repos[:args.limit] if args.limit else repos
+    for source in [] if args.google_only else SOURCES:
+        print(f"{source['id'].upper()} — faces Google doesn't carry")
+        found = projects(source, token)
+        found = found[:args.limit] if args.limit else found
         have = [squash(f["name"]) for f in fonts]
-        for font in in_parallel(repos, lambda r: sil_font(r, token), "faces"):
+        for font in in_parallel(found, lambda p: release_font(source, p, token), "faces"):
             if any(same_family(squash(font["name"]), name) for name in have):
-                os.remove(os.path.join("web", font["file"]))  # Google serves it
+                os.remove(os.path.join("web", font["file"]))  # already served
             else:
                 fonts.append(font)
+                have.append(squash(font["name"]))
 
     fonts.sort(key=lambda f: f["name"])
     write(os.path.join(OUT_DATA, "fonts.json"),

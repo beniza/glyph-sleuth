@@ -71,9 +71,12 @@ function fontLink(font) {
                    textContent: font.name });
 }
 
+// Who published the face. Every one of these links to its own download page.
+const FOUNDRIES = { google: "Google Fonts", sil: "SIL", smc: "SMC", rit: "Rachana" };
+
 function sourceTag(font) {
   return el("span", { className: "tag src",
-                      textContent: font.source === "google" ? "Google Fonts" : "SIL" });
+                      textContent: FOUNDRIES[font.source] || font.source.toUpperCase() });
 }
 
 /** The table both Search and Preview use: one row per face, drawn in that face. */

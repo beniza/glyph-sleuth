@@ -28,13 +28,20 @@ web half, nothing to install.
 |  | Desktop (`app.py`) | Web (`web/`) |
 |---|---|---|
 | Answers | which of **my** fonts can set this? | which **freely available** font can set this? |
-| Corpus | every face installed on your machine | Google Fonts + SIL, indexed nightly |
+| Corpus | every face installed on your machine | Google Fonts, SIL, SMC, Rachana |
 | Needs | Python, PySide6 | a browser — no server, no upload |
 
 The web app never sees your fonts and never ships anyone else's: it holds only
 each family's codepoint coverage, and draws specimens from the Google Fonts CDN
 or from the OFL faces it hosts itself. Every result links to where you can
 download the font that solved your problem.
+
+Foundries indexed: **Google Fonts** (including every Noto family),
+**[SIL](https://software.sil.org/fonts/)**,
+**[SMC](https://smc.org.in/fonts/)** and
+**[Rachana](https://rachana.org.in/)** — the last two adding the Malayalam
+faces nobody else carries. Adding another is a `SOURCES` entry in
+`scripts/gen_web_index.py`.
 
 ## Scope
 
