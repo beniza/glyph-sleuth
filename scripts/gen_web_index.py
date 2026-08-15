@@ -543,14 +543,24 @@ def script_index(languages):
 
 
 def scripts_for(tags):
-    """{iso639-3: [script codes]} straight out of SIL langtags."""
+    """{language: [script codes]} from SIL langtags, the default script first.
+
+    langtags marks the default by giving the bare tag its script: `ml` is Mlym,
+    and `ml-Arab` is the other way Malayalam is written. Alphabetical order would
+    open Malayalam on Arabic, which is a true fact told in the wrong order.
+    """
     found = collections.defaultdict(set)
+    primary = {}
     for tag in tags:
         if not tag.script or tag.script in NOT_SCRIPTS:
             continue
         base = tag.tag.split("-")[0]
         found[base].add(tag.script)
-    return found
+        if tag.tag == base:
+            primary[base] = tag.script
+    return {base: ([primary[base]] if base in primary else [])
+                  + sorted(codes - {primary.get(base)})
+            for base, codes in found.items()}
 
 
 def disambiguate(languages):
@@ -684,8 +694,8 @@ def main():
     # only Mlym but also Arab (Arabi-Malayalam) and Brai.
     by_tag = scripts_for(langs.languages())
     for lang in languages:
-        codes = by_tag.get(lang["tag"].split("-")[0]) or by_tag.get(lang["iso"]) or set()
-        lang["scripts"] = sorted(codes)
+        lang["scripts"] = (by_tag.get(lang["tag"].split("-")[0])
+                           or by_tag.get(lang["iso"]) or [])
     write(os.path.join(OUT_DATA, "languages.json"),
           {"languages": languages, "count": len(languages)})
 
