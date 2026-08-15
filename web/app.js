@@ -171,8 +171,6 @@ function showChar(cp) {
 
 function showCodepoints(cps, label) {
   const out = $("#search-results");
-  const text = cps.map((c) => String.fromCodePoint(c)).join("");
-  ensureFonts(core.data.fonts.slice(0, 0), text);
   const table = el("table");
   table.append(el("thead", {}, el("tr", {},
     el("th", { textContent: "Char" }), el("th", { textContent: "Codepoint" }),
@@ -346,10 +344,37 @@ function setupBrowse() {
   for (const [lo, hi, name] of core.data.blocks) {
     blocks.append(el("option", { value: name, textContent: `${name}  (U+${core.hex(lo)}–U+${core.hex(hi)})` }));
   }
-  const fonts = $("#browse-font");
-  for (const font of core.data.fonts) fonts.append(el("option", { value: font.name, textContent: font.name }));
-  blocks.onchange = fonts.onchange = drawBlock;
+  // Which fonts are worth offering depends on the block, so showBrowse fills both.
+  blocks.onchange = showBrowse;
+  $("#browse-font").onchange = drawBlock;
   blocks.value = "Basic Latin";
+}
+
+/** Offer only the faces with something to draw in this block, most coverage
+ *  first. A picker of 1,885 families, nearly all of which render the block as
+ *  empty boxes, is a worse answer than a picker of the 40 that can set it.
+ *  Keeps the current face selected when it survives the new block. */
+function fillFonts() {
+  const picker = $("#browse-font");
+  const range = core.blockRange($("#browse-block").value);
+  const previous = picker.value;
+  picker.replaceChildren();
+  const offered = range ? core.fontsForRange(range[0], range[1]) : [];
+  for (const { font, count } of offered) {
+    picker.append(el("option", { value: font.name, textContent: `${font.name}  (${count})` }));
+  }
+  picker.disabled = !offered.length;
+  if (!offered.length) {
+    picker.append(el("option", { value: "", textContent: "no indexed family covers this block" }));
+  } else if (offered.some((row) => row.font.name === previous)) {
+    picker.value = previous;
+  }
+}
+
+/** The block decides the font list, so the two are always redrawn together. */
+function showBrowse() {
+  fillFonts();
+  drawBlock();
 }
 
 function drawBlock() {
@@ -467,7 +492,7 @@ function switchMode(mode) {
   // Rendered on first sight, not at startup: each mode pulls webfonts to draw
   // its specimens, and a tab nobody opened should cost nothing.
   if (mode === "language") showLanguage();
-  if (mode === "browse") drawBlock();
+  if (mode === "browse") showBrowse();
   if (mode === "preview") runPreview();
 }
 

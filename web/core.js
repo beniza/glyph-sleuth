@@ -104,6 +104,31 @@ export function fontsWith(cp, fonts = data.fonts) {
   return fonts.filter((font) => covers(font.ranges, cp));
 }
 
+/** How many codepoints of first..last a face covers. Ranges are sorted, so this
+ *  stops as soon as it passes the end. */
+export function countInRange(ranges, first, last) {
+  let total = 0;
+  for (const [lo, hi] of ranges) {
+    if (hi < first) continue;
+    if (lo > last) break;
+    total += Math.min(hi, last) - Math.max(lo, first) + 1;
+  }
+  return total;
+}
+
+/** [{font, count}] for the faces with anything at all to draw in first..last,
+ *  most coverage first. Offering a face that draws none of a block is offering
+ *  a page of empty boxes. */
+export function fontsForRange(first, last, fonts = data.fonts) {
+  const scored = [];
+  for (const font of fonts) {
+    const count = countInRange(font.ranges, first, last);
+    if (count) scored.push({ font, count });
+  }
+  scored.sort((a, b) => b.count - a.count || a.font.name.localeCompare(b.font.name));
+  return scored;
+}
+
 /** Every distinct character, in first-seen order — one row each, not one per use. */
 export function unique(text) {
   return [...new Set([...text])];
@@ -352,14 +377,6 @@ export function searchNames(text, limit = 300) {
 
 export function normalizationVariants(text) {
   return ["NFC", "NFD", "NFKC", "NFKD"].map((form) => [form, text.normalize(form)]);
-}
-
-export function caseVariants(ch) {
-  const out = {};
-  for (const [label, value] of [["upper", ch.toUpperCase()], ["lower", ch.toLowerCase()]]) {
-    if (value && value !== ch) out[label] = value;
-  }
-  return out;
 }
 
 export function encodings(cp) {

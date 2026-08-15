@@ -80,6 +80,30 @@ function test_ranking() {
   assert.equal(core.rankFonts("A B", fonts)[0].missing.size, 0);
 }
 
+function test_range_coverage() {
+  const ranges = [[0x41, 0x5a], [0x900, 0x97f]];
+  assert.equal(core.countInRange(ranges, 0x41, 0x5a), 26);
+  assert.equal(core.countInRange(ranges, 0x900, 0x97f), 0x80);
+  assert.equal(core.countInRange(ranges, 0x4b, 0x54), 10);        // inside one range
+  assert.equal(core.countInRange(ranges, 0x30, 0x45), 5);         // straddling the start
+  assert.equal(core.countInRange(ranges, 0x2700, 0x27bf), 0);     // nothing in the block
+  assert.equal(core.countInRange([], 0, 0x10ffff), 0);
+
+  // Browse only offers faces with something to draw, most coverage first.
+  const fonts = [
+    { name: "Latin only", ranges: [[0x41, 0x5a]] },
+    { name: "Some Devanagari", ranges: [[0x41, 0x5a], [0x900, 0x90f]] },
+    { name: "All Devanagari", ranges: [[0x900, 0x97f]] },
+  ];
+  const offered = core.fontsForRange(0x900, 0x97f, fonts);
+  assert.deepEqual(offered.map((row) => row.font.name), ["All Devanagari", "Some Devanagari"]);
+  assert.deepEqual(offered.map((row) => row.count), [0x80, 16]);
+  assert.equal(core.fontsForRange(0x2700, 0x27bf, fonts).length, 0);
+  // A tie in coverage falls back to the name, so the list never reshuffles.
+  const tied = core.fontsForRange(0x41, 0x5a, [fonts[1], fonts[0]]);
+  assert.deepEqual(tied.map((row) => row.font.name), ["Latin only", "Some Devanagari"]);
+}
+
 function test_properties() {
   assert.ok(core.matchesProperty("क", "Script=Devanagari"));
   assert.ok(!core.matchesProperty("A", "Script=Devanagari"));
@@ -126,7 +150,8 @@ function test_standin() {
 }
 
 const tests = { test_parse, test_codepoint_conversion, test_coverage, test_ranking,
-                test_properties, test_blocks, test_names, test_encodings, test_standin };
+                test_range_coverage, test_properties, test_blocks, test_names, test_encodings,
+                test_standin };
 for (const [name, test] of Object.entries(tests)) {
   test();
   console.log(`  ok  ${name}`);
