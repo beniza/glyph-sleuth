@@ -72,7 +72,9 @@ function fontLink(font) {
 }
 
 // Who published the face. Every one of these links to its own download page.
-const FOUNDRIES = { google: "Google Fonts", sil: "SIL", smc: "SMC", rit: "Rachana" };
+// "RIT", not "Rachana": SMC ships a font *called* Rachana, and a foundry tag
+// that reads like a family name beside it is a puzzle, not a label.
+const FOUNDRIES = { google: "Google Fonts", sil: "SIL", smc: "SMC", rit: "RIT" };
 
 function sourceTag(font) {
   return el("span", { className: "tag src",
