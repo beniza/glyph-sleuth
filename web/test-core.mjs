@@ -126,6 +126,20 @@ function test_dominant_block() {
   assert.equal(core.dominantBlock(workhorse), null);
 }
 
+function test_specimen_text() {
+  assert.equal(core.trimToSpecimen("A short line."), "A short line.");
+  // Paragraphs collapse to one line: the entry is a specimen, not the document.
+  assert.equal(core.trimToSpecimen("two\n\nparagraphs  here"), "two paragraphs here");
+  const long = "word ".repeat(60);
+  const cut = core.trimToSpecimen(long);
+  assert.ok(cut.length <= core.SPECIMEN_CHARS + 1, cut.length);
+  assert.ok(cut.endsWith("…"));
+  assert.ok(!cut.includes("wor…"));                       // cut on a word, not mid-word
+  // A script with no spaces has nowhere to break, so it cuts where it must.
+  const unbroken = "ക".repeat(300);
+  assert.equal(core.trimToSpecimen(unbroken).length, core.SPECIMEN_CHARS + 1);
+}
+
 function test_taking_it_away() {
   const google = { name: "Baloo Chettan 2", source: "google", url: "https://fonts.google.com/specimen/x" };
   const hosted = { name: "RIT Rachana", source: "rit", url: "https://gitlab.com/rit-fonts/RIT-Rachana",
@@ -193,7 +207,8 @@ function test_standin() {
 }
 
 const tests = { test_parse, test_codepoint_conversion, test_coverage, test_ranking,
-                test_range_coverage, test_dominant_block, test_taking_it_away, test_properties, test_blocks, test_names, test_encodings,
+                test_range_coverage, test_dominant_block, test_specimen_text,
+                test_taking_it_away, test_properties, test_blocks, test_names, test_encodings,
                 test_standin };
 for (const [name, test] of Object.entries(tests)) {
   test();

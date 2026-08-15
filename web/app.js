@@ -151,7 +151,8 @@ function specimen(font, sample, missing) {
 }
 
 /** The list Preview and Language show: every face that can set the text. */
-function specimenList(rows, sample) {
+function specimenList(rows, full) {
+  const sample = core.trimToSpecimen(full);
   ensureFonts(rows.map((r) => r.font), sample);
   const list = el("div", { className: "specimens" });
   for (const { font, missing } of rows) list.append(specimen(font, sample, missing));
@@ -328,7 +329,7 @@ function specimenTextFor(font) {
         const cp = ch.codePointAt(0);
         return cp >= range[0] && cp <= range[1];
       });
-      if (inScript && !core.missingFrom(font.ranges, head).size) return lang.sample.slice(0, 160);
+      if (inScript && !core.missingFrom(font.ranges, head).size) return core.trimToSpecimen(lang.sample);
     }
   }
   return LADDER_TEXT;
@@ -436,7 +437,7 @@ function runPreview() {
   const complete = ranked.filter((r) => !r.missing.size);
   out.append(el("p", { className: "count" }, el("b", { textContent: complete.length.toLocaleString() }),
     ` of ${core.data.fonts.length.toLocaleString()} families set this completely`));
-  out.append(specimenList(ranked.slice(0, MAX_ROWS), text.slice(0, 240)));
+  out.append(specimenList(ranked.slice(0, MAX_ROWS), text));
 }
 
 // ------------------------------------------------------------------ browse
@@ -542,7 +543,7 @@ function showLanguage() {
                 textContent: lang.sample.slice(0, 400) }));
   }
   out.append(el("h2", { textContent: "Families" }),
-    specimenList(ranked.slice(0, MAX_ROWS), (lang.sample || wanted).slice(0, 240)));
+    specimenList(ranked.slice(0, MAX_ROWS), lang.sample || wanted));
 }
 
 // ----------------------------------------------------------------- convert

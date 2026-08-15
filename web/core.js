@@ -198,6 +198,20 @@ export function embed(font) {
     + `  font-display: swap;\n}\n\nfont-family: "${font.name}", sans-serif;`;
 }
 
+// A specimen sheet shows a line, not an essay: forty faces each repeating a
+// paragraph is the same clutter a table is, in a different shape. The box above
+// the list keeps the whole text; the entries show what reads as a specimen.
+export const SPECIMEN_CHARS = 110;
+
+/** The text an entry is set in: one flattened line, cut on a word. */
+export function trimToSpecimen(text) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= SPECIMEN_CHARS) return flat;
+  const cut = flat.slice(0, SPECIMEN_CHARS);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > SPECIMEN_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut) + "…";
+}
+
 /** Every distinct character, in first-seen order — one row each, not one per use. */
 export function unique(text) {
   return [...new Set([...text])];
