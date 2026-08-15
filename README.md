@@ -20,6 +20,19 @@ One file, nothing to install — [Windows](https://github.com/beniza/glyph-sleut
 The builds are unsigned, so Windows SmartScreen and macOS Gatekeeper will warn
 on first run; on macOS and Linux, `chmod +x` the file first.
 
+## Two halves
+
+|  | Desktop (`app.py`) | Web (`web/`) |
+|---|---|---|
+| Answers | which of **my** fonts can set this? | which **freely available** font can set this? |
+| Corpus | every face installed on your machine | Google Fonts + SIL, indexed nightly |
+| Needs | Python, PySide6 | a browser — no server, no upload |
+
+The web app never sees your fonts and never ships anyone else's: it holds only
+each family's codepoint coverage, and draws specimens from the Google Fonts CDN
+or from the OFL faces it hosts itself. Every result links to where you can
+download the font that solved your problem.
+
 ## Scope
 
 > **It tells you what a character is and which of your fonts can draw it —
@@ -78,6 +91,16 @@ by 1. Coverage is a cliff, not a slope.
 | `langs.py` | SIL langtags + SLDR exemplars, and the UnicodeSet expander |
 | `ucd.py` | generated block ranges and property names — `python scripts/gen_ucd.py` to refresh |
 | `store.py` | the disk cache |
+| `web/core.js` | the port of `chars.py`: same query readings, same coverage rule |
+| `web/app.js` | the page — Search, Preview, Browse, Language, Convert |
+| `scripts/gen_web_index.py` | builds the web index: font coverage, UDHR samples, name tables |
+
+To work on the web app, build its data once and serve the folder:
+
+```
+python scripts/gen_web_index.py --limit 200   # a slice; drop --limit for all of it
+python -m http.server -d web 8000
+```
 
 Three dependencies: **PySide6** for the window and for rendering any installed
 font, **fontTools** for reading `cmap` tables, **regex** for `\p{…}`.
@@ -101,6 +124,7 @@ a given language needs the network; the rest works offline.
 ```
 python test_core.py    # parsing, properties, UnicodeSet, composition coverage
 python test_app.py     # drives the real window offscreen
+node web/test-core.mjs # the web port, asserting the same readings as chars.py
 ```
 
 `test_app.py` builds the index and runs a query of every kind against the real

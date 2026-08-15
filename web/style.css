@@ -1,0 +1,129 @@
+/* A proof sheet on a light table, not a page of parchment: cool bright paper, and
+   three pigments that each mean one thing — lapis for what you are looking at,
+   gold for complete, madder for absent. Nothing else is allowed colour.
+   Same palette as the desktop app, so the two read as one tool. */
+:root {
+  --panel: #FBFBF9; --sunk: #F1F2EF; --rail: #EDEEEA;
+  --line: #D7D8D1; --hair: #E6E7E1;
+  --ink: #15161A; --ink2: #41434A; --faint: #83847D;
+  --lapis: #26389A; --lapiswash: #E0E3F5;
+  --gold: #7E5A0C; --goldwash: #F0E7CC;
+  --madder: #9E2419; --madderwash: #F5DFDA;
+  --display: "Sitka Display", Sitka, Constantia, Georgia, serif;
+  --chrome: Bahnschrift, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --data: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+}
+:root:not([data-theme="light"]) {
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --panel: #17181D; --sunk: #111216; --rail: #0E0F13;
+    --line: #2E3038; --hair: #22242A;
+    --ink: #ECEBE4; --ink2: #B2B2AA; --faint: #7C7D76;
+    --lapis: #96A2F7; --lapiswash: #1B1E3B;
+    --gold: #D4A33D; --goldwash: #31270F;
+    --madder: #E07362; --madderwash: #3A1A15;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--panel); color: var(--ink);
+  font: 13px/1.5 var(--chrome);
+}
+a { color: var(--lapis); }
+
+/* The search field is the product, so it gets the masthead line to itself:
+   no box, no radius, just a rule that lights up when it has focus. */
+header { border-bottom: 1px solid var(--line); padding: 10px 20px 0; }
+.masthead { display: flex; align-items: baseline; gap: 10px; }
+.wordmark { font: 600 15px/1 var(--display); letter-spacing: .02em; white-space: nowrap; }
+.wordmark span { color: var(--faint); font-weight: 400; }
+.omnibox { display: flex; align-items: baseline; flex: 1; gap: 6px;
+  border-bottom: 1px solid transparent; }
+.omnibox:focus-within { border-bottom-color: var(--lapis); }
+.omnibox .mark { color: var(--lapis); font-size: 21px; }
+#omni { flex: 1; background: none; border: 0; outline: 0; padding: 3px 0 5px;
+  font: 21px var(--data); color: var(--ink); }
+#echo { color: var(--faint); font-size: 12px; min-height: 18px; padding: 2px 0 6px; }
+#echo b { color: var(--ink2); font-weight: 600; }
+#echo button { background: none; border: 0; padding: 0 4px; color: var(--lapis);
+  font: inherit; cursor: pointer; text-decoration: underline dotted; }
+
+/* Modes read as text with a marker, not as buttons in a segmented control. */
+nav { display: flex; gap: 20px; }
+nav button { background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 4px 1px 6px; color: var(--faint); font: 12px var(--chrome); cursor: pointer; }
+nav button:hover { color: var(--ink); }
+nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--lapis);
+  font-weight: 600; }
+
+main { padding: 16px 20px 60px; max-width: 1400px; }
+section[hidden] { display: none; }
+h2 { font: 400 12px var(--chrome); color: var(--faint); text-transform: uppercase;
+  letter-spacing: .08em; margin: 0 0 8px; }
+
+/* Hairline rows, generous height. Zebra striping is a spreadsheet tell. */
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font: 400 11px var(--chrome); color: var(--faint);
+  text-transform: uppercase; letter-spacing: .06em; padding: 4px 10px 6px;
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: middle; }
+tr:hover td { background: var(--sunk); }
+.num { font: 12px var(--data); color: var(--ink2); white-space: nowrap; }
+.wrap { display: flex; gap: 24px; align-items: flex-start; }
+.wrap > .results { flex: 1 1 60%; min-width: 0; }
+.wrap > .inspector { flex: 0 0 340px; position: sticky; top: 12px;
+  border-left: 1px solid var(--hair); padding-left: 20px; }
+@media (max-width: 900px) { .wrap { display: block; }
+  .wrap > .inspector { border-left: 0; padding: 0; position: static; margin-top: 24px; } }
+
+/* The specimen: the glyph itself, big, in the face being judged. */
+.glyph { font-size: 30px; line-height: 1.1; }
+.hero { font-size: 92px; line-height: 1; margin: 4px 0 10px; word-break: break-word; }
+.sample { font-size: 19px; line-height: 1.45; }
+.standin { font: 10px var(--chrome); color: var(--faint); border: 1px dashed var(--line);
+  border-radius: 2px; padding: 1px 4px; vertical-align: middle; }
+
+.tag { font: 11px var(--chrome); padding: 1px 6px; border-radius: 2px; white-space: nowrap; }
+.tag.full { color: var(--gold); background: var(--goldwash); }
+.tag.gap { color: var(--madder); background: var(--madderwash); }
+.tag.src { color: var(--ink2); background: var(--sunk); }
+.missing { color: var(--madder); font: 15px var(--data); }
+.faint { color: var(--faint); }
+.mono { font: 12px var(--data); }
+
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0 0 14px; }
+dl.facts dt { color: var(--faint); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .05em; padding-top: 2px; }
+dl.facts dd { margin: 0; font: 12px var(--data); word-break: break-word; }
+
+textarea, select, input[type="search"] {
+  font: 14px var(--chrome); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 2px; padding: 8px 10px; width: 100%;
+}
+textarea:focus, select:focus { outline: 0; border-color: var(--lapis); }
+textarea { min-height: 92px; resize: vertical; font-size: 15px; }
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.controls label { color: var(--faint); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .05em; }
+.controls select { width: auto; min-width: 200px; }
+button.ghost { background: none; border: 1px solid var(--line); border-radius: 2px;
+  padding: 5px 11px; color: var(--ink2); font: 12px var(--chrome); cursor: pointer; }
+button.ghost:hover { border-color: var(--lapis); color: var(--lapis); }
+
+/* Browse: a grid of cells, greyed where the chosen face has nothing to draw. */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 1px;
+  background: var(--hair); border: 1px solid var(--hair); }
+.cell { background: var(--panel); padding: 8px 2px 4px; text-align: center; cursor: pointer;
+  border: 0; color: var(--ink); }
+.cell:hover { background: var(--lapiswash); }
+.cell .g { font-size: 26px; line-height: 1.2; display: block; }
+.cell .cp { font: 9px var(--data); color: var(--faint); }
+.cell.absent { color: var(--line); background: var(--sunk); }
+.cell.absent .cp { color: var(--line); }
+
+.linkrow { display: flex; gap: 10px; align-items: baseline; }
+.status { color: var(--faint); padding: 20px 0; }
+.count { color: var(--faint); font-size: 11px; padding: 6px 0 10px; }

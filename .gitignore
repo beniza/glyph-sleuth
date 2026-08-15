@@ -2,3 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Derived: rebuilt by scripts/gen_web_index.py in CI, never committed.
+web/data/
+web/fonts/
+.gstack/
