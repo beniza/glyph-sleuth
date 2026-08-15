@@ -7,6 +7,9 @@
 <meta name="description" content="Type a character, a codepoint, a property or a language: see which freely available fonts can set it, and download the one that can.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>✱</text></svg>">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- The chrome is set in Newsreader so the specimens are the only voice on the
+     page that belongs to the fonts themselves. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -28,6 +31,19 @@
     <button role="tab" data-mode="language" aria-selected="false">Language</button>
     <button role="tab" data-mode="convert" aria-selected="false">Convert</button>
   </nav>
+  <div id="specimen-bar" hidden>
+    <label for="size">Size</label>
+    <input id="size" type="range" min="14" max="120" step="1" value="34"
+           aria-label="Specimen size in pixels">
+    <output id="size-out" for="size">34<span>px</span></output>
+    <div class="ladder" role="group" aria-label="Preset sizes">
+      <button type="button" data-size="18">18</button>
+      <button type="button" data-size="24">24</button>
+      <button type="button" data-size="34">34</button>
+      <button type="button" data-size="48">48</button>
+      <button type="button" data-size="72">72</button>
+    </div>
+  </div>
 </header>
 
 <main>
@@ -39,13 +55,12 @@
   </section>
 
   <section id="preview" hidden>
-    <h2>Preview text</h2>
     <div class="controls">
-      <label for="preview-lang">Sample</label>
+      <label for="preview-lang">Sample text</label>
       <select id="preview-lang"></select>
       <button class="ghost" id="preview-run">Rank fonts</button>
     </div>
-    <textarea id="preview-text" spellcheck="false"></textarea>
+    <textarea id="preview-text" spellcheck="false" rows="3"></textarea>
     <div id="preview-results"></div>
   </section>
 

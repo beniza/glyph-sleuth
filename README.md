@@ -41,7 +41,9 @@ Foundries indexed: **Google Fonts** (including every Noto family),
 **[SMC](https://smc.org.in/fonts/)** and
 **[Rachana](https://rachana.org.in/)** — the last two adding the Malayalam
 faces nobody else carries — plus the libre classics with no Google entry:
-DejaVu, Junicode, Libertinus, XITS, Vazirmatn. Every row carries its licence.
+DejaVu, Junicode, Libertinus, XITS, Vazirmatn. Every entry carries its licence,
+a download link, and the CSS to use the face on your own site. One size control
+drives every specimen on the page.
 Adding another foundry is a `SOURCES` entry in `scripts/gen_web_index.py`.
 
 ## Scope
@@ -104,6 +106,7 @@ by 1. Coverage is a cliff, not a slope.
 | `store.py` | the disk cache |
 | `web/core.js` | the port of `chars.py`: same query readings, same coverage rule |
 | `web/app.js` | the page — Search, Preview, Browse, Language, Convert |
+| `web/style.css` | the specimen sheet: chrome stays small so the fonts are the only large voice |
 | `scripts/gen_web_index.py` | builds the web index: font coverage, UDHR samples, name tables |
 
 To work on the web app, build its data once and serve the folder:

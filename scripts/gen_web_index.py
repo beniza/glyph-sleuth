@@ -371,9 +371,13 @@ def pick_faces(members):
 
 
 def designer(font):
+    """The designer's name, without the contact address some fonts append to it —
+    the index is published, and an email in a name record is not a byline."""
     for record in font["name"].names:
         if record.nameID == 9:
-            return str(record)
+            name = re.sub(r"<[^>]*>|\(?https?://\S+\)?|\S+@\S+", "", str(record))
+            name = re.sub(r"\s{2,}", " ", name).strip(" ,;-")
+            return name or None
     return None
 
 

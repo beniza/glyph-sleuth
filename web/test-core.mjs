@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import * as core from "./core.js";
 
 // The client normally loads these; here we hand it just enough to answer.
-core.data.blocks = [[0x0000, 0x007f, "Basic Latin"], [0x0900, 0x097f, "Devanagari"],
+core.data.blocks = [[0x0000, 0x007f, "Basic Latin"], [0x0370, 0x03ff, "Greek and Coptic"],
+                    [0x0900, 0x097f, "Devanagari"], [0x0d00, 0x0d7f, "Malayalam"],
                     [0x2700, 0x27bf, "Dingbats"]];
 core.data.formulaic = [["CJK UNIFIED IDEOGRAPH", 0x4e00, 0x9fff]];
 core.data.names = new Map([
@@ -104,6 +105,48 @@ function test_range_coverage() {
   assert.deepEqual(tied.map((row) => row.font.name), ["Latin only", "Some Devanagari"]);
 }
 
+function test_dominant_block() {
+  // A Malayalam face carries Latin too; what it is *for* is Malayalam.
+  const manjari = { name: "Manjari", ranges: [[0x20, 0x7e], [0x0d00, 0x0d7f]] };
+  assert.equal(core.dominantBlock(manjari), "Malayalam");
+  // A Latin-only face has no other block to name.
+  assert.equal(core.dominantBlock({ name: "Abel", ranges: [[0x20, 0x7e], [0xa0, 0xff]] }), null);
+  // A handful of stray codepoints outside Latin is not a script.
+  assert.equal(core.dominantBlock({ name: "Stray", ranges: [[0x20, 0x7e], [0x2700, 0x2703]] }), null);
+  // Two scripts: the one with more glyphs wins, if it dominates what's there.
+  const both = { name: "Both", ranges: [[0x0900, 0x090f], [0x0d00, 0x0d7f]] };
+  assert.equal(core.dominantBlock(both), "Malayalam");
+  // A workhorse carrying a bit of everything is for none of them in particular,
+  // so it gets the Latin pangram rather than a script it merely also has.
+  // Three scripts, no majority: DejaVu is not a Greek font just because Greek
+  // is its largest non-Latin block.
+  const workhorse = { name: "DejaVu-ish",
+                      ranges: [[0x20, 0x7e], [0x0370, 0x03b0], [0x0900, 0x0940],
+                               [0x0d00, 0x0d40], [0x2700, 0x2740]] };
+  assert.equal(core.dominantBlock(workhorse), null);
+}
+
+function test_taking_it_away() {
+  const google = { name: "Baloo Chettan 2", source: "google", url: "https://fonts.google.com/specimen/x" };
+  const hosted = { name: "RIT Rachana", source: "rit", url: "https://gitlab.com/rit-fonts/RIT-Rachana",
+                   file: "fonts/RITRachana.woff2" };
+
+  // Google hands over a zip; every other foundry hands over its own page, and
+  // the flag is what lets the button avoid promising a file that never arrives.
+  assert.equal(core.download(google).url,
+               "https://fonts.google.com/download?family=Baloo+Chettan+2");
+  assert.equal(core.download(google).direct, true);
+  assert.equal(core.download(hosted).url, "https://gitlab.com/rit-fonts/RIT-Rachana");
+  assert.equal(core.download(hosted).direct, false);
+
+  assert.match(core.embed(google), /fonts\.googleapis\.com\/css2\?family=Baloo\+Chettan\+2/);
+  assert.match(core.embed(google), /font-family: "Baloo Chettan 2"/);
+  // A self-hosted face gets an @font-face naming the file, not a link to ours.
+  assert.match(core.embed(hosted), /@font-face/);
+  assert.match(core.embed(hosted), /url\("RITRachana\.woff2"\)/);
+  assert.ok(!core.embed(hosted).includes("googleapis"));
+}
+
 function test_properties() {
   assert.ok(core.matchesProperty("क", "Script=Devanagari"));
   assert.ok(!core.matchesProperty("A", "Script=Devanagari"));
@@ -150,7 +193,7 @@ function test_standin() {
 }
 
 const tests = { test_parse, test_codepoint_conversion, test_coverage, test_ranking,
-                test_range_coverage, test_properties, test_blocks, test_names, test_encodings,
+                test_range_coverage, test_dominant_block, test_taking_it_away, test_properties, test_blocks, test_names, test_encodings,
                 test_standin };
 for (const [name, test] of Object.entries(tests)) {
   test();

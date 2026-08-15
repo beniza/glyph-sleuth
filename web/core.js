@@ -129,6 +129,75 @@ export function fontsForRange(first, last, fonts = data.fonts) {
   return scored;
 }
 
+// Latin and the shared punctuation almost every face carries say nothing about
+// what a font is *for*, so they don't get a vote on which block dominates it.
+const COMMON_BLOCKS = new Set([
+  "Basic Latin", "Latin-1 Supplement", "Latin Extended-A", "Latin Extended-B",
+  "Latin Extended Additional", "General Punctuation", "Spacing Modifier Letters",
+  "Combining Diacritical Marks", "Currency Symbols", "Letterlike Symbols",
+  "Number Forms", "Mathematical Operators", "Geometric Shapes", "Private Use Area",
+  "Alphabetic Presentation Forms", "Superscripts and Subscripts", "Arrows",
+  "Miscellaneous Symbols", "Dingbats", "Specials", "Halfwidth and Fullwidth Forms",
+  // Phonetics and diacritics are what a broad Latin face carries, never the
+  // script it is for — nobody sets a page of IPA Extensions.
+  "IPA Extensions", "Phonetic Extensions", "Phonetic Extensions Supplement",
+  "Combining Diacritical Marks Supplement", "Combining Diacritical Marks Extended",
+  "Combining Diacritical Marks for Symbols", "Latin Extended-C", "Latin Extended-D",
+  "Latin Extended-E", "Latin Extended-F", "Latin Extended-G", "Modifier Tone Letters",
+  "Supplemental Punctuation", "Small Form Variants",
+]);
+
+/** The block this face exists for, or null when there isn't one.
+ *
+ *  "Largest block" alone is the wrong test: DejaVu's biggest non-Latin block is
+ *  Greek, but DejaVu is not a Greek font — it is a workhorse that carries a bit
+ *  of everything, and for those the Latin pangram is the honest specimen. So the
+ *  block has to actually dominate the face: at least half of everything it has
+ *  outside Latin and punctuation. */
+export function dominantBlock(font) {
+  const spend = new Map();
+  let total = 0;
+  for (const [first, last] of font.ranges) {
+    const block = blockOf(first);
+    if (!block || COMMON_BLOCKS.has(block)) continue;
+    const count = last - first + 1;
+    spend.set(block, (spend.get(block) || 0) + count);
+    total += count;
+  }
+  let best = null;
+  for (const [block, count] of spend) {
+    if (!best || count > best.count) best = { block, count };
+  }
+  return best && best.count >= 24 && best.count >= total * 0.5 ? best.block : null;
+}
+
+// --------------------------------------------------------- taking it away
+
+/** Where to get the actual font files. Google serves a zip of the family; every
+ *  other foundry gets you to its own release page, so the label says so rather
+ *  than promising a file that doesn't arrive. */
+export function download(font) {
+  if (font.source === "google") {
+    return { url: `https://fonts.google.com/download?family=${font.name.replace(/ /g, "+")}`,
+             label: "Download", direct: true };
+  }
+  return { url: font.url, label: "Download", direct: false };
+}
+
+/** The CSS someone needs to set text in this face on their own site. Google's
+ *  families come off its CDN; the rest are files you host yourself, so the
+ *  snippet names the file rather than hotlinking ours. */
+export function embed(font) {
+  if (font.source === "google") {
+    const slug = font.name.replace(/ /g, "+");
+    return `<link rel="stylesheet"\n      href="https://fonts.googleapis.com/css2?family=${slug}&display=swap">\n\n`
+      + `font-family: "${font.name}", sans-serif;`;
+  }
+  const file = font.file ? font.file.split("/").pop() : `${font.name.replace(/ /g, "")}.woff2`;
+  return `@font-face {\n  font-family: "${font.name}";\n  src: url("${file}") format("woff2");\n`
+    + `  font-display: swap;\n}\n\nfont-family: "${font.name}", sans-serif;`;
+}
+
 /** Every distinct character, in first-seen order — one row each, not one per use. */
 export function unique(text) {
   return [...new Set([...text])];

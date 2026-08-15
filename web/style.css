@@ -1,7 +1,10 @@
 /* A proof sheet on a light table, not a page of parchment: cool bright paper, and
    three pigments that each mean one thing — lapis for what you are looking at,
    gold for complete, madder for absent. Nothing else is allowed colour.
-   Same palette as the desktop app, so the two read as one tool. */
+   Same palette as the desktop app, so the two read as one tool.
+
+   The rule that decides every layout question here: the fonts are the only
+   large voice on the page. Chrome stays small, quiet and out of the way. */
 :root {
   --panel: #FBFBF9; --sunk: #F1F2EF; --rail: #EDEEEA;
   --line: #D7D8D1; --hair: #E6E7E1;
@@ -9,112 +12,235 @@
   --lapis: #26389A; --lapiswash: #E0E3F5;
   --gold: #7E5A0C; --goldwash: #F0E7CC;
   --madder: #9E2419; --madderwash: #F5DFDA;
-  --display: "Sitka Display", Sitka, Constantia, Georgia, serif;
-  --chrome: Bahnschrift, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --data: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+
+  --display: Newsreader, Constantia, Georgia, serif;
+  --chrome: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --data: "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", monospace;
+
+  /* The size ladder writes here; every specimen on the page reads from it. */
+  --specimen: 34px;
+  --page: 1440px;
 }
-:root:not([data-theme="light"]) {
-  color-scheme: light dark;
-}
+:root:not([data-theme="light"]) { color-scheme: light dark; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --panel: #17181D; --sunk: #111216; --rail: #0E0F13;
-    --line: #2E3038; --hair: #22242A;
-    --ink: #ECEBE4; --ink2: #B2B2AA; --faint: #7C7D76;
-    --lapis: #96A2F7; --lapiswash: #1B1E3B;
-    --gold: #D4A33D; --goldwash: #31270F;
-    --madder: #E07362; --madderwash: #3A1A15;
+    --panel: #131418; --sunk: #191A20; --rail: #0E0F13;
+    --line: #303239; --hair: #23252B;
+    --ink: #F0EFE8; --ink2: #B6B6AE; --faint: #82837C;
+    --lapis: #9DA9FF; --lapiswash: #1D2140;
+    --gold: #E0AE48; --goldwash: #342810;
+    --madder: #F08874; --madderwash: #3C1B16;
   }
 }
 
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--panel); color: var(--ink);
-  font: 13px/1.5 var(--chrome);
+  font: 13px/1.55 var(--chrome);
+  -webkit-font-smoothing: antialiased;
 }
 a { color: var(--lapis); }
+:focus-visible { outline: 2px solid var(--lapis); outline-offset: 2px; border-radius: 1px; }
+
+/* ------------------------------------------------------------- masthead */
 
 /* The search field is the product, so it gets the masthead line to itself:
    no box, no radius, just a rule that lights up when it has focus. */
-header { border-bottom: 1px solid var(--line); padding: 10px 20px 0; }
-.masthead { display: flex; align-items: baseline; gap: 10px; }
-.wordmark { font: 600 15px/1 var(--display); letter-spacing: .02em; white-space: nowrap; }
-.wordmark span { color: var(--faint); font-weight: 400; }
+header {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  padding: 10px max(20px, calc((100vw - var(--page)) / 2)) 0;
+}
+.masthead { display: flex; align-items: baseline; gap: 14px; }
+.wordmark { font: 600 16px/1 var(--display); letter-spacing: .01em; white-space: nowrap; }
+.wordmark span { color: var(--faint); font-weight: 400; font-style: italic; font-size: 13px; }
 .omnibox { display: flex; align-items: baseline; flex: 1; gap: 6px;
   border-bottom: 1px solid transparent; }
 .omnibox:focus-within { border-bottom-color: var(--lapis); }
 .omnibox .mark { color: var(--lapis); font-size: 21px; }
 #omni { flex: 1; background: none; border: 0; outline: 0; padding: 3px 0 5px;
-  font: 21px var(--data); color: var(--ink); }
+  font: 21px var(--data); color: var(--ink); min-width: 0; }
 #echo { color: var(--faint); font-size: 12px; min-height: 18px; padding: 2px 0 6px; }
 #echo b { color: var(--ink2); font-weight: 600; }
 #echo button { background: none; border: 0; padding: 0 4px; color: var(--lapis);
   font: inherit; cursor: pointer; text-decoration: underline dotted; }
 
 /* Modes read as text with a marker, not as buttons in a segmented control. */
-nav { display: flex; gap: 20px; }
+nav { display: flex; gap: 22px; }
 nav button { background: none; border: 0; border-bottom: 2px solid transparent;
-  padding: 4px 1px 6px; color: var(--faint); font: 12px var(--chrome); cursor: pointer; }
+  padding: 4px 1px 7px; color: var(--faint); font: 12px var(--chrome); cursor: pointer;
+  letter-spacing: .01em; }
 nav button:hover { color: var(--ink); }
 nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--lapis);
   font-weight: 600; }
 
-main { padding: 16px 20px 60px; max-width: 1400px; }
-section[hidden] { display: none; }
-h2 { font: 400 12px var(--chrome); color: var(--faint); text-transform: uppercase;
-  letter-spacing: .08em; margin: 0 0 8px; }
+/* ---------------------------------------------------------- size ladder */
 
-/* Hairline rows, generous height. Zebra striping is a spreadsheet tell. */
+/* The one control a specimen sheet has always had: how big. It sits in the
+   masthead so it stays reachable while you scroll a hundred faces. */
+#specimen-bar {
+  display: flex; align-items: center; gap: 12px;
+  border-top: 1px solid var(--hair); padding: 7px 0 8px;
+}
+#specimen-bar[hidden] { display: none; }
+#specimen-bar label { color: var(--faint); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .08em; }
+#size { -webkit-appearance: none; appearance: none; background: none;
+  width: min(280px, 34vw); height: 18px; margin: 0; cursor: ew-resize; }
+#size::-webkit-slider-runnable-track { height: 1px; background: var(--line); }
+#size::-moz-range-track { height: 1px; background: var(--line); }
+#size::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+  width: 3px; height: 17px; margin-top: -8px; background: var(--lapis); border: 0;
+  border-radius: 0; }
+#size::-moz-range-thumb { width: 3px; height: 17px; background: var(--lapis);
+  border: 0; border-radius: 0; }
+#size-out { font: 12px var(--data); color: var(--ink2); min-width: 46px; }
+#size-out span { color: var(--faint); }
+.ladder { display: flex; gap: 2px; margin-left: auto; }
+.ladder button { background: none; border: 0; cursor: pointer; padding: 3px 7px;
+  color: var(--faint); font: 11px var(--data); }
+.ladder button:hover { color: var(--ink); }
+.ladder button[aria-pressed="true"] { color: var(--lapis); background: var(--lapiswash); }
+
+/* -------------------------------------------------------------- layout */
+
+main { padding: 18px max(20px, calc((100vw - var(--page)) / 2)) 80px; }
+section[hidden] { display: none; }
+h2 { font: 400 11px var(--chrome); color: var(--faint); text-transform: uppercase;
+  letter-spacing: .09em; margin: 22px 0 8px; }
+.wrap { display: flex; gap: 32px; align-items: flex-start; }
+.wrap > .results { flex: 1 1 62%; min-width: 0; }
+.wrap > .inspector { flex: 0 0 320px; position: sticky; top: 128px;
+  border-left: 1px solid var(--hair); padding-left: 22px; }
+@media (max-width: 900px) {
+  .wrap { display: block; }
+  .wrap > .inspector { border-left: 0; padding: 0; position: static; margin-top: 28px; }
+}
+
+.status { color: var(--faint); padding: 24px 0; }
+.count { color: var(--faint); font-size: 11px; padding: 4px 0 14px;
+  letter-spacing: .02em; }
+.count b { color: var(--ink); font-weight: 600; font-size: 12px; }
+.faint { color: var(--faint); }
+.mono { font: 12px var(--data); }
+.missing { color: var(--madder); font: 15px var(--data); }
+
+/* ------------------------------------------------------------ specimens */
+
+/* Entries on a sheet, separated by a hairline and nothing else: no cards, no
+   shadows, no boxes. Anything with an edge competes with the letterforms. */
+.spec { border-top: 1px solid var(--hair); padding: 14px 0 20px; }
+.spec:first-child { border-top: 0; }
+.spec-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px; }
+.spec-name { font: 600 15px/1.2 var(--display); color: var(--ink);
+  text-decoration: none; letter-spacing: .01em; }
+.spec-name:hover { color: var(--lapis); text-decoration: underline;
+  text-underline-offset: 2px; }
+.spec-meta { color: var(--faint); font-size: 11px; letter-spacing: .02em; }
+.spec-meta a { color: inherit; text-decoration: none; }
+.spec-meta a:hover { color: var(--lapis); }
+
+/* Status is a word, not a badge: complete is gold, a gap is madder, and the
+   characters that would drop to fallback are shown because that is the answer. */
+.spec-status { font-size: 11px; letter-spacing: .02em; }
+.spec-status.ok { color: var(--gold); }
+.spec-status.gap { color: var(--madder); }
+.spec-status .chars { font: 14px var(--data); margin-left: 4px; }
+
+/* Actions stay quiet until the row is under the cursor, then they are the only
+   thing that moves. Always visible on touch, where there is no hover. */
+.spec-acts { margin-left: auto; display: flex; gap: 4px; opacity: 0;
+  transition: opacity .12s ease; }
+.spec:hover .spec-acts, .spec:focus-within .spec-acts { opacity: 1; }
+@media (hover: none) { .spec-acts { opacity: 1; } }
+.act { background: none; border: 1px solid var(--line); border-radius: 2px;
+  padding: 4px 10px; color: var(--ink2); font: 11px var(--chrome); cursor: pointer;
+  text-decoration: none; white-space: nowrap; }
+.act:hover { border-color: var(--lapis); color: var(--lapis); }
+.act[aria-expanded="true"] { border-color: var(--lapis); color: var(--lapis);
+  background: var(--lapiswash); }
+
+.spec-sample {
+  font-size: var(--specimen); line-height: 1.35; color: var(--ink);
+  word-wrap: break-word; overflow-wrap: anywhere;
+  /* A specimen is judged on its own; nothing else may sit beside it. */
+  max-width: 100%;
+}
+.spec-sample.one { font-size: calc(var(--specimen) * 1.6); line-height: 1.1; }
+
+/* The embed snippet: a drawer under the entry, not a modal over the page. */
+.embed { margin-top: 12px; border-left: 2px solid var(--lapis);
+  background: var(--sunk); padding: 10px 12px; }
+.embed pre { margin: 0; font: 12px/1.6 var(--data); color: var(--ink2);
+  white-space: pre-wrap; word-break: break-all; }
+.embed .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.embed .row span { color: var(--faint); font-size: 11px; }
+
+/* ----------------------------------------------------------- glyph wall */
+
+/* One character, many faces: a wall of tiles answers "how does it look"
+   faster than a list of rows ever could. */
+.wall { display: grid; gap: 1px; background: var(--hair);
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  border: 1px solid var(--hair); }
+.tile { background: var(--panel); border: 0; cursor: pointer; color: var(--ink);
+  padding: 18px 10px 10px; text-align: center; display: flex; flex-direction: column;
+  align-items: center; gap: 10px; transition: background .12s ease; }
+.tile:hover { background: var(--sunk); }
+.tile .g { font-size: min(var(--specimen), 64px); line-height: 1.1; }
+.tile .n { font: 11px/1.3 var(--chrome); color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tile:hover .n { color: var(--ink); }
+
+/* --------------------------------------------------------------- tables */
+
+/* Only for data that is genuinely tabular: codepoint lists and conversions. */
 table { border-collapse: collapse; width: 100%; }
 th { text-align: left; font: 400 11px var(--chrome); color: var(--faint);
   text-transform: uppercase; letter-spacing: .06em; padding: 4px 10px 6px;
-  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+  border-bottom: 1px solid var(--line); position: sticky; top: 122px;
+  background: var(--panel); }
 td { padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: middle; }
 tr:hover td { background: var(--sunk); }
 .num { font: 12px var(--data); color: var(--ink2); white-space: nowrap; }
-.wrap { display: flex; gap: 24px; align-items: flex-start; }
-.wrap > .results { flex: 1 1 60%; min-width: 0; }
-.wrap > .inspector { flex: 0 0 340px; position: sticky; top: 12px;
-  border-left: 1px solid var(--hair); padding-left: 20px; }
-@media (max-width: 900px) { .wrap { display: block; }
-  .wrap > .inspector { border-left: 0; padding: 0; position: static; margin-top: 24px; } }
-
-/* The specimen: the glyph itself, big, in the face being judged. */
 .glyph { font-size: 30px; line-height: 1.1; }
-.hero { font-size: 92px; line-height: 1; margin: 4px 0 10px; word-break: break-word; }
+
+/* ------------------------------------------------------------ inspector */
+
+.hero { font-size: 92px; line-height: 1; margin: 4px 0 14px; word-break: break-word; }
 .sample { font-size: 19px; line-height: 1.45; }
 .standin { font: 10px var(--chrome); color: var(--faint); border: 1px dashed var(--line);
   border-radius: 2px; padding: 1px 4px; vertical-align: middle; }
-
 .tag { font: 11px var(--chrome); padding: 1px 6px; border-radius: 2px; white-space: nowrap; }
-.tag.full { color: var(--gold); background: var(--goldwash); }
 .tag.gap { color: var(--madder); background: var(--madderwash); }
 .tag.src { color: var(--ink2); background: var(--sunk); }
-/* Licence is a fact about the file, not a warning — quiet unless you look for it. */
 .tag.lic { color: var(--faint); border: 1px solid var(--hair); }
 a.tag.lic { text-decoration: none; }
 a.tag.lic:hover { color: var(--lapis); border-color: var(--lapis); }
-.missing { color: var(--madder); font: 15px var(--data); }
-.faint { color: var(--faint); }
-.mono { font: 12px var(--data); }
 
-dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0 0 14px; }
-dl.facts dt { color: var(--faint); font-size: 11px; text-transform: uppercase;
-  letter-spacing: .05em; padding-top: 2px; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px;
+  margin: 0 0 16px; }
+dl.facts dt { color: var(--faint); font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; padding-top: 3px; }
 dl.facts dd { margin: 0; font: 12px var(--data); word-break: break-word; }
+
+/* -------------------------------------------------------------- inputs */
 
 textarea, select, input[type="search"] {
   font: 14px var(--chrome); color: var(--ink); background: var(--panel);
-  border: 1px solid var(--line); border-radius: 2px; padding: 8px 10px; width: 100%;
+  border: 1px solid var(--line); border-radius: 2px; padding: 9px 11px; width: 100%;
 }
 textarea:focus, select:focus { outline: 0; border-color: var(--lapis); }
-textarea { min-height: 92px; resize: vertical; font-size: 15px; }
-.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+textarea { resize: vertical; font-size: 16px; line-height: 1.5; min-height: 76px; }
+.controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  margin: 0 0 12px; }
 .controls label { color: var(--faint); font-size: 11px; text-transform: uppercase;
-  letter-spacing: .05em; }
-.controls select { width: auto; min-width: 200px; }
+  letter-spacing: .07em; }
+.controls select { width: auto; min-width: 220px; max-width: 100%; }
 button.ghost { background: none; border: 1px solid var(--line); border-radius: 2px;
-  padding: 5px 11px; color: var(--ink2); font: 12px var(--chrome); cursor: pointer; }
+  padding: 6px 12px; color: var(--ink2); font: 12px var(--chrome); cursor: pointer; }
 button.ghost:hover { border-color: var(--lapis); color: var(--lapis); }
 
 /* Browse: a grid of cells, greyed where the chosen face has nothing to draw. */
@@ -128,6 +254,6 @@ button.ghost:hover { border-color: var(--lapis); color: var(--lapis); }
 .cell.absent { color: var(--line); background: var(--sunk); }
 .cell.absent .cp { color: var(--line); }
 
-.linkrow { display: flex; gap: 10px; align-items: baseline; }
-.status { color: var(--faint); padding: 20px 0; }
-.count { color: var(--faint); font-size: 11px; padding: 6px 0 10px; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

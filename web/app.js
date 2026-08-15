@@ -9,7 +9,8 @@ const el = (tag, props = {}, ...kids) => {
   return node;
 };
 
-const MAX_ROWS = 60;
+const MAX_ROWS = 40;
+const MAX_TILES = 120;
 
 // ------------------------------------------------------- serving the faces
 
@@ -66,57 +67,111 @@ function glyphCell(text, font) {
   return cell;
 }
 
-function fontLink(font) {
-  return el("a", { href: font.url, target: "_blank", rel: "noopener",
-                   textContent: font.name });
-}
-
 // Who published the face. Every one of these links to its own download page.
 // "RIT", not "Rachana": SMC ships a font *called* Rachana, and a foundry tag
 // that reads like a family name beside it is a puzzle, not a label.
 const FOUNDRIES = { google: "Google Fonts", sil: "SIL", smc: "SMC", rit: "RIT",
                     libre: "Libre" };
 
-function sourceTag(font) {
-  return el("span", { className: "tag src",
-                      textContent: FOUNDRIES[font.source] || font.source.toUpperCase() });
+// -------------------------------------------------------------- specimens
+
+/** Where to get the file, and the CSS to use it on your own site. Two actions,
+ *  because those are the two things anyone does after finding the right face. */
+function actions(font) {
+  const source = core.download(font);
+  const get = el("a", { className: "act", href: source.url, target: "_blank",
+                        rel: "noopener", textContent: source.label,
+                        title: source.direct
+                          ? `Download the ${font.name} family from Google Fonts`
+                          : `Get ${font.name} from ${FOUNDRIES[font.source] || font.source}` });
+  const use = el("button", { className: "act", type: "button", textContent: "Use on web" });
+  use.setAttribute("aria-expanded", "false");
+  const row = el("div", { className: "spec-acts" }, get, use);
+  use.onclick = () => toggleEmbed(use, font);
+  return row;
 }
 
-/** What you're allowed to do with it — the second question after "does it have
- *  my character". Linked to the licence text when the font names one. */
-function licenceTag(font) {
-  if (!font.licence) return null;
-  const label = { className: "tag lic", textContent: font.licence };
-  if (!font.licenceUrl) return el("span", label);
-  return el("a", { ...label, href: font.licenceUrl, target: "_blank", rel: "noopener",
-                   title: `${font.name} licence` });
-}
-
-/** The table both Search and Preview use: one row per face, drawn in that face. */
-function fontTable(rows, sample, { showMissing = false } = {}) {
-  ensureFonts(rows.map((r) => r.font), sample);
-  const table = el("table");
-  table.append(el("thead", {}, el("tr", {},
-    el("th", { textContent: "Specimen" }),
-    el("th", { textContent: "Family" }),
-    el("th", { textContent: showMissing ? "Missing" : "Coverage" }))));
-  const body = el("tbody");
-  for (const { font, missing } of rows) {
-    const gap = missing && missing.size;
-    body.append(el("tr", {},
-      el("td", {}, glyphCell(sample, font)),
-      el("td", {}, el("div", { className: "linkrow" }, fontLink(font), sourceTag(font),
-                       licenceTag(font))),
-      el("td", { className: "num" },
-        showMissing
-          ? (gap
-              ? el("span", {}, el("span", { className: "tag gap", textContent: `${gap} missing` }),
-                   " ", el("span", { className: "missing", textContent: [...missing].slice(0, 12).join(" ") }))
-              : el("span", { className: "tag full", textContent: "complete" }))
-          : `${core.countIn(font.ranges).toLocaleString()} characters`)));
+function toggleEmbed(button, font) {
+  const entry = button.closest(".spec");
+  const open = entry.querySelector(".embed");
+  if (open) {
+    open.remove();
+    button.setAttribute("aria-expanded", "false");
+    return;
   }
-  table.append(body);
-  return table;
+  const snippet = core.embed(font);
+  const copy = el("button", { className: "act", type: "button", textContent: "Copy" });
+  const note = el("span", {
+    textContent: font.source === "google"
+      ? "Served by Google Fonts — no file to host."
+      : "Download the file first, then serve it beside your CSS.",
+  });
+  copy.onclick = async () => {
+    await navigator.clipboard.writeText(snippet);
+    copy.textContent = "Copied";
+    setTimeout(() => { copy.textContent = "Copy"; }, 1400);
+  };
+  entry.append(el("div", { className: "embed" },
+    el("pre", {}, el("code", { textContent: snippet })),
+    el("div", { className: "row" }, copy, note)));
+  button.setAttribute("aria-expanded", "true");
+}
+
+/** One entry per face: who made it, what it costs you, how it sets your text.
+ *  The specimen gets the width and the size; everything else is a caption. */
+function specimen(font, sample, missing) {
+  const meta = el("span", { className: "spec-meta",
+                            textContent: FOUNDRIES[font.source] || font.source });
+  if (font.licence) {
+    meta.append(" · ", font.licenceUrl
+      ? el("a", { href: font.licenceUrl, target: "_blank", rel: "noopener",
+                  textContent: font.licence, title: `${font.name} licence` })
+      : font.licence);
+  }
+  const head = el("header", { className: "spec-head" },
+    el("a", { className: "spec-name", href: font.url, target: "_blank", rel: "noopener",
+              textContent: font.name }),
+    meta);
+
+  if (missing) {
+    head.append(missing.size
+      ? el("span", { className: "spec-status gap" }, `${missing.size} missing`,
+           el("span", { className: "chars", textContent: [...missing].slice(0, 10).join(" ") }))
+      : el("span", { className: "spec-status ok", textContent: "sets it completely" }));
+  } else {
+    head.append(el("span", { className: "spec-meta",
+                             textContent: `${core.countIn(font.ranges).toLocaleString()} characters` }));
+  }
+  head.append(actions(font));
+
+  const single = [...sample].length === 1;
+  const body = el("div", { className: "spec-sample" + (single ? " one" : ""),
+                           style: `font-family:${stack(font)}`, textContent: sample });
+  return el("article", { className: "spec" }, head, body);
+}
+
+/** The list Preview and Language show: every face that can set the text. */
+function specimenList(rows, sample) {
+  ensureFonts(rows.map((r) => r.font), sample);
+  const list = el("div", { className: "specimens" });
+  for (const { font, missing } of rows) list.append(specimen(font, sample, missing));
+  return list;
+}
+
+/** One character in many faces. A wall of tiles answers "what does it look
+ *  like" at a glance, where a list of rows makes you read to compare. */
+function glyphWall(fonts, ch) {
+  ensureFonts(fonts, ch);
+  const wall = el("div", { className: "wall" });
+  for (const font of fonts) {
+    const tile = el("button", { className: "tile", type: "button",
+                                title: `${font.name} — see the family` },
+      el("span", { className: "g", style: `font-family:${stack(font)}`, textContent: ch }),
+      el("span", { className: "n", textContent: font.name }));
+    tile.onclick = () => runQuery(font.name);
+    wall.append(tile);
+  }
+  return wall;
 }
 
 // ------------------------------------------------------------------ search
@@ -158,13 +213,14 @@ const rangeList = (lo, hi) => Array.from({ length: Math.min(hi - lo + 1, 2000) }
 
 function showChar(cp) {
   const ch = String.fromCodePoint(cp);
-  const rows = core.fontsWith(cp).map((font) => ({ font }));
+  const found = core.fontsWith(cp);
   const out = $("#search-results");
   out.append(el("p", { className: "count" },
-    `${rows.length.toLocaleString()} of ${core.data.fonts.length.toLocaleString()} families can draw this`
-    + (rows.length > MAX_ROWS ? ` — showing ${MAX_ROWS}` : "")));
-  out.append(rows.length
-    ? fontTable(rows.slice(0, MAX_ROWS), ch)
+    el("b", { textContent: found.length.toLocaleString() }),
+    ` of ${core.data.fonts.length.toLocaleString()} families draw this`
+    + (found.length > MAX_TILES ? ` — showing ${MAX_TILES}` : "")));
+  out.append(found.length
+    ? glyphWall(found.slice(0, MAX_TILES), ch)
     : el("p", { className: "status" }, "No indexed family covers this character."));
   inspectChar(cp);
 }
@@ -191,12 +247,12 @@ function showCodepoints(cps, label) {
 }
 
 function showText(text) {
-  const rows = core.rankFonts(text, core.data.fonts, MAX_ROWS);
-  const complete = core.rankFonts(text).filter((r) => !r.missing.size).length;
+  const ranked = core.rankFonts(text);
+  const complete = ranked.filter((row) => !row.missing.size).length;
   $("#search-results").append(
-    el("p", { className: "count" },
-      `${complete.toLocaleString()} families can set this text completely; best ${Math.min(MAX_ROWS, rows.length)} shown.`),
-    fontTable(rows, text, { showMissing: true }));
+    el("p", { className: "count" }, el("b", { textContent: complete.toLocaleString() }),
+      ` families set this text completely — best ${Math.min(MAX_ROWS, ranked.length)} shown`),
+    specimenList(ranked.slice(0, MAX_ROWS), text));
   $("#preview-text").value = text;
 }
 
@@ -223,24 +279,60 @@ function showProperty(expr) {
   showCodepoints(hits, `\\p{${expr}}`);
 }
 
+/** One face, at every size worth judging it at — the page a foundry prints. */
 function showFont(font) {
   if (!font) return;
   const out = $("#search-results");
-  ensureFonts([font], SPECIMEN);
-  out.append(
-    el("h2", { textContent: font.name }),
-    el("div", { className: "hero", style: `font-family:${stack(font)}`, textContent: "Aa" }),
-    el("div", { className: "sample", style: `font-family:${stack(font)}`, textContent: SPECIMEN }),
-    el("p", { className: "count" },
-      `${core.countIn(font.ranges).toLocaleString()} characters · ${font.ranges.length} ranges`
-      + (font.licence ? ` · ${font.licence}` : "")
-      + (font.designers?.length ? ` · ${font.designers.join(", ")}` : "")),
-    el("p", {}, el("a", { href: font.url, target: "_blank", rel: "noopener",
-                          textContent: "Download / specimen ↗" })));
+  const sample = specimenTextFor(font);
+  ensureFonts([font], sample + LADDER_TEXT);
+
+  const facts = [
+    `${core.countIn(font.ranges).toLocaleString()} characters`,
+    font.licence,
+    font.designers?.length ? font.designers.join(", ") : null,
+  ].filter(Boolean).join(" · ");
+
+  const entry = specimen(font, sample, null);
+  entry.querySelectorAll(".spec-meta")[1]?.remove();
+  entry.querySelector(".spec-meta").textContent =
+    `${FOUNDRIES[font.source] || font.source} · ${facts}`;
+  out.append(entry);
+
+  // The size ladder a specimen sheet always ends on: one line per size, so the
+  // face can be judged at text sizes and display sizes in the same glance.
+  const ladder = el("div", { className: "specimens" });
+  for (const size of [64, 44, 30, 20, 14]) {
+    ladder.append(el("article", { className: "spec" },
+      el("header", { className: "spec-head" },
+        el("span", { className: "spec-meta", textContent: `${size}px` })),
+      el("div", { className: "spec-sample", style: `font-family:${stack(font)};font-size:${size}px`,
+                  textContent: LADDER_TEXT })));
+  }
+  out.append(el("h2", { textContent: "At every size" }), ladder);
   select($("#browse-font"), font.name);
 }
 
-const SPECIMEN = "Hamburgefonstiv 0123456789";
+const LADDER_TEXT = "Hamburgefonstiv 0123456789";
+
+/** A face is best judged setting the script it exists for: a Malayalam family
+ *  showing Latin proves nothing. Falls back to the Latin pangram for the faces
+ *  that really are Latin faces. */
+function specimenTextFor(font) {
+  const block = core.dominantBlock(font);
+  if (block) {
+    const range = core.blockRange(block);
+    for (const lang of core.data.languages) {
+      if (!lang.sample) continue;
+      const head = core.stripFormatting(lang.sample.slice(0, 60));
+      const inScript = [...head].some((ch) => {
+        const cp = ch.codePointAt(0);
+        return cp >= range[0] && cp <= range[1];
+      });
+      if (inScript && !core.missingFrom(font.ranges, head).size) return lang.sample.slice(0, 160);
+    }
+  }
+  return LADDER_TEXT;
+}
 
 // --------------------------------------------------------------- inspector
 
@@ -308,20 +400,26 @@ const PROPS = ["L", "Lu", "Ll", "Lt", "Lm", "Lo", "M", "Mn", "Mc", "N", "Nd", "P
 
 function setupPreview() {
   const picker = $("#preview-lang");
-  picker.append(el("option", { value: "", textContent: "English (UDHR)" }));
+  // Every option carries a real sample, so picking one always fills the box.
   for (const lang of core.data.languages) {
     if (lang.sample) picker.append(el("option", { value: lang.id, textContent: lang.name }));
   }
-  const english = core.data.languages.find((l) => l.iso === "eng");
-  $("#preview-text").value = english?.sample || "The quick brown fox jumps over the lazy dog.";
+  const english = core.data.languages.find((l) => l.iso === "eng" && l.sample);
+  if (english) picker.value = english.id;
+  setSample(english);
   picker.onchange = () => {
-    const lang = core.data.languages.find((l) => l.id === picker.value);
-    const box = $("#preview-text");
-    box.value = lang?.sample || "";
-    box.dir = lang?.dir || "ltr";
+    setSample(core.data.languages.find((l) => l.id === picker.value));
     runPreview();
   };
   $("#preview-run").onclick = runPreview;
+  let typing;
+  $("#preview-text").oninput = () => { clearTimeout(typing); typing = setTimeout(runPreview, 350); };
+}
+
+function setSample(lang) {
+  const box = $("#preview-text");
+  box.value = lang?.sample || "The quick brown fox jumps over the lazy dog.";
+  box.dir = lang?.dir || "ltr";
 }
 
 function runPreview() {
@@ -329,12 +427,16 @@ function runPreview() {
   const out = $("#preview-results");
   out.replaceChildren();
   const wanted = core.stripFormatting(text);
-  if (!wanted) return;
+  if (!wanted) {
+    out.append(el("p", { className: "status" },
+      "Type or paste something above to see which families can set it."));
+    return;
+  }
   const ranked = core.rankFonts(text);
   const complete = ranked.filter((r) => !r.missing.size);
-  out.append(el("p", { className: "count" },
-    `${complete.length.toLocaleString()} of ${core.data.fonts.length.toLocaleString()} families can set this completely.`));
-  out.append(fontTable(ranked.slice(0, MAX_ROWS), text.slice(0, 120), { showMissing: true }));
+  out.append(el("p", { className: "count" }, el("b", { textContent: complete.length.toLocaleString() }),
+    ` of ${core.data.fonts.length.toLocaleString()} families set this completely`));
+  out.append(specimenList(ranked.slice(0, MAX_ROWS), text.slice(0, 240)));
 }
 
 // ------------------------------------------------------------------ browse
@@ -440,7 +542,7 @@ function showLanguage() {
                 textContent: lang.sample.slice(0, 400) }));
   }
   out.append(el("h2", { textContent: "Families" }),
-    fontTable(ranked.slice(0, MAX_ROWS), (lang.sample || wanted).slice(0, 80), { showMissing: true }));
+    specimenList(ranked.slice(0, MAX_ROWS), (lang.sample || wanted).slice(0, 240)));
 }
 
 // ----------------------------------------------------------------- convert
@@ -482,6 +584,38 @@ function select(picker, value) {
   if ([...picker.options].some((o) => o.value === value)) picker.value = value;
 }
 
+// ------------------------------------------------------------ size ladder
+
+const SIZE_KEY = "glyph-sleuth-size";
+
+/** One control for how big every specimen is drawn, remembered between visits.
+ *  The ladder presets are the sizes type is actually set at; the slider is for
+ *  everything between. */
+function setupSize() {
+  const slider = $("#size");
+  const out = $("#size-out");
+  const saved = Number(localStorage.getItem(SIZE_KEY));
+  if (saved >= Number(slider.min) && saved <= Number(slider.max)) slider.value = saved;
+
+  const apply = (remember) => {
+    const size = Number(slider.value);
+    document.documentElement.style.setProperty("--specimen", `${size}px`);
+    out.replaceChildren(String(size), el("span", { textContent: "px" }));
+    for (const preset of document.querySelectorAll(".ladder button")) {
+      preset.setAttribute("aria-pressed", String(Number(preset.dataset.size) === size));
+    }
+    if (remember) localStorage.setItem(SIZE_KEY, String(size));
+  };
+  slider.oninput = () => apply(true);
+  for (const preset of document.querySelectorAll(".ladder button")) {
+    preset.onclick = () => { slider.value = preset.dataset.size; apply(true); };
+  }
+  apply(false);
+}
+
+// Specimens only appear in these modes, so the size control only appears there.
+const SPECIMEN_MODES = new Set(["search", "preview", "language"]);
+
 function switchMode(mode) {
   for (const button of document.querySelectorAll("nav button")) {
     button.setAttribute("aria-selected", String(button.dataset.mode === mode));
@@ -489,6 +623,7 @@ function switchMode(mode) {
   for (const section of document.querySelectorAll("main section")) {
     section.hidden = section.id !== mode;
   }
+  $("#specimen-bar").hidden = !SPECIMEN_MODES.has(mode);
   // Rendered on first sight, not at startup: each mode pulls webfonts to draw
   // its specimens, and a tab nobody opened should cost nothing.
   if (mode === "language") showLanguage();
@@ -543,6 +678,7 @@ async function main() {
   if (core.data.version) {
     document.querySelector(".wordmark span").textContent = `web ${core.data.version}`;
   }
+  setupSize();
   setupPreview();
   setupBrowse();
   setupLanguage();
@@ -550,6 +686,7 @@ async function main() {
   let timer;
   $("#omni").oninput = () => { clearTimeout(timer); timer = setTimeout(update, 120); };
   $("#omni").value = new URL(location).searchParams.get("q") || "";
+  switchMode("search");
   update();
 }
 
