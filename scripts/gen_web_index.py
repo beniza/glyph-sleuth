@@ -13,6 +13,7 @@ whole Google corpus costs ~2000 small JSON fetches and no font downloads. Only
 the other foundries' faces get downloaded and read with fontTools.
 """
 import argparse
+import collections
 import io
 import json
 import os
@@ -34,6 +35,7 @@ UDHR_INDEX = "https://raw.githubusercontent.com/unicode-org/udhr/main/data/udhr/
 UDHR_TEXT = "https://raw.githubusercontent.com/unicode-org/udhr/main/data/udhr/udhr_{f}.xml"
 GITHUB_REPOS = "https://api.github.com/orgs/{org}/repos?per_page=100&page={page}"
 GITHUB_RELEASE = "https://api.github.com/repos/{org}/{project}/releases/latest"
+GITHUB_RELEASE_FULL = "https://api.github.com/repos/{project}/releases/latest"
 GITLAB_PROJECTS = "https://gitlab.com/api/v4/groups/{group}/projects?per_page=100&page={page}"
 GITLAB_RELEASES = "https://gitlab.com/api/v4/projects/{project}/releases"
 
@@ -63,6 +65,19 @@ SOURCES = [
      "page": "https://gitlab.com/rit-fonts/{project}",
      "skip": {"malayalam-shaping", "texbook-inside-out", "texsynhl", "tnjoy",
               "arsenal-math", "Sayahna-font"}},
+    # Long-running libre families with no Google Fonts entry: broad Latin and
+    # symbol coverage (DejaVu), scholarly and medieval Latin (Junicode), and the
+    # maths faces a typesetter reaches for (Libertinus, XITS).
+    #
+    # Deliberately not here: STIX and Liberation (Google carries STIX Two, and
+    # Liberation publishes no built binaries), Source Han (an 80 MB .ttc for CJK
+    # that Noto already covers), and Last Resort — it has a glyph for every
+    # codepoint in Unicode, all of them placeholder boxes, so indexing it would
+    # put a font that draws nothing at the top of every single answer.
+    {"id": "libre", "host": "github-repos", "skip": set(),
+     "page": "https://github.com/{project}/releases/latest",
+     "repos": ["dejavu-fonts/dejavu-fonts", "psb1558/Junicode-font",
+               "alerque/libertinus", "aliftype/xits", "rastikerdar/vazirmatn"]},
 ]
 
 OUT_DATA = os.path.join("web", "data")
@@ -130,20 +145,27 @@ def google_families(limit=None):
     return families[:limit] if limit else families
 
 
+# What Google calls a licence, and what a designer would call it.
+GOOGLE_LICENCES = {"ofl": "OFL", "apache2": "Apache 2.0", "ufl": "UFL"}
+
+
 def google_font(meta):
     name = meta["family"]
     try:
-        coverage = fetch_json(GF_FAMILY.format(family=urllib.parse.quote(name))).get("coverage")
+        detail = fetch_json(GF_FAMILY.format(family=urllib.parse.quote(name)))
     except Exception as error:
         print(f"  !! {name}: {error}")
         return None
+    coverage = detail.get("coverage")
     if not coverage:
         return None
     slug = name.replace(" ", "+")
+    licence = detail.get("license") or ""
     return {
         "name": name,
         "ranges": parse_google_ranges(coverage),
         "source": "google",
+        "licence": GOOGLE_LICENCES.get(licence, licence.upper()),
         "category": meta.get("category") or "",
         "designers": meta.get("designers") or [],
         "url": GF_SPECIMEN.format(slug=slug),
@@ -161,7 +183,7 @@ def squash(name):
 # Charis / Charis SIL, Gentium Book / Gentium Book Plus. Anything else that
 # merely shares a prefix is a different family — Meera and Meera Inimai are not
 # the same font, and hiding one behind the other would be a wrong answer.
-FAMILY_SUFFIXES = {"sil", "plus", "lolo", "alu", "wsp"}
+FAMILY_SUFFIXES = {"sil", "plus", "lolo", "alu", "wsp", "vf"}
 
 
 def same_family(a, b):
@@ -176,6 +198,9 @@ CSS_URL = re.compile(r"""url\(\s*["']?([^"')]+)""")
 
 def projects(source, token=None):
     """Every font project a foundry publishes, so new releases need no edit."""
+    if source["host"] == "github-repos":
+        return sorted(source["repos"])
+
     if source["host"] == "css":
         sheet = fetch(source["index"]).decode("utf-8", "replace")
         found = [os.path.basename(u).rsplit(".css", 1)[0]
@@ -206,12 +231,16 @@ def archive(source, project, token=None):
                 return fetch(url if url.startswith("http") else source["base"] + url)
         return None
 
-    if source["host"] == "github":
-        release = fetch_json(GITHUB_RELEASE.format(org=source["org"], project=project), token)
+    if source["host"] in ("github", "github-repos"):
+        url = (GITHUB_RELEASE_FULL.format(project=project) if source["host"] == "github-repos"
+               else GITHUB_RELEASE.format(org=source["org"], project=project))
+        release = fetch_json(url, token)
         assets = [a for a in release.get("assets", []) if a["name"].endswith((".zip", ".tar.xz"))]
         if not assets:
             return None
-        best = sorted(assets, key=lambda a: a["name"].endswith(".zip"))[-1]
+        # Biggest archive wins: a release often ships both the complete bundle and
+        # per-family cuts of it, and dejavu-sans-ttf.zip is not DejaVu.
+        best = sorted(assets, key=lambda a: (a["name"].endswith(".zip"), a.get("size", 0)))[-1]
         return fetch(best["browser_download_url"])
 
     path = urllib.parse.quote(f"{source['group']}/{project}", safe="")
@@ -236,34 +265,52 @@ def archive(source, project, token=None):
     return None
 
 
-def release_font(source, project, token=None):
-    """Read a foundry's latest release: cmap for coverage, woff2 for drawing."""
-    from fontTools.ttLib import TTFont
+MAX_PER_PROJECT = 8
 
+
+def release_fonts(source, project, token=None):
+    """Every family in a foundry's latest release: cmap for coverage, woff2 to
+    draw with. One release often holds several — DejaVu ships Sans, Serif and
+    Mono; Libertinus adds Math — and a serif is not an answer to "I need a mono".
+    """
     try:
         blob = archive(source, project, token)
         if not blob:
-            return None
+            return []
         members = extract_fonts(blob)
-        regular = pick_regular(members)
-        if not regular:
-            return None
-        font = TTFont(io.BytesIO(regular[1]), fontNumber=0, lazy=True)
+    except Exception as error:
+        print(f"  !! {source['id']}/{project}: {error}")
+        return []
+
+    built = []
+    for name, regular in pick_faces(members)[:MAX_PER_PROJECT]:
+        entry = build_face(source, project, name, regular)
+        if entry:
+            built.append(entry)
+    return built
+
+
+def build_face(source, project, path, blob):
+    from fontTools.ttLib import TTFont
+
+    try:
+        font = TTFont(io.BytesIO(blob), fontNumber=0, lazy=True)
         codepoints = set()
         for table in font["cmap"].tables:
             codepoints.update(table.cmap)
         name = family_name(font)
+        licence_label, licence_url = licence(font)
         font.flavor = "woff2"
         out = io.BytesIO()
         font.save(out)
     except Exception as error:
-        print(f"  !! {source['id']}/{project}: {error}")
+        print(f"  !! {source['id']}/{project} [{os.path.basename(path)}]: {error}")
         return None
 
     # A family can name itself in its own script (RIT Thaara is Malayalam), which
-    # leaves nothing to slug — fall back to the project, which is always ASCII.
+    # leaves nothing to slug — fall back to the file, which is always ASCII.
     filename = (re.sub(r"[^A-Za-z0-9]", "", name)
-                or re.sub(r"[^A-Za-z0-9]", "", project)) + ".woff2"
+                or re.sub(r"[^A-Za-z0-9]", "", os.path.basename(path))) + ".woff2"
     os.makedirs(OUT_FONTS, exist_ok=True)
     with open(os.path.join(OUT_FONTS, filename), "wb") as handle:
         handle.write(out.getvalue())
@@ -271,6 +318,8 @@ def release_font(source, project, token=None):
         "name": name,
         "ranges": ranges_from(codepoints),
         "source": source["id"],
+        "licence": licence_label,
+        "licenceUrl": licence_url,
         "category": "",
         "designers": [d for d in [designer(font)] if d],
         "url": source["page"].format(project=project),
@@ -292,19 +341,33 @@ def extract_fonts(blob):
             if m.isfile() and m.name.lower().endswith((".ttf", ".otf"))]
 
 
-def pick_regular(members):
-    """The plain upright face — never Bold or Italic, which cover the same set.
-    TrueType before CFF when a release ships both, since woff2 likes it better."""
-    upright = [(n, d) for n, d in members
-               if not any(w in os.path.basename(n).lower()
-                          for w in ("bold", "italic", "oblique", "compact", "thin", "light"))]
-    for candidates in (upright, members):
-        ttf = [m for m in candidates if m[0].lower().endswith(".ttf")]
-        if ttf:
-            return ttf[0]
-        if candidates:
-            return candidates[0]
-    return None
+SKIP_STYLES = ("bold", "italic", "oblique", "compact", "thin", "light", "black",
+               "medium", "semi", "extra", "condensed", "-vf", "variable")
+
+
+def pick_faces(members):
+    """One upright face per family in the archive, TrueType before CFF.
+
+    Grouped on the filename's stem before the style, which is what a release
+    actually names its families by: DejaVuSans-Bold and DejaVuSans-Oblique are
+    the same family as DejaVuSans, while DejaVuSerif is another.
+    """
+    families = {}
+    for path, data in members:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        lowered = stem.lower()
+        # Older copies kept for reference are not the release — STIX-style repos
+        # carry an archive/ directory of superseded versions.
+        if any(part in path.lower().split("/") for part in ("archive", "old", "deprecated")):
+            continue
+        family = re.split(r"[-_ ]", stem)[0]
+        style_free = not any(word in lowered for word in SKIP_STYLES)
+        rank = (0 if style_free else 1, 0 if lowered.endswith(("ttf",)) else 1, len(stem))
+        best = families.get(family)
+        if not best or rank < best[0]:
+            families[family] = (rank, (path, data))
+    ordered = sorted(families.values(), key=lambda item: item[0])
+    return [face for _rank, face in ordered]
 
 
 def designer(font):
@@ -312,6 +375,35 @@ def designer(font):
         if record.nameID == 9:
             return str(record)
     return None
+
+
+# The licence a font states about itself, in name records 13 (description) and
+# 14 (URL). Matched on the phrase each licence actually uses, longest first, so
+# "GPL with font exception" never reads as plain GPL.
+LICENCE_MARKS = [
+    ("font exception", "GPL+FE"),
+    ("open font license", "OFL"), ("openfontlicense", "OFL"), ("scripts.sil.org/ofl", "OFL"),
+    ("apache", "Apache 2.0"),
+    ("public domain", "Public domain"), ("unlicense", "Public domain"), ("cc0", "CC0"),
+    ("creative commons", "CC"),
+    ("mit license", "MIT"),
+    ("lesser general public", "LGPL"), ("general public license", "GPL"),
+]
+
+
+def licence(font):
+    """(label, url) for what the font says its licence is."""
+    text, url = "", ""
+    for record in font["name"].names:
+        if record.nameID == 13 and not text:
+            text = str(record)
+        elif record.nameID == 14 and not url:
+            url = str(record)
+    haystack = f"{text} {url}".lower()
+    for mark, label in LICENCE_MARKS:
+        if mark in haystack:
+            return label, url
+    return "", url
 
 
 def family_name(font):
@@ -362,6 +454,36 @@ def udhr_sample(entry, paragraphs=3):
     text = [node.text.strip() for node in root.iter()
             if strip_tags(node.tag) == "para" and node.text and node.text.strip()]
     return "\n\n".join(text[:paragraphs]) or None
+
+
+def disambiguate(languages):
+    """UDHR ships more than one translation for some languages, and two rows
+    reading "Malayalam" is a puzzle, not a choice.
+
+    Identical texts are dropped. Ones that genuinely differ are kept and
+    qualified from their UDHR file id — Malayalam has a chillu-encoded variant,
+    German has both orthographies — because for a coverage tool that difference
+    is the whole point: the chillu text needs characters the other doesn't.
+    """
+    kept, seen = [], set()
+    for lang in sorted(languages, key=lambda l: (l["name"], len(l["id"]))):
+        key = (lang["iso"], lang["script"], lang.get("sample"), lang.get("exemplars"))
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(lang)
+
+    # Sorted by shortest id first, so the canonical translation keeps the plain
+    # name and only the variants carry a qualifier.
+    seen_name = collections.Counter()
+    for lang in kept:
+        seen_name[lang["name"]] += 1
+        if seen_name[lang["name"]] == 1:
+            continue
+        _, _, suffix = lang["id"].partition("_")
+        named = suffix and (len(suffix) > 2 or not suffix.isdigit())
+        lang["name"] += f" ({suffix.replace('_', ' ') if named else seen_name[lang['name']]})"
+    return sorted(kept, key=lambda l: l["name"])
 
 
 def language(entry):
@@ -439,16 +561,19 @@ def main():
         found = projects(source, token)
         found = found[:args.limit] if args.limit else found
         have = [squash(f["name"]) for f in fonts]
-        for font in in_parallel(found, lambda p: release_font(source, p, token), "faces"):
-            if any(same_family(squash(font["name"]), name) for name in have):
-                os.remove(os.path.join("web", font["file"]))  # already served
-            else:
+        for batch in in_parallel(found, lambda p: release_fonts(source, p, token), "faces"):
+            for font in batch:
+                # Already served — by Google, or by another face of this family.
+                if any(same_family(squash(font["name"]), name) for name in have):
+                    continue
                 fonts.append(font)
                 have.append(squash(font["name"]))
 
+    prune_fonts(fonts)
+
     fonts.sort(key=lambda f: f["name"])
     write(os.path.join(OUT_DATA, "fonts.json"),
-          {"fonts": fonts, "count": len(fonts)})
+          {"fonts": fonts, "count": len(fonts), "version": app_version()})
 
     print("Unicode tables")
     write_blocks()
@@ -456,9 +581,35 @@ def main():
 
     print("Languages (UDHR text + SLDR exemplars)")
     entries = udhr_languages(args.limit)
-    languages = in_parallel(entries, language, "languages")
+    languages = disambiguate(in_parallel(entries, language, "languages"))
     write(os.path.join(OUT_DATA, "languages.json"),
           {"languages": languages, "count": len(languages)})
+
+
+def prune_fonts(fonts):
+    """Delete every woff2 the index doesn't point at.
+
+    Two faces in one release can share a family name and so a filename, so a
+    dropped duplicate must never take the file with it — the kept entry may be
+    pointing at exactly that file. Deciding from the finished index instead also
+    clears anything left behind by an earlier run.
+    """
+    if not os.path.isdir(OUT_FONTS):
+        return
+    wanted = {os.path.basename(f["file"]) for f in fonts if f.get("file")}
+    for name in os.listdir(OUT_FONTS):
+        if name not in wanted:
+            os.remove(os.path.join(OUT_FONTS, name))
+
+
+def app_version():
+    """The same VERSION file the desktop app and the release tag use."""
+    try:
+        with io.open(os.path.join(os.path.dirname(OUT_DATA), "..", "VERSION"),
+                     encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return "dev"
 
 
 def write(path, payload):

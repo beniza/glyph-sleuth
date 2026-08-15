@@ -34,7 +34,7 @@ jobs:
           python test_core.py
           python test_app.py
       - name: Build
-        run: pyinstaller --onefile --windowed --name glyph-sleuth app.py
+        run: pyinstaller --onefile --windowed --name glyph-sleuth --add-data "VERSION:." app.py
       - name: Rename
         shell: bash
         run: mv dist/glyph-sleuth${{ startsWith(matrix.os, 'windows') && '.exe' || '' }} "dist/${{ matrix.name }}"

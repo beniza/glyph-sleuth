@@ -74,11 +74,22 @@ function fontLink(font) {
 // Who published the face. Every one of these links to its own download page.
 // "RIT", not "Rachana": SMC ships a font *called* Rachana, and a foundry tag
 // that reads like a family name beside it is a puzzle, not a label.
-const FOUNDRIES = { google: "Google Fonts", sil: "SIL", smc: "SMC", rit: "RIT" };
+const FOUNDRIES = { google: "Google Fonts", sil: "SIL", smc: "SMC", rit: "RIT",
+                    libre: "Libre" };
 
 function sourceTag(font) {
   return el("span", { className: "tag src",
                       textContent: FOUNDRIES[font.source] || font.source.toUpperCase() });
+}
+
+/** What you're allowed to do with it — the second question after "does it have
+ *  my character". Linked to the licence text when the font names one. */
+function licenceTag(font) {
+  if (!font.licence) return null;
+  const label = { className: "tag lic", textContent: font.licence };
+  if (!font.licenceUrl) return el("span", label);
+  return el("a", { ...label, href: font.licenceUrl, target: "_blank", rel: "noopener",
+                   title: `${font.name} licence` });
 }
 
 /** The table both Search and Preview use: one row per face, drawn in that face. */
@@ -94,7 +105,8 @@ function fontTable(rows, sample, { showMissing = false } = {}) {
     const gap = missing && missing.size;
     body.append(el("tr", {},
       el("td", {}, glyphCell(sample, font)),
-      el("td", {}, el("div", { className: "linkrow" }, fontLink(font), sourceTag(font))),
+      el("td", {}, el("div", { className: "linkrow" }, fontLink(font), sourceTag(font),
+                       licenceTag(font))),
       el("td", { className: "num" },
         showMissing
           ? (gap
@@ -117,7 +129,8 @@ function showSearch(query) {
   if (query.kind === "empty") {
     out.append(el("p", { className: "status" },
       `${core.data.fonts.length.toLocaleString()} freely available families indexed — `
-      + `Google Fonts and SIL, covering Unicode ${core.data.unicode}. Type anything above.`));
+      + `Google Fonts, SIL, SMC, Rachana and the libre classics, covering Unicode `
+      + `${core.data.unicode}. Type anything above.`));
     return;
   }
 
@@ -221,7 +234,9 @@ function showFont(font) {
     el("div", { className: "hero", style: `font-family:${stack(font)}`, textContent: "Aa" }),
     el("div", { className: "sample", style: `font-family:${stack(font)}`, textContent: SPECIMEN }),
     el("p", { className: "count" },
-      `${core.countIn(font.ranges).toLocaleString()} characters · ${font.ranges.length} ranges`),
+      `${core.countIn(font.ranges).toLocaleString()} characters · ${font.ranges.length} ranges`
+      + (font.licence ? ` · ${font.licence}` : "")
+      + (font.designers?.length ? ` · ${font.designers.join(", ")}` : "")),
     el("p", {}, el("a", { href: font.url, target: "_blank", rel: "noopener",
                           textContent: "Download / specimen ↗" })));
   select($("#browse-font"), font.name);
@@ -499,6 +514,9 @@ async function main() {
     $("#search-results").replaceChildren(el("p", { className: "status" },
       "Could not load the font index. Run scripts/gen_web_index.py, then serve this directory."));
     return;
+  }
+  if (core.data.version) {
+    document.querySelector(".wordmark span").textContent = `web ${core.data.version}`;
   }
   setupPreview();
   setupBrowse();

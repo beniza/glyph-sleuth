@@ -90,6 +90,10 @@ tr:hover td { background: var(--sunk); }
 .tag.full { color: var(--gold); background: var(--goldwash); }
 .tag.gap { color: var(--madder); background: var(--madderwash); }
 .tag.src { color: var(--ink2); background: var(--sunk); }
+/* Licence is a fact about the file, not a warning — quiet unless you look for it. */
+.tag.lic { color: var(--faint); border: 1px solid var(--hair); }
+a.tag.lic { text-decoration: none; }
+a.tag.lic:hover { color: var(--lapis); border-color: var(--lapis); }
 .missing { color: var(--madder); font: 15px var(--data); }
 .faint { color: var(--faint); }
 .mono { font: 12px var(--data); }

@@ -19,6 +19,7 @@ export async function load(base = "data/") {
   data.blocks = blocks.blocks;
   data.unicode = blocks.unicode;
   data.fonts = fonts.fonts;
+  data.version = fonts.version || "";
   data.languages = languages.languages;
   data.formulaic = formulaic;
   return data;

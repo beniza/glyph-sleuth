@@ -34,6 +34,19 @@ import langs
 
 APP_NAME = "Glyph Sleuth"
 
+
+def _version():
+    """One VERSION file for the desktop app, the web app and the release tag."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return "dev"
+
+
+VERSION = _version()
+
 # ---------------------------------------------------------------- appearance
 
 # A proof sheet on a light table, not a page of parchment: cool bright paper,
@@ -509,7 +522,7 @@ class Inspector(QTextBrowser):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} {VERSION}")
         self.resize(1240, 820)
         self.pool = QThreadPool.globalInstance()
         self._running = []  # keeps Tasks alive; the pool only borrows them
@@ -1369,6 +1382,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    app.setApplicationVersion(VERSION)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
