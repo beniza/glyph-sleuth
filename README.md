@@ -22,6 +22,9 @@ on first run; on macOS and Linux, `chmod +x` the file first.
 
 ## Two halves
 
+**[beniza.github.io/glyph-sleuth](https://beniza.github.io/glyph-sleuth/)** — the
+web half, nothing to install.
+
 |  | Desktop (`app.py`) | Web (`web/`) |
 |---|---|---|
 | Answers | which of **my** fonts can set this? | which **freely available** font can set this? |
