@@ -418,12 +418,21 @@ def family_name(font):
 
 # ----------------------------------------------------------------- language
 
+# Where UDHR ships several translations of one language and only one is the
+# right sample, name the file to keep. Malayalam: the chillu-encoded text, which
+# uses the atomic chillu characters a modern font is expected to have.
+PREFERRED = {"mal": "mal_chillus"}
+
+
 def udhr_languages(limit=None):
     """The UDHR translation list: our language menu, and our sample text."""
     root = ET.fromstring(fetch(UDHR_INDEX))
     entries = []
     for node in root:
         if node.get("stage") not in ("4", "5") or not node.get("iso639-3"):
+            continue
+        iso = node.get("iso639-3")
+        if iso in PREFERRED and node.get("f") != PREFERRED[iso]:
             continue
         # Some entries carry bcp47='und'; the ISO 639-3 code is the real handle.
         bcp47 = node.get("bcp47")
