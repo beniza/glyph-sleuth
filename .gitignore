@@ -1,0 +1,13 @@
+# Local scratch — notes, downloads, experiments. Never committed.
+.local/
+
+# Derived data. The generator rebuilds it; CI rebuilds it on deploy.
+# Without it the site shows an error, which is correct behaviour, not a bug.
+site/data/
+web/data/
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/

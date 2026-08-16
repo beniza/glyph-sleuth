@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Manjari:wght@100;400;700&family=Gayathri:wght@100;400;700&family=Chilanka&family=Noto+Sans+Malayalam:wght@100..900&family=Noto+Serif+Malayalam:wght@100..900&family=Anek+Malayalam:wght@100..800&family=Baloo+Chettan+2:wght@400..800&display=swap" rel="stylesheet" />
+<style>
+html, body { margin:0; padding:0; background:#E9EBE7; color:#16181D; font-family:'IBM Plex Sans', system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+a { color:#1F4FD8; text-decoration:none; border-bottom:1px solid rgba(31,79,216,.28); }
+a:hover { color:#16181D; border-bottom-color:#16181D; }
+:focus-visible { outline:2px solid #1F4FD8; outline-offset:2px; }
+button { font:inherit; color:inherit; }
+input { font:inherit; }
+::selection { background:#CBCFC8; }
+@keyframes bargrow { from { transform:scaleX(0.02); } to { transform:scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+</helmet>
+<div style="min-height:100vh; background:#E9EBE7; padding-bottom:0">
+
+  <header style="position:sticky; top:0; z-index:20; background:#E9EBE7; border-bottom:1px solid #CBCFC8">
+    <div style="max-width:1180px; margin:0 auto; padding:10px 20px; display:flex; flex-wrap:wrap; gap:14px; align-items:center">
+      <a href="#/" style="font-family:'IBM Plex Sans Condensed',sans-serif; font-weight:600; font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:#16181D; border:none; white-space:nowrap">Glyph Sleuth</a>
+      <div style="flex:1 1 320px; min-width:240px; position:relative">
+        <input type="search" value="{{ query }}" onInput="{{ onQuery }}" onFocus="{{ onFocus }}" onKeyDown="{{ onKey }}" placeholder="character, 0D15, Mlym, blwf, Manjari, ml, \p{Script=Malayalam}" aria-label="Search characters, blocks, scripts, languages, fonts and features" style="width:100%; box-sizing:border-box; background:#F5F6F3; border:1px solid #CBCFC8; border-radius:2px; padding:9px 12px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:#16181D" />
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E736C; white-space:nowrap">1,885 families indexed</div>
+    </div>
+
+    <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+      <div style="border-top:1px solid #CBCFC8; background:#F5F6F3">
+        <div style="max-width:1180px; margin:0 auto; padding:12px 20px 16px">
+          <div style="display:flex; flex-wrap:wrap; gap:8px 22px; align-items:baseline; margin-bottom:12px">
+            <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C">Reads as</span>
+            <sc-for list="{{ readings }}" as="r" hint-placeholder-count="2">
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; color: {{ r.color }}; text-decoration: {{ r.strike }}">{{ r.text }}</span>
+            </sc-for>
+          </div>
+          <sc-for list="{{ resultGroups }}" as="g" hint-placeholder-count="2">
+            <div style="border-top:1px solid #CBCFC8; padding:9px 0; display:grid; grid-template-columns:minmax(90px,120px) 1fr; gap:14px; align-items:start">
+              <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C; padding-top:3px">{{ g.kind }}</div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px 18px">
+                <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+                  <a href="{{ it.href }}" style="font-size:14px"><span style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:#6E736C; margin-right:8px">{{ it.code }}</span>{{ it.label }}</a>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+            <div style="border-top:1px solid #CBCFC8; padding:12px 0 0; font-size:14px; color:#6E736C">Nothing matches. Try a codepoint, a font name, or a script code.</div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+  </header>
+
+  <sc-if value="{{ showTrail }}" hint-placeholder-val="{{ true }}">
+    <div style="border-bottom:1px solid #CBCFC8; background:#E9EBE7">
+      <div style="max-width:1180px; margin:0 auto; padding:7px 20px; display:flex; flex-wrap:wrap; gap:6px 18px; align-items:center; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E736C">
+        <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center">
+          <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-weight:600; letter-spacing:.13em; text-transform:uppercase; font-size:10.5px; margin-right:6px">Trail</span>
+          <sc-for list="{{ trail }}" as="t" hint-placeholder-count="2">
+            <span style="display:flex; gap:6px; align-items:center"><a href="{{ t.href }}" style="font-size:11.5px; color:#6E736C; border-bottom-color:#CBCFC8">{{ t.label }}</a><span style="color:#CBCFC8">{{ t.sep }}</span></span>
+          </sc-for>
+        </div>
+        <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:#6E736C; white-space:nowrap">{{ entityKind }} · <span style="font-family:'IBM Plex Mono',monospace; letter-spacing:0; font-size:11px">{{ entityCode }}</span></div>
+      </div>
+    </div>
+  </sc-if>
+
+  <main style="max-width:1180px; margin:0 auto; padding:0 20px">
+
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:64px 0 40px; max-width:760px">
+      <h1 style="font-size:15px; font-family:'IBM Plex Sans Condensed',sans-serif; font-weight:600; letter-spacing:.14em; text-transform:uppercase; margin:0 0 18px">Glyph Sleuth</h1>
+      <p style="font-size:19px; line-height:1.5; margin:0 0 8px; max-width:56ch; text-wrap:pretty">Coverage says a font contains the character. It does not say the font will draw it correctly. Glyph Sleuth reports both, and the evidence behind both.</p>
+      <p style="font-size:14px; color:#6E736C; margin:0 0 34px">Read-only. Nothing you type leaves the browser.</p>
+
+      <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; padding-bottom:8px; border-bottom:1px solid #CBCFC8">Queries the search accepts</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:0 34px">
+        <sc-for list="{{ examples }}" as="ex" hint-placeholder-count="6">
+          <button onClick="{{ ex.run }}" style="text-align:left; background:none; border:none; border-bottom:1px solid #CBCFC8; padding:11px 0; cursor:pointer; display:flex; gap:14px; align-items:baseline">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#1F4FD8; min-width:9ch">{{ ex.q }}</span>
+            <span style="font-size:13px; color:#6E736C">{{ ex.reads }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:34px; margin-top:46px">
+        <div>
+          <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; padding-bottom:8px; border-bottom:1px solid #CBCFC8">By script</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px 16px; padding-top:11px">
+            <sc-for list="{{ scriptLinks }}" as="s" hint-placeholder-count="6">
+              <a href="{{ s.href }}" style="font-size:14px">{{ s.label }}</a>
+            </sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; padding-bottom:8px; border-bottom:1px solid #CBCFC8">By language</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px 16px; padding-top:11px">
+            <sc-for list="{{ langLinks }}" as="l" hint-placeholder-count="4">
+              <a href="{{ l.href }}" style="font-size:14px">{{ l.label }} <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E736C">{{ l.tag }}</span></a>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:46px; border:1px solid #CBCFC8; padding:18px 20px; background:#F5F6F3">
+        <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C">Only have a picture of it</div>
+        <p style="font-size:14px; line-height:1.55; margin:8px 0 0; color:#16181D">Drop an image and Glyph Sleuth narrows candidates by shape, in the browser. Or paste the character directly into the search bar above.</p>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isScript }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:34px 0 0">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 22px">
+        <h1 style="font-size:44px; font-weight:500; margin:0; letter-spacing:-.02em">Malayalam</h1>
+        <div style="font-family:'Manjari', serif; font-size:38px; color:#6E736C">മലയാളം</div>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:0 40px; margin-top:22px; border-top:1px solid #CBCFC8; border-bottom:1px solid #CBCFC8; padding:12px 0" data-comment-anchor="7a85d4f505-div">
+        <sc-for list="{{ scriptFacts }}" as="f" hint-placeholder-count="4">
+          <div style="display:flex; flex-direction:column; gap:3px; padding:2px 0">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:17px">{{ f.value }}</span>
+            <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C">{{ f.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <section style="padding:44px 0 0">
+      <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:0 0 12px">The script</h2>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:0 44px; max-width:1000px">
+        <div>
+          <p style="font-size:15.5px; line-height:1.6; margin:0 0 14px; text-wrap:pretty">Malayalam is an abugida written left to right. A consonant carries an inherent vowel; other vowels attach as marks before, after, above or below the consonant, and the virama <span style="font-family:'IBM Plex Mono',monospace; font-size:13.5px">U+0D4D</span> either suppresses the vowel or joins two consonants into a conjunct. Conjuncts are the reason coverage alone tells you nothing: <span style="font-family:'Manjari',serif; font-size:19px">സ്ത്ര</span> is five codepoints that must resolve to one cluster.</p>
+          <p style="font-size:15.5px; line-height:1.6; margin:0; text-wrap:pretty">A 1971 orthographic reform replaced many stacked conjuncts with separated forms and introduced the chillu letters — <span style="font-family:'Manjari',serif; font-size:19px">ൻ</span> and its five siblings, consonants with no inherent vowel, encoded atomically since Unicode 5.1. Both orthographies remain in use, so a family is judged against the older forms too.</p>
+        </div>
+        <div>
+          <p style="font-size:15.5px; line-height:1.6; margin:0 0 14px; text-wrap:pretty">Shaping runs through the Universal Shaping Engine, which reads the <span style="font-family:'IBM Plex Mono',monospace; font-size:13.5px">mlm2</span> script tag. The older <span style="font-family:'IBM Plex Mono',monospace; font-size:13.5px">mlym</span> tag is still accepted by some stacks and ignored by others, which is where identical-looking fonts diverge between applications.</p>
+          <p style="font-size:15.5px; line-height:1.6; margin:0; text-wrap:pretty">Of the 61 indexed families that cover the block, 19 shape the exemplar sets cleanly, 15 shape with caveats and 27 break. Filter the specimen list below by verdict.</p>
+        </div>
+      </div>
+
+      <h3 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:30px 0 12px">Two encoding problems most verdicts turn on</h3>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:0 44px; max-width:1000px">
+        <div style="border-top:1px solid #CBCFC8; padding-top:12px">
+          <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:8px">
+            <span style="font-family:'Manjari',serif; font-size:34px; line-height:1">ൻ</span>
+            <span style="font-size:15px">Chillu letters, encoded twice</span>
+          </div>
+          <p style="font-size:15px; line-height:1.6; margin:0; text-wrap:pretty">Before Unicode 5.1 a chillu was written as consonant + virama + ZWJ — <span style="font-family:'IBM Plex Mono',monospace; font-size:13px">0D28 0D4D 200D</span> for chillu n. Unicode 5.1 encoded the chillus atomically at <span style="font-family:'IBM Plex Mono',monospace; font-size:13px">U+0D7A–0D7F</span>, and the older sequences stayed valid for backward compatibility. Two representations of the same letter now circulate: text typed on one keyboard does not match text typed on another, search misses words that differ only by ZWJ, and a font that builds only one form renders the other as a consonant with a visible virama — a different word, not a different style. <span style="font-family:'Manjari',serif; font-size:17px">അവൻ</span> and <span style="font-family:'Manjari',serif; font-size:17px">അവന്</span> mean different things.</p>
+        </div>
+        <div style="border-top:1px solid #CBCFC8; padding-top:12px">
+          <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:8px">
+            <span style="font-family:'Manjari',serif; font-size:34px; line-height:1">ൻ്റ</span>
+            <span style="font-size:15px">The conjunct ṉṯa, encoded three ways</span>
+          </div>
+          <p style="font-size:15px; line-height:1.6; margin:0; text-wrap:pretty">Unicode recommends chillu&nbsp;n + virama + rra — <span style="font-family:'IBM Plex Mono',monospace; font-size:13px">0D7B 0D4D 0D31</span> — but na + virama + rra <span style="font-family:'IBM Plex Mono',monospace; font-size:13px">0D28 0D4D 0D31</span> was already in wide use and remains what InScript keyboards and most transliteration tools produce. A third sequence inserts ZWJ, and that one collides with the legacy encoding of the side-by-side form <span style="font-family:'Manjari',serif; font-size:17px">ൻറ</span>, so the same codepoints mean two different glyphs depending on what the implementation assumes. All three are widespread. A family that builds only the recommended sequence will show the other two as separated letters, which is why this conjunct decides more verdicts on this page than any other.</p>
+        </div>
+      </div>
+    </section>
+
+    <section style="padding:48px 0 0">
+      <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:14px; border-bottom:1px solid #16181D; padding-bottom:8px">
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#16181D; margin:0">Families · set in their own face</h2>
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px">
+          <div style="display:flex; gap:6px; align-items:center">
+            <sc-for list="{{ filters }}" as="ft" hint-placeholder-count="4">
+              <button onClick="{{ ft.pick }}" aria-pressed="{{ ft.on }}" style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; background: {{ ft.bg }}; color: {{ ft.fg }}; border:1px solid {{ ft.border }}; border-radius:2px; padding:4px 9px; cursor:pointer; white-space:nowrap">{{ ft.label }} {{ ft.n }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center">
+            <sc-for list="{{ samples }}" as="s" hint-placeholder-count="4">
+              <button onClick="{{ s.pick }}" style="font-family:'Manjari',serif; font-size:15px; background: {{ s.bg }}; color: {{ s.fg }}; border:1px solid #CBCFC8; border-radius:2px; padding:3px 9px; cursor:pointer">{{ s.text }}</button>
+            </sc-for>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E736C">
+            <span>size</span>
+            <input type="range" min="24" max="132" value="{{ size }}" onInput="{{ onSize }}" aria-label="Specimen size" style="width:130px; accent-color:#1F4FD8" />
+            <span style="min-width:5ch">{{ sizeLabel }}</span>
+          </label>
+        </div>
+      </div>
+
+      <sc-for list="{{ families }}" as="f" hint-placeholder-count="6">
+        <div style="border-bottom:1px solid #CBCFC8; padding:26px 0 22px">
+          <div style="display:flex; flex-wrap:wrap; gap:18px 40px; align-items:flex-end; justify-content:space-between">
+            <div style="min-width:0; flex:1 1 320px">
+              <div style="font-family: {{ f.face }}; font-size: {{ sizePx }}; line-height:1.35; color:#16181D; overflow-wrap:anywhere">{{ sample }}</div>
+            </div>
+            <div style="flex:0 1 300px; min-width:230px">
+              <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap">
+                <a href="{{ f.href }}" style="font-size:17px; color:#16181D; border-bottom-color:#CBCFC8">{{ f.name }}</a>
+                <span style="font-size:12.5px; color:#6E736C">{{ f.foundry }}</span>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:9px">
+                <sc-for list="{{ f.badges }}" as="b" hint-placeholder-count="3">
+                  <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; padding:3px 7px; border:1px solid {{ b.border }}; color: {{ b.fg }}; background: {{ b.bg }}; border-radius:2px">{{ b.text }}</span>
+                </sc-for>
+              </div>
+              <div style="font-size:12.5px; color:#6E736C; margin-top:8px; max-width:44ch"><span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; margin-right:7px">Also covers</span>{{ f.also }}</div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E736C; margin-top:9px; display:flex; flex-wrap:wrap; gap:4px 12px">
+                <span>{{ f.licence }}</span>
+                <a href="{{ f.href }}" style="font-size:11.5px">download</a>
+                <a href="{{ f.href }}" style="font-size:11.5px">css</a>
+              </div>
+              <sc-if value="{{ f.note }}" hint-placeholder-val="{{ false }}">
+                <p style="font-size:13px; line-height:1.5; color: {{ f.noteColor }}; margin:10px 0 0; max-width:44ch">{{ f.note }}</p>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+
+    <section style="padding:44px 0 0; display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:38px">
+      <div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:0 0 10px">What failure looks like · loud and quiet</h2>
+        <div style="border:1px solid #CBCFC8; background:#F5F6F3">
+          <div style="padding:18px 20px; border-bottom:1px solid #CBCFC8">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E736C">0D4E 0D15 · dot reph + ka</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:10px">
+              <div>
+                <div style="font-family:'Noto Sans Malayalam',sans-serif; font-size:44px; line-height:1.3">&#x0D4E;&#x0D15;</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#1F4FD8; margin-top:4px">rule present · Noto Sans Malayalam</div>
+              </div>
+              <div>
+                <div style="font-family:'Noto Sans Malayalam',sans-serif; font-size:44px; line-height:1.3">&#x25CC;&#x0D4E;&#x0D15;</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#A81E12; margin-top:4px">rule absent · dotted circle</div>
+              </div>
+            </div>
+            <p style="font-size:13.5px; line-height:1.55; margin:10px 0 0; max-width:48ch">The dot reph is a prescribed mark, not a spacing letter. With no rule to attach it, the shaper inserts <span style="font-family:'IBM Plex Mono',monospace; font-size:12.5px">U+25CC</span> as a base and the mark lands on a dotted circle. Loud failure, easy to spot.</p>
+          </div>
+          <div style="padding:18px 20px">
+            <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E736C">0D28 0D4D 0D31 · na, virama, rra — and 0D7B 0D4D 0D31 · chillu n, virama, rra</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:10px">
+              <div>
+                <div style="font-family:'Noto Sans Malayalam',sans-serif; font-size:44px; line-height:1.3">&#x0D28;&#x0D4D;&#x0D31;</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#1F4FD8; margin-top:4px">conjunct formed</div>
+              </div>
+              <div>
+                <div style="font-family:'Noto Sans Malayalam',sans-serif; font-size:44px; line-height:1.3">&#x0D7B;&#x0D31;</div>
+                <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6E736C; margin-top:4px">rule missing · letters left apart</div>
+              </div>
+            </div>
+            <p style="font-size:13.5px; line-height:1.55; margin:10px 0 0; max-width:48ch">Both sequences should give the conjunct <span style="font-family:'Manjari',serif; font-size:17px">ൻ്റ</span>. A font that builds only one of them draws the other as chillu n beside rra — no dotted circle, no error, a different word. Quiet failure, and why coverage checks and dotted-circle checks are both insufficient.</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:0 0 10px">Blocks</h2>
+        <div style="border-top:1px solid #CBCFC8; padding:11px 0; display:flex; justify-content:space-between; gap:16px; align-items:baseline">
+          <a href="#/block/malayalam" style="font-size:15px">Malayalam</a>
+          <span style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:#6E736C">U+0D00–0D7F · 118 assigned · 61 families</span>
+        </div>
+        <div style="border-top:1px solid #CBCFC8; border-bottom:1px solid #CBCFC8; padding:14px 0; margin-top:0">
+          <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C">Absence</div>
+          <p style="font-size:14px; line-height:1.55; margin:7px 0 0; max-width:46ch">Four of the seventeen languages written in this script have no indexed family that passes their exemplar set. Paniya <span style="font-family:'IBM Plex Mono',monospace; font-size:12.5px">pcg</span> and Ravula <span style="font-family:'IBM Plex Mono',monospace; font-size:12.5px">yea</span> are two of them. The characters exist; nothing indexed shapes them.</p>
+          <p style="font-size:13.5px; margin:10px 0 0"><a href="#/contribute">Add a family for one of these languages</a> — indexing is a pull request against a metadata file.</p>
+        </div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:26px 0 10px">Written by</h2>
+        <div style="display:flex; flex-direction:column">
+          <sc-for list="{{ langLinks }}" as="l" hint-placeholder-count="4">
+            <div style="border-top:1px solid #CBCFC8; padding:9px 0; display:flex; justify-content:space-between; gap:16px; align-items:baseline">
+              <a href="{{ l.href }}" style="font-size:14.5px">{{ l.label }}</a>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E736C">{{ l.tag }} · {{ l.fit }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:26px 0 10px">Requires</h2>
+        <div style="display:flex; flex-wrap:wrap; gap:8px 16px">
+          <sc-for list="{{ featureLinks }}" as="ft" hint-placeholder-count="5">
+            <a href="{{ ft.href }}" style="font-family:'IBM Plex Mono',monospace; font-size:13px">{{ ft.tag }}</a>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ isFont }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:34px 0 0">
+      <h1 style="font-size:40px; font-weight:500; margin:0; letter-spacing:-.02em">{{ font.name }}</h1>
+      <div style="font-size:14px; color:#6E736C; margin-top:4px">{{ font.foundry }} · {{ font.licence }}</div>
+      <div style="font-family: {{ font.face }}; font-size: {{ bigPx }}; line-height:1.3; margin:30px 0 10px; overflow-wrap:anywhere">മലയാളം സ്ത്ര ക്ക ൻ</div>
+      <div style="font-family: {{ font.face }}; font-size:26px; line-height:1.5; color:#16181D; max-width:40ch; margin-bottom:26px">Malayalam script, set at 26 px.</div>
+      <div style="display:flex; flex-wrap:wrap; gap:0 40px; border-top:1px solid #CBCFC8; border-bottom:1px solid #CBCFC8; padding:12px 0">
+        <sc-for list="{{ font.facts }}" as="f" hint-placeholder-count="4">
+          <div style="display:flex; flex-direction:column; gap:3px">
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:15px">{{ f.value }}</span>
+            <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C">{{ f.label }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <section style="padding:36px 0 0; display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:38px">
+      <div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:0 0 4px">Shapes cleanly, by language</h2>
+        <sc-for list="{{ font.verdicts }}" as="v" hint-placeholder-count="4">
+          <div style="border-top:1px solid #CBCFC8; padding:10px 0; display:flex; justify-content:space-between; gap:14px; align-items:baseline">
+            <a href="{{ v.href }}" style="font-size:14.5px">{{ v.lang }}</a>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color: {{ v.color }}">{{ v.text }}</span>
+          </div>
+        </sc-for>
+        <div style="border-top:1px solid #CBCFC8; padding-top:14px">
+          <button onClick="{{ toggleEvidence }}" style="background:none; border:1px solid #CBCFC8; border-radius:2px; padding:7px 12px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#1F4FD8">{{ evidenceLabel }}</button>
+        </div>
+        <sc-if value="{{ evidenceOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid #CBCFC8; background:#F5F6F3; margin-top:14px">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0; font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C; border-bottom:1px solid #CBCFC8; padding:8px 14px">
+              <span>Sequence shaped</span><span>Result</span>
+            </div>
+            <sc-for list="{{ font.evidence }}" as="e" hint-placeholder-count="3">
+              <div style="border-bottom:1px solid #CBCFC8; padding:12px 14px; display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start">
+                <div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#16181D">{{ e.codes }}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E736C; margin-top:4px">{{ e.features }}</div>
+                </div>
+                <div>
+                  <div style="font-family: {{ font.face }}; font-size:30px; line-height:1.2">{{ e.out }}</div>
+                  <div style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color: {{ e.color }}; margin-top:5px">{{ e.verdict }}</div>
+                </div>
+              </div>
+            </sc-for>
+            <div style="padding:11px 14px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:#6E736C">HarfBuzz 8.4.0 · shaper: universal · 2026-07-14</div>
+          </div>
+        </sc-if>
+      </div>
+      <div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:0 0 4px">Use it</h2>
+        <div style="border-top:1px solid #CBCFC8; padding:12px 0">
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; background:#F5F6F3; border:1px solid #CBCFC8; padding:12px; overflow-x:auto; white-space:pre; line-height:1.6; color:#16181D">{{ font.css }}</div>
+          <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E736C; margin-top:10px">fallback: {{ font.stack }}</div>
+          <div style="display:flex; gap:16px; margin-top:12px; font-size:13.5px">
+            <a href="{{ font.dl }}">Download {{ font.name }}</a>
+            <a href="#/compare/manjari,gayathri">Compare with another family</a>
+          </div>
+        </div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:26px 0 4px">Declares</h2>
+        <div style="border-top:1px solid #CBCFC8; padding:11px 0; display:flex; flex-wrap:wrap; gap:8px 16px">
+          <sc-for list="{{ featureLinks }}" as="ft" hint-placeholder-count="5">
+            <a href="{{ ft.href }}" style="font-family:'IBM Plex Mono',monospace; font-size:13px">{{ ft.tag }}</a>
+          </sc-for>
+        </div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:26px 0 4px">Weights</h2>
+        <div style="border-top:1px solid #CBCFC8; padding:14px 0; display:flex; flex-direction:column; gap:8px">
+          <sc-for list="{{ font.weights }}" as="w" hint-placeholder-count="3">
+            <div style="display:flex; justify-content:space-between; gap:18px; align-items:baseline">
+              <span style="font-family: {{ font.face }}; font-weight: {{ w.n }}; font-size:30px">മലയാളം</span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:#6E736C">{{ w.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ isChar }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:34px 0 0; display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:40px; align-items:start">
+      <div>
+        <div style="font-family:'Manjari',serif; font-size:190px; line-height:1.05; margin:0">ക</div>
+        <h1 style="font-size:20px; font-weight:500; margin:14px 0 0; letter-spacing:.01em">Malayalam letter ka</h1>
+        <div style="display:flex; flex-wrap:wrap; gap:8px 26px; margin-top:14px; border-top:1px solid #CBCFC8; padding-top:12px">
+          <sc-for list="{{ charFacts }}" as="f" hint-placeholder-count="4">
+            <div style="display:flex; flex-direction:column; gap:3px">
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:14px">{{ f.value }}</span>
+              <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:10.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C">{{ f.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:0 0 4px">Relations</h2>
+        <sc-for list="{{ charRelations }}" as="r" hint-placeholder-count="3">
+          <div style="border-top:1px solid #CBCFC8; padding:11px 0; display:flex; gap:16px; align-items:baseline; justify-content:space-between">
+            <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C; min-width:11ch">{{ r.verb }}</span>
+            <a href="{{ r.href }}" style="font-size:15px; text-align:right">{{ r.label }}</a>
+          </div>
+        </sc-for>
+        <div style="border-top:1px solid #CBCFC8; padding-top:12px">
+          <button onClick="{{ toggleRelations }}" style="background:none; border:1px solid #CBCFC8; border-radius:2px; padding:7px 12px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:12px; color:#1F4FD8">{{ relationsLabel }}</button>
+        </div>
+        <sc-if value="{{ relationsOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px">
+            <sc-for list="{{ charMore }}" as="r" hint-placeholder-count="4">
+              <div style="border-top:1px solid #CBCFC8; padding:10px 0; display:flex; gap:16px; align-items:baseline; justify-content:space-between">
+                <span style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:#6E736C; min-width:11ch">{{ r.verb }}</span>
+                <a href="{{ r.href }}" style="font-size:14.5px; text-align:right">{{ r.label }}</a>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#6E736C; margin:28px 0 4px">Set by</h2>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); border-top:1px solid #CBCFC8">
+          <sc-for list="{{ allFamilies }}" as="f" hint-placeholder-count="6">
+            <a href="{{ f.href }}" style="border-bottom:1px solid #CBCFC8; border-right:1px solid #CBCFC8; padding:14px 10px 10px; display:flex; flex-direction:column; gap:6px; align-items:center; color:#16181D">
+              <span style="font-family: {{ f.face }}; font-size:52px; line-height:1">ക</span>
+              <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:#6E736C; text-align:center">{{ f.name }}</span>
+            </a>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:60px 0; max-width:52ch">
+      <div style="font-family:'IBM Plex Sans Condensed',sans-serif; font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:#6E736C">{{ otherKind }}</div>
+      <h1 style="font-size:30px; font-weight:500; margin:8px 0 12px">{{ otherTitle }}</h1>
+      <p style="font-size:15px; line-height:1.6; color:#16181D; margin:0 0 18px">{{ otherBody }}</p>
+      <a href="#/script/Mlym" style="font-size:14px">Back to the Malayalam script page</a>
+    </div>
+  </sc-if>
+
+  </main>
+
+  <footer style="border-top:1px solid #CBCFC8; margin-top:56px; background:#E9EBE7">
+    <div style="max-width:1180px; margin:0 auto; padding:16px 20px 30px; display:flex; flex-wrap:wrap; gap:6px 26px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#6E736C">
+      <span>Coverage from cmap tables · 2026-06-30</span>
+      <span>Exemplars from SLDR · 2025-11</span>
+      <span>Shaping verdicts from HarfBuzz 8.4.0 · 2026-07-14</span>
+      <span>Figures on this page are illustrative</span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;sizeDefault&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:64,&quot;min&quot;:24,&quot;max&quot;:132,&quot;step&quot;:4,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Specimens&quot;},&quot;showTrail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Chrome&quot;}}">
+const FACE = {
+  manjari: "'Manjari', serif",
+  gayathri: "'Gayathri', serif",
+  chilanka: "'Chilanka', cursive",
+  notosans: "'Noto Sans Malayalam', sans-serif",
+  notoserif: "'Noto Serif Malayalam', serif",
+  anek: "'Anek Malayalam', sans-serif"
+};
+
+const FAMILIES = [
+  { id:'manjari', name:'Manjari', face:FACE.manjari, foundry:'Swathanthra Malayalam Computing', licence:'OFL 1.1', covers:'118/118', tag:'mlm2', shapes:'clean', note:null, also:'Latin basic · typographic punctuation complete' },
+  { id:'gayathri', name:'Gayathri', face:FACE.gayathri, foundry:'Swathanthra Malayalam Computing', licence:'OFL 1.1', covers:'118/118', tag:'mlm2', shapes:'clean', note:null, also:'Latin basic · typographic punctuation partial, no en dash' },
+  { id:'noto-sans-malayalam', name:'Noto Sans Malayalam', face:FACE.notosans, foundry:'Google', licence:'OFL 1.1', covers:'118/118', tag:'mlm2', shapes:'clean', note:null, also:'Latin basic + ext-A · typographic punctuation complete · 1 more script' },
+  { id:'noto-serif-malayalam', name:'Noto Serif Malayalam', face:FACE.notoserif, foundry:'Google', licence:'OFL 1.1', covers:'118/118', tag:'mlm2', shapes:'clean', note:null, also:'Latin basic + ext-A · typographic punctuation complete · 1 more script' },
+  { id:'anek-malayalam', name:'Anek Malayalam', face:FACE.anek, foundry:'Ek Type', licence:'OFL 1.1', covers:'118/118', tag:'mlm2', shapes:'caveat', note:'Registered under mlm2 only. Renders correctly in HarfBuzz; older stacks that look for the legacy mlym tag fall through to a default shaper.', also:'Latin basic + ext-A · typographic punctuation complete · 2 more scripts' },
+  { id:'chilanka', name:'Chilanka', face:FACE.chilanka, foundry:'Swathanthra Malayalam Computing', licence:'OFL 1.1', covers:'112/118', tag:'mlm2', shapes:'fail', note:'Six codepoints assigned after Unicode 9.0 are absent, and the below-base form of ra is not built. സ്ത്ര produces a dotted circle.', also:'Latin basic · typographic punctuation partial, no smart quotes' }
+];
+
+const FEATURES = ['akhn','blwf','pres','abvs','half'];
+const LANGS = [
+  { tag:'ml', label:'Malayalam', fit:'19 families fit' },
+  { tag:'jns', label:'Jeseri', fit:'4 families fit' },
+  { tag:'pcg', label:'Paniya', fit:'0 families fit' },
+  { tag:'yea', label:'Ravula', fit:'0 families fit' }
+];
+
+function badges(f) {
+  const ok = { fg:'#1F4FD8', bg:'rgba(31,79,216,.07)', border:'rgba(31,79,216,.35)' };
+  const mute = { fg:'#6E736C', bg:'transparent', border:'#CBCFC8' };
+  const bad = { fg:'#A81E12', bg:'rgba(168,30,18,.07)', border:'rgba(168,30,18,.4)' };
+  const cov = f.covers === '118/118' ? ok : bad;
+  const shape = f.shapes === 'clean' ? ok : (f.shapes === 'caveat' ? mute : bad);
+  return [
+    Object.assign({ text:'covers ' + f.covers }, cov),
+    Object.assign({ text:'tag ' + f.tag }, ok),
+    Object.assign({ text:'shapes ' + (f.shapes === 'clean' ? 'clean' : f.shapes === 'caveat' ? 'with caveat' : 'breaks') }, shape)
+  ];
+}
+
+class Component extends DCLogic {
+  state = {
+    hash: (typeof location !== 'undefined' ? location.hash : '') || '#/script/Mlym',
+    query: '',
+    size: 0,
+    sample: 'മലയാളം',
+    filter: 'all',
+    evidenceOpen: false,
+    relationsOpen: false,
+    trail: []
+  };
+
+  componentDidMount() {
+    if (!location.hash) location.hash = '#/script/Mlym';
+    this._onHash = () => { this.setState({ hash: location.hash, query: '' }); this.pushTrail(location.hash); window.scrollTo(0, 0); };
+    window.addEventListener('hashchange', this._onHash);
+    this.pushTrail(location.hash || '#/script/Mlym');
+  }
+  componentWillUnmount() { window.removeEventListener('hashchange', this._onHash); }
+
+  labelFor(hash) {
+    const p = (hash || '').replace(/^#\//, '').split('/');
+    if (!p[0]) return 'home';
+    if (p[0] === 'script') return 'Malayalam script';
+    if (p[0] === 'font') return (FAMILIES.find(f => f.id === p[1]) || { name: p[1] }).name;
+    if (p[0] === 'char') return 'ക U+' + (p[1] || '').toUpperCase();
+    if (p[0] === 'block') return 'Malayalam block';
+    if (p[0] === 'lang') return 'lang ' + p[1];
+    if (p[0] === 'feature') return p[1];
+    return p[0];
+  }
+  pushTrail(hash) {
+    this.setState(s => {
+      const t = s.trail.slice();
+      const loop = t.findIndex(x => x.href === hash);
+      if (loop >= 0) return { trail: t.slice(0, loop + 1) };
+      t.push({ href: hash, label: this.labelFor(hash) });
+      return { trail: t.length > 5 ? t.slice(t.length - 5) : t };
+    });
+  }
+
+  readings(q) {
+    const out = [];
+    const t = q.trim();
+    if (!t) return out;
+    const add = (text, ok) => out.push({ text, color: ok ? '#16181D' : '#6E736C', strike: ok ? 'none' : 'line-through' });
+    const hex = /^(u\+)?[0-9a-fA-F]{4,6}$/.test(t);
+    const prop = /^\\p\{.+\}$/.test(t);
+    const script = /^[A-Z][a-z]{3}$/.test(t);
+    const feat = /^[a-z0-9]{4}$/.test(t) && FEATURES.indexOf(t) >= 0;
+    const lang = /^[a-z]{2,3}$/.test(t) && LANGS.some(l => l.tag === t);
+    const literal = t.length <= 2 && /[^\x00-\x7F]/.test(t);
+    if (literal) add('literal character — ' + t, true);
+    if (hex) add('codepoint — U+' + t.replace(/^u\+/i, '').toUpperCase(), true);
+    if (prop) add('property expression — ' + t, true);
+    if (script) add('script code — ' + t, true);
+    if (feat) add('OpenType feature — ' + t, true);
+    if (lang) add('language tag — ' + t, true);
+    if (!hex && /^[0-9a-fA-F ]+$/.test(t) && t.length > 6) add('codepoint — too many digits', false);
+    if (!script && /^[A-Za-z]{4}$/.test(t) && !feat) add('script code — not registered', false);
+    add('name or font fragment — "' + t + '"', true);
+    return out;
+  }
+
+  results(q) {
+    const t = q.trim().toLowerCase();
+    if (!t) return [];
+    const groups = [];
+    const chars = [];
+    if (/^(u\+)?0d15$/.test(t) || t === 'ക' || 'malayalam letter ka'.indexOf(t) >= 0) chars.push({ code:'U+0D15', label:'ക malayalam letter ka', href:'#/char/0D15' });
+    if (chars.length) groups.push({ kind:'Character', items: chars });
+    const scripts = ('malayalam mlym').indexOf(t) >= 0 || /^\\p\{/.test(q.trim()) ? [{ code:'Mlym', label:'Malayalam', href:'#/script/Mlym' }] : [];
+    if (scripts.length) groups.push({ kind:'Script', items: scripts });
+    const fonts = FAMILIES.filter(f => f.name.toLowerCase().indexOf(t) >= 0).map(f => ({ code:f.licence, label:f.name, href:'#/font/' + f.id }));
+    if (fonts.length) groups.push({ kind:'Font family', items: fonts });
+    const langs = LANGS.filter(l => l.tag === t || l.label.toLowerCase().indexOf(t) >= 0).map(l => ({ code:l.tag, label:l.label, href:'#/lang/' + l.tag }));
+    if (langs.length) groups.push({ kind:'Language', items: langs });
+    const feats = FEATURES.filter(f => f.indexOf(t) >= 0).map(f => ({ code:f, label:'shaping feature', href:'#/feature/' + f }));
+    if (feats.length) groups.push({ kind:'Feature', items: feats });
+    return groups;
+  }
+
+  renderVals() {
+    const hash = this.state.hash || '#/script/Mlym';
+    const parts = hash.replace(/^#\/?/, '').split('/');
+    const kind = parts[0] || '';
+    const size = this.state.size || (this.props.sizeDefault ?? 64);
+    const q = this.state.query;
+    const groups = this.results(q);
+
+    const font = (function () {
+      const f = FAMILIES.find(x => x.id === parts[1]) || FAMILIES[0];
+      const clean = { color:'#1F4FD8' }, bad = { color:'#A81E12' }, mute = { color:'#6E736C' };
+      return Object.assign({}, f, {
+        href: '#/font/' + f.id,
+        dl: '#/font/' + f.id,
+        css: "@import url('https://fonts.googleapis.com/css2?family=" + f.name.replace(/ /g, '+') + "');\nfont-family: '" + f.name + "', serif;",
+        stack: "'" + f.name + "', 'Noto Sans Malayalam', sans-serif",
+        facts: [
+          { value: f.covers, label:'codepoints covered' },
+          { value: f.tag, label:'script tag declared' },
+          { value:'3', label:'weights' },
+          { value:'2', label:'of 4 languages fit' }
+        ],
+        verdicts: [
+          Object.assign({ lang:'Malayalam', text:'clean · 4 sequences', href:'#/lang/ml' }, clean),
+          Object.assign({ lang:'Jeseri', text: f.id === 'chilanka' ? 'breaks · 1 dotted circle' : 'clean · 6 sequences', href:'#/lang/jns' }, f.id === 'chilanka' ? bad : clean),
+          Object.assign({ lang:'Paniya', text:'not tested · no exemplar set', href:'#/lang/pcg' }, mute),
+          Object.assign({ lang:'Ravula', text:'not tested · no exemplar set', href:'#/lang/yea' }, mute)
+        ],
+        evidence: [
+          Object.assign({ codes:'0D38 0D4D 0D24 0D4D 0D30', features:'akhn, half, blwf, pres · 1 cluster', out:'സ്ത്ര', verdict:'clean' }, clean),
+          Object.assign({ codes:'0D15 0D4D 0D15', features:'akhn, pres · 1 cluster', out:'ക്ക', verdict:'clean' }, clean),
+          Object.assign({ codes:'0D28 0D4D 0D3D', features:'psts · 1 cluster', out:'ൻ', verdict:'clean · chillu formed' }, clean),
+          Object.assign({ codes:'0D7B 0D4D 0D31', features:'blwf not applied · 2 clusters', out:'ൻ്റ', verdict: f.id === 'chilanka' ? 'dotted circle at index 1' : 'clean' }, f.id === 'chilanka' ? bad : clean)
+        ],
+        weights: [ { n:100, label:'Thin 100' }, { n:400, label:'Regular 400' }, { n:700, label:'Bold 700' } ]
+      });
+    }).call(this);
+
+    const collapseData = [
+      { label:'Covers the codepoints', n:61, note:'all 118 present in cmap', color:'#16181D' },
+      { label:'Declares the script', n:34, note:'mlm2 in GSUB script list', color:'#6E736C' },
+      { label:'Shapes it cleanly', n:19, note:'no dotted circles on exemplars', color:'#1F4FD8' }
+    ].map(c => Object.assign({ width: Math.round((c.n / 61) * 100) + '%' }, c));
+
+    return {
+      showTrail: this.props.showTrail ?? true,
+      trail: this.state.trail.map((t, i) => Object.assign({ sep: i < this.state.trail.length - 1 ? '→' : '' }, t)),
+      query: q,
+      hasQuery: q.trim().length > 0,
+      readings: this.readings(q),
+      resultGroups: groups,
+      noResults: q.trim().length > 0 && groups.length === 0,
+      onQuery: e => this.setState({ query: e.target.value }),
+      onFocus: () => {},
+      onKey: e => { if (e.key === 'Enter' && groups.length) location.hash = groups[0].items[0].href; if (e.key === 'Escape') this.setState({ query: '' }); },
+
+      entityKind: kind === 'script' ? 'Script' : kind === 'font' ? 'Font family' : kind === 'char' ? 'Character' : kind === '' || kind === '#' ? 'Search' : kind,
+      entityCode: kind === 'script' ? 'Mlym' : kind === 'font' ? font.id : kind === 'char' ? 'U+0D15' : kind === '' || kind === '#' ? '1,885 families' : (parts[1] || ''),
+
+      isHome: kind === '' || kind === '#',
+      isScript: kind === 'script',
+      isFont: kind === 'font',
+      isChar: kind === 'char',
+      isOther: ['', '#', 'script', 'font', 'char'].indexOf(kind) < 0,
+      otherKind: kind === 'contribute' ? 'Contribute' : kind,
+      otherTitle: kind === 'contribute' ? 'Adding a family' : this.labelFor(hash),
+      otherBody: kind === 'contribute'
+        ? 'Indexing is a pull request against one metadata file: family name, foundry, licence, and a URL the specimen can load from. Coverage, script tags and shaping verdicts are computed from the file itself, so nothing is asserted by hand. Languages with no passing family are listed first in the queue.'
+        : 'This page is not part of the current deliverable. The script, font family, character and search pages are.',
+
+      size: size,
+      sizeLabel: size + 'px',
+      sizePx: size + 'px',
+      bigPx: Math.round(size * 1.5) + 'px',
+      onSize: e => this.setState({ size: Number(e.target.value) }),
+      sample: this.state.sample,
+      samples: ['മലയാളം', 'സ്ത്ര', 'ക്ക', 'ൻ'].map(t => ({
+        text: t,
+        bg: t === this.state.sample ? '#16181D' : '#F5F6F3',
+        fg: t === this.state.sample ? '#E9EBE7' : '#16181D',
+        pick: () => this.setState({ sample: t })
+      })),
+
+      scriptFacts: [
+        { value:'1', label:'block' },
+        { value:'118', label:'assigned codepoints' },
+        { value:'17', label:'languages' },
+        { value:'1,885', label:'families indexed against' },
+        { value:'61', label:'families covering it' }
+      ],
+      collapse: collapseData,
+      segments: [
+        { n:19, fill:'#1F4FD8', fg:'#E9EBE7', label:'Shape cleanly', note:'no dotted circles on exemplars', width:'31.1%' },
+        { n:15, fill:'#B9C0D8', fg:'#16181D', label:'Shape with caveats', note:'clean in HarfBuzz, not everywhere', width:'24.6%' },
+        { n:27, fill:'#F5F6F3', fg:'#6E736C', label:'Break', note:'dotted circles or missing codepoints', width:'44.3%' }
+      ],
+      filters: [
+        { key:'all', label:'all', n:61 },
+        { key:'clean', label:'shape cleanly', n:19 },
+        { key:'caveat', label:'shape with caveats', n:15 },
+        { key:'fail', label:'break', n:27 }
+      ].map(ft => {
+        const on = (this.state.filter || 'all') === ft.key;
+        return Object.assign({
+          on: on,
+          bg: on ? '#16181D' : 'transparent',
+          fg: on ? '#E9EBE7' : '#6E736C',
+          border: on ? '#16181D' : '#CBCFC8',
+          pick: () => this.setState({ filter: ft.key })
+        }, ft);
+      }),
+      allFamilies: FAMILIES.map(f => Object.assign({ href:'#/font/' + f.id }, f)),
+      familyCountNote: (this.state.filter || 'all') === 'all' ? '' : 'Filtered.',
+      families: FAMILIES.filter(f => { const k = this.state.filter || 'all'; return k === 'all' || f.shapes === k; })
+        .map(f => Object.assign({ href:'#/font/' + f.id, badges: badges(f), noteColor: f.shapes === 'fail' ? '#A81E12' : '#6E736C' }, f)),
+      langLinks: LANGS.map(l => Object.assign({ href:'#/lang/' + l.tag }, l)),
+      featureLinks: FEATURES.map(t => ({ tag:t, href:'#/feature/' + t })),
+      scriptLinks: ['Malayalam','Tamil','Devanagari','Ge\u02BDez','Tifinagh','Cherokee','Adlam','Vai'].map(s => ({ label:s, href: s === 'Malayalam' ? '#/script/Mlym' : '#/script/other' })),
+
+      font: font,
+      evidenceOpen: this.state.evidenceOpen,
+      evidenceLabel: this.state.evidenceOpen ? 'Hide the evidence' : 'Why that verdict — 4 sequences',
+      toggleEvidence: () => this.setState(s => ({ evidenceOpen: !s.evidenceOpen })),
+
+      charFacts: [
+        { value:'U+0D15', label:'codepoint' },
+        { value:'Lo', label:'general category' },
+        { value:'0', label:'combining class' },
+        { value:'Mlym', label:'script' }
+      ],
+      charRelations: [
+        { verb:'Part of', label:'Malayalam block · U+0D00–0D7F', href:'#/block/malayalam' },
+        { verb:'Written in', label:'Malayalam script', href:'#/script/Mlym' },
+        { verb:'Forms conjuncts with', label:'് virama · U+0D4D', href:'#/char/0D4D' }
+      ],
+      charMore: [
+        { verb:'Confusable with', label:'ക്ക doubled ka', href:'#/char/0D15' },
+        { verb:'Triggers', label:'akhn akhand ligatures', href:'#/feature/akhn' },
+        { verb:'Triggers', label:'pres pre-base substitutions', href:'#/feature/pres' },
+        { verb:'Set by', label:'61 indexed families', href:'#/script/Mlym' }
+      ],
+      relationsOpen: this.state.relationsOpen,
+      relationsLabel: this.state.relationsOpen ? 'Fewer relations' : '4 more relations',
+      toggleRelations: () => this.setState(s => ({ relationsOpen: !s.relationsOpen })),
+
+      examples: [
+        { q:'0D15', reads:'codepoint — U+0D15' },
+        { q:'ക', reads:'literal character' },
+        { q:'Mlym', reads:'script code' },
+        { q:'blwf', reads:'OpenType feature' },
+        { q:'Manjari', reads:'font family name' },
+        { q:'jns', reads:'language tag — Jeseri' }
+      ].map(e => Object.assign({ run: () => this.setState({ query: e.q }) }, e))
+    };
+  }
+}
+</script>
+</body>
+</html>
