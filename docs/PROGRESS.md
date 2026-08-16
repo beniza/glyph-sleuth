@@ -50,9 +50,11 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 - [x] A family whose release cannot be read degrades to a stub with a printed
       reason, rather than failing the build or vanishing
 - [x] `test_no_font_is_ever_downloaded` → `test_no_font_is_ever_served`
-- [ ] HarfBuzz in CI (`uharfbuzz`) against the shared `SEQUENCES` list, filling
-      the `hb` column with real verdicts. **Blocked**: `SEQUENCES` arrives with
-      the font pages in Phase 1b, so this lands with them
+- [x] HarfBuzz in CI (`uharfbuzz`) against the authored sequence list, now
+      `web/content/sequences.json` and shared with the companion
+- [ ] Shape Google's families too — they are public and downloadable, but the
+      index only holds their metadata, so a face URL has to be fetched per
+      family. Currently only the foundry families carry verdicts
 - [x] Correct the same drift in `HANDOFF.md` §4 and `README.md`
 
 ### Phase 1b — the pages

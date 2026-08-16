@@ -497,8 +497,145 @@ def foundry_family(source, project, token=None):
 
     facts["provenance"] = {"file": label, "release": extra if source["host"] != "css" else css,
                            "read": TODAY}
+
+    # Tier 3, for the scripts we have authored sequences for. Only a face that
+    # covers the script is worth shaping: a Latin workhorse "failing" Malayalam
+    # is not a finding, it is a category error.
+    for script, blocks in SHAPED_SCRIPTS.items():
+        if any(countInRange(facts["ranges"], first, last) for first, last in blocks):
+            facts.setdefault("results", {})[script] = shape_all(blob, label, script)
     return foundry_record(facts.get("family") or fallback_name, source["id"], page,
                           css=css, facts=facts)
+
+
+# ----------------------------------------------------------------- shaping
+
+CONTENT = os.path.join(ROOT, "web", "content")
+
+# Scripts we have authored sequences for, and the blocks that say a face is
+# meant for one. Malayalam is the flagship, not the limit — adding a script is
+# a sequences.json entry and a line here.
+SHAPED_SCRIPTS = {"Mlym": [(0x0D00, 0x0D7F)]}
+
+
+def countInRange(ranges, first, last):
+    """How many codepoints of first..last these ranges cover. Mirrors core.js."""
+    total = 0
+    for lo, hi in ranges:
+        if hi < first:
+            continue
+        if lo > last:
+            break
+        total += min(hi, last) - max(lo, first) + 1
+    return total
+
+
+def sequences(script="Mlym"):
+    """The authored sequences a script's fonts actually disagree on.
+
+    Content, not data: which sequences are worth testing is an editorial
+    judgement about a writing system. The companion reads the same file, so
+    neither product carries its own copy of what a verdict is about.
+    """
+    with io.open(os.path.join(CONTENT, "sequences.json"), encoding="utf-8") as handle:
+        return json.load(handle).get(script, [])
+
+
+def codepoints_of(codes):
+    return [int(part, 16) for part in codes.split()]
+
+
+def hb_shape_command(filename, codes, needs, language, script="Mlym"):
+    """The `hb-shape` line that reproduces a verdict.
+
+    Shown beside every verdict on the site: a claim nobody can re-run is an
+    assertion, not evidence.
+    """
+    unicodes = ",".join(codes.split())
+    line = f"hb-shape --font-file={filename} --unicodes={unicodes}"
+    if needs:
+        line += f" --features={','.join(needs)}"
+    return f"{line} --script={script} --language={language}"
+
+
+def as_sfnt(blob):
+    """Plain sfnt bytes, unwrapping woff2 if that is what a foundry serves.
+
+    HarfBuzz does not read woff2. Handed compressed bytes it finds no glyphs,
+    so every sequence comes back .notdef and a perfectly good family reads as
+    broken — silently, which is the worst way to be wrong.
+    """
+    if blob[:4] not in (b"wOF2", b"wOFF"):
+        return blob
+    from fontTools.ttLib import woff2
+
+    out = io.BytesIO()
+    woff2.decompress(io.BytesIO(blob), out)
+    return out.getvalue()
+
+
+def shape(blob, codes, features=None, language="ml", script="Mlym"):
+    """Shape one sequence with HarfBuzz and judge the result.
+
+    Three things count as the font failing, not the text being wrong:
+    a .notdef in the run (the font has no glyph for something it was asked to
+    draw), a leftover dotted circle (the shaper gave up on the cluster), and a
+    run that comes back empty. Everything else is clean — this says nothing
+    about whether the shaping is *beautiful*, only that it happened.
+    """
+    import uharfbuzz as hb
+
+    face = hb.Face(as_sfnt(blob))
+    font = hb.Font(face)
+    buffer = hb.Buffer()
+    buffer.add_codepoints(codepoints_of(codes))
+    buffer.guess_segment_properties()
+    if language:
+        buffer.language = language
+    hb.shape(font, buffer, {feature: True for feature in (features or [])})
+
+    names = []
+    for info in buffer.glyph_infos:
+        try:
+            names.append(font.glyph_to_string(info.codepoint))
+        except Exception:
+            names.append(f"gid{info.codepoint}")
+
+    verdict, note = "clean", ""
+    if not names:
+        verdict, note = "fail", "shaping produced no glyphs"
+    elif any(name in (".notdef", "gid0") for name in names):
+        missing = [f"{cp:04X}" for cp in codepoints_of(codes)
+                   if not font.get_nominal_glyph(cp)]
+        verdict = "fail"
+        note = (".notdef in the output"
+                + (f" — the font has no glyph for {', '.join(missing)}" if missing else ""))
+    elif any("dotted" in name.lower() or name == "uni25CC" for name in names):
+        verdict, note = "fail", "a dotted circle survived: the shaper gave up on the cluster"
+
+    return {"verdict": verdict, "glyphs": names, "note": note,
+            "shaper": "hb", "version": hb.version_string()}
+
+
+def shape_all(blob, filename, script="Mlym"):
+    """Every authored sequence for a script, against one face.
+
+    Returns the four-engine shape the matrix wants, with the three engines we
+    cannot reach from here left null — "not tested", which the page says in
+    those words rather than implying a pass.
+    """
+    results = {}
+    for entry in sequences(script):
+        try:
+            hb_result = shape(blob, entry["codes"], entry.get("needs"),
+                              (entry.get("langs") or "ml").split(",")[0].strip(), script)
+        except Exception as error:
+            hb_result = {"verdict": "fail", "glyphs": [], "note": str(error), "shaper": "hb"}
+        hb_result["command"] = hb_shape_command(
+            filename, entry["codes"], entry.get("needs") or [],
+            (entry.get("langs") or "ml").split(",")[0].strip(), script)
+        results[entry["id"]] = {"hb": hb_result, "dw": None, "ct": None, "gr": None}
+    return results
 
 
 # ----------------------------------------------------------------- languages

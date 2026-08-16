@@ -5,6 +5,7 @@ and the constraint the whole design rests on: nothing here downloads a font.
 """
 import hashlib
 import io
+import json
 import os
 import sys
 import zipfile
@@ -236,6 +237,67 @@ def test_extract_fonts():
     found = gen_index.extract_fonts(blob.getvalue())
     assert list(found) == ["release/Manjari-Regular.ttf"]
     assert found["release/Manjari-Regular.ttf"] == b"font bytes"
+
+
+def test_shape_verdicts():
+    # Tier 3, and the reason the site exists: a face can cover every codepoint
+    # of a sequence and still not draw it. A .notdef in the output, or a
+    # leftover dotted circle, is the font failing — not the text being wrong.
+    blob = sample_font(codepoints=(0x0D15, 0x0D4D))
+
+    clean = gen_index.shape(blob, "0D15")
+    assert clean["verdict"] == "clean"
+    assert clean["glyphs"], "no glyph run came back"
+
+    # A codepoint the font does not have shapes to .notdef, which is a fail
+    # however cleanly the rest of the run went.
+    missing = gen_index.shape(blob, "0D15 0D7B")
+    assert missing["verdict"] == "fail"
+    assert ".notdef" in missing["note"] or "0D7B" in missing["note"]
+
+
+def test_woff2_is_unwrapped_before_shaping():
+    """HarfBuzz reads sfnt, not woff2 — and foundries serve woff2.
+
+    Handed compressed bytes it finds no glyphs at all, so every sequence comes
+    back .notdef and every family looks broken. Silent, and completely wrong:
+    the fonts are fine.
+    """
+    from fontTools.ttLib import TTFont
+    packed = io.BytesIO()
+    font = TTFont(io.BytesIO(sample_font(codepoints=(0x0D15,))))
+    font.flavor = "woff2"
+    font.save(packed)
+    blob = packed.getvalue()
+    assert blob[:4] == b"wOF2"
+
+    assert gen_index.as_sfnt(blob)[:4] != b"wOF2"
+    assert gen_index.shape(blob, "0D15")["verdict"] == "clean"
+    # A plain TTF is passed through untouched.
+    plain = sample_font(codepoints=(0x0D15,))
+    assert gen_index.as_sfnt(plain) == plain
+
+
+def test_hb_shape_command():
+    # The command a reader can paste to reproduce the verdict themselves. A
+    # verdict nobody can re-run is an assertion, not evidence.
+    line = gen_index.hb_shape_command("Manjari-Regular.ttf", "0D7B 0D4D 0D31",
+                                      ["blwf", "pres"], "ml")
+    assert "--font-file=Manjari-Regular.ttf" in line
+    assert "--unicodes=0D7B,0D4D,0D31" in line
+    assert "--features=blwf,pres" in line
+    assert "--script=Mlym" in line and "--language=ml" in line
+
+
+def test_sequences_are_authored_content():
+    # Not generated, and not duplicated: the companion reads this same file, so
+    # both products share one definition of what a verdict is about.
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(gen_index.__file__))),
+                        "content", "sequences.json")
+    data = json.load(open(path, encoding="utf-8"))
+    nta = [s for s in data["Mlym"] if s["id"] == "nta"][0]
+    assert nta["codes"] == "0D7B 0D4D 0D31"
+    assert nta["out"] == "ൻ്റ"
 
 
 def test_sources_are_declarative():

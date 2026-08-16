@@ -2,3 +2,4 @@
 fontTools>=4.50
 brotli>=1.1          # woff2, which is what foundries serve
 regex>=2024.0.0      # \p{...} answered by the engine itself, not a kept list
+uharfbuzz>=0.39      # HarfBuzz itself, for tier-3 verdicts

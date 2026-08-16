@@ -1,0 +1,12 @@
+{
+  "_note": "Authored, not generated. The sequences a script's fonts and shaping engines actually disagree on — the tier-3 evidence every verdict is computed from. Carried across from the design prototype. The desktop companion reads this same list, so both products share one definition of what clean, caveat and fail mean.",
+  "Mlym": [
+    { "id": "stri", "codes": "0D38 0D4D 0D24 0D4D 0D30 0D40", "needs": ["akhn", "half", "blwf", "pres"], "langs": "ml", "out": "സ്ത്രീ" },
+    { "id": "kka", "codes": "0D15 0D4D 0D15", "needs": ["akhn", "pres"], "langs": "ml, jns", "out": "ക്ക" },
+    { "id": "chillu", "codes": "0D7B", "needs": [], "langs": "ml, jns", "out": "ൻ", "note": "atomic chillu n" },
+    { "id": "chilluZwj", "codes": "0D28 0D4D 200D", "needs": ["pres"], "langs": "ml", "out": "ൻ", "note": "pre-5.1 chillu sequence" },
+    { "id": "nta", "codes": "0D7B 0D4D 0D31", "needs": ["blwf", "pres"], "langs": "ml, jns", "out": "ൻ്റ", "note": "recommended nta" },
+    { "id": "ntaLegacy", "codes": "0D28 0D4D 0D31", "needs": ["akhn", "blwf"], "langs": "ml", "out": "ൻ്റ", "note": "legacy nta, InScript input" },
+    { "id": "reph", "codes": "0D4E 0D15", "needs": ["abvs"], "langs": "ml", "out": "ൎക", "note": "dot reph" }
+  ]
+}
