@@ -1,0 +1,193 @@
+/* The specimen sheet. Chrome stays small and quiet so the fonts are the only
+   large voice on the page.
+
+   Tokens, type scale and geometry are the prototype's and are final — see
+   docs/prototype/README.md. The prototype expressed them as inline styles
+   because its template format had no other option; here they are a stylesheet.
+   Radius is 2px on inputs, buttons and chips and 0 everywhere else: no rounded
+   cards. No shadows. One animation in the whole app. */
+
+:root {
+  --bone:   #E9EBE7;   /* page */
+  --panel:  #F5F6F3;   /* inset panels, inputs, specimen wells */
+  --rule:   #CBCFC8;   /* every hairline */
+  --ink:    #16181D;   /* primary text */
+  --muted:  #6E736C;   /* secondary text, labels, data */
+  --faint:  #9AA096;   /* disabled, unlinked, not-tested */
+  --proof:  #1F4FD8;   /* links, passing verdicts, active accents */
+  --alarm:  #A81E12;   /* failing verdicts, caveats */
+  --hatch:  #DCDFD8;   /* reserved codepoint hatching */
+
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --cond: 'IBM Plex Sans Condensed', var(--sans);
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bone);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { text-wrap: pretty; }
+
+a {
+  color: var(--proof);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(31, 79, 216, .28);
+}
+a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--proof); outline-offset: 2px; }
+::selection { background: var(--rule); }
+
+button, input { font: inherit; color: inherit; }
+
+@keyframes bargrow { from { transform: scaleX(.02); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ------------------------------------------------------------- structure */
+
+.column { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bone);
+  border-bottom: 1px solid var(--rule);
+}
+.masthead .column {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  align-items: baseline;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.wordmark {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border: none;
+  white-space: nowrap;
+}
+.masthead nav { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.masthead nav a {
+  font-size: 13.5px;
+  color: var(--muted);
+  border-bottom-color: transparent;
+}
+.masthead nav a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
+.trail { border-bottom: 1px solid var(--rule); background: var(--panel); }
+.trail .column:empty { display: none; }
+.where {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 7px 0;
+}
+.where .mono { letter-spacing: 0; text-transform: none; }
+
+main { padding-bottom: 56px; }
+section { padding-top: 34px; }
+
+.colophon {
+  border-top: 1px solid var(--rule);
+  margin-top: 44px;
+  padding: 22px 0 40px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.colophon p { margin: 0 0 8px; max-width: 62ch; }
+
+/* ------------------------------------------------------------------ type */
+
+h1 {
+  font-size: 40px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  margin: 0 0 14px;
+}
+.lede {
+  font-size: 35px;
+  line-height: 1.22;
+  letter-spacing: -.018em;
+  font-weight: 400;
+  margin: 0 0 18px;
+  max-width: 20ch;
+}
+.claim { padding-top: 44px; }
+.claim p { max-width: 66ch; }
+
+.eyebrow {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--ink);
+}
+.mono { font-family: var(--mono); font-size: .82em; }
+.quiet { color: var(--muted); font-size: 14px; max-width: 66ch; }
+
+/* ------------------------------------------------------------ components */
+
+/* The facts strip: a mono value over a small uppercase label. */
+.facts { display: flex; flex-wrap: wrap; gap: 22px 44px; margin: 0 0 18px; }
+.facts dt {
+  font-family: var(--cond);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  order: 2;
+}
+.facts dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 16px;
+  order: 1;
+}
+
+/* Multi-column sections. Always a row gap — wrapped columns collide without
+   one, which is how the prototype's first draft looked broken at 900px. */
+.paths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 30px 44px;
+}
+.paths .q { display: block; font-size: 17px; margin-bottom: 8px; }
+.paths .links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 8px; }
+
+/* Verdicts. Three states, three treatments — and "not tested" is a state, not
+   a blank, because a blank reads as a pass. */
+.clean { color: var(--proof); }
+.caveat { color: var(--muted); }
+.fail { color: var(--alarm); }
+.untested { color: var(--faint); }
+
+@media print {
+  .masthead, .trail, .colophon { display: none; }
+  body { background: #fff; color: #000; }
+  a { color: #000; border: none; }
+}

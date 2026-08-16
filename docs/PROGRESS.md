@@ -59,9 +59,13 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 
 ### Phase 1b — the pages
 
-- [ ] Static HTML rendering: entity pages generated, index pages served whole
-      with JS filtering on top, tool pages as shells
-- [ ] Home
+- [x] Static HTML rendering (`web/build/render.py`, 6 tests): page shell,
+      real paths instead of hash routes, `web/style.css` from the prototype's
+      final tokens. CI runs generator → renderer → deploy, tests gating
+- [x] The mockup moves to `/mockup/`; `/` is now a generated page
+- [x] Home — the claim, what is indexed vs what is measured, the three entry
+      questions, index links. Still to add once their pages exist: the worked
+      verdict, and the query examples that fill the search field
 - [ ] Script page — engine strip in the filter-chips row, no collapse bar
 - [ ] Font family page — real CSS "Use it" fallback chain
 - [ ] Font shaping tables

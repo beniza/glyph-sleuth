@@ -1,10 +1,28 @@
 # Local scratch — notes, downloads, experiments. Never committed.
 .local/
 
-# Derived data. The generator rebuilds it; CI rebuilds it on deploy.
-# Without it the site shows an error, which is correct behaviour, not a bug.
-site/data/
+# Derived. The generator and renderer rebuild these; CI rebuilds them on deploy.
+# Without them the build stops and says so, which is correct behaviour, not a bug.
 web/data/
+site/data/
+site/index.html
+site/style.css
+site/app.js
+# Generated entity, index and tool pages. site/mockup/ is committed on purpose:
+# it is the design the build is checked against, not output.
+site/script/
+site/lang/
+site/font/
+site/char/
+site/block/
+site/feature/
+site/scripts/
+site/languages/
+site/fonts/
+site/inspect/
+site/regex/
+site/identify/
+site/compare/
 
 __pycache__/
 *.pyc

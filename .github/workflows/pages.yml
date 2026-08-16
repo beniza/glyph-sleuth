@@ -1,14 +1,18 @@
-# Publish site/ to GitHub Pages.
+# Build the site and publish it to GitHub Pages.
 #
-# Today site/ is the design mockup, so there is nothing to build. When the
-# generator lands, its build and test steps go in ahead of the upload and this
-# stays otherwise unchanged.
+# The generator reads font releases to measure them and writes only JSON; the
+# renderer turns that into static HTML. No font file is ever written into the
+# published site — see test_gen.test_no_font_is_ever_served, which gates this.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ['web/**', 'shared/**', 'site/**', '.github/workflows/pages.yml']
+  schedule:
+    # Font releases and Unicode data move; a monthly rebuild keeps the numbers
+    # honest without anyone remembering to press a button.
+    - cron: '17 4 1 * *'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +32,28 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements.txt
+
+      # The tests are the gate: a red suite must not reach the site.
+      - run: node web/tests/test-core.mjs
+      - run: python shared/test_core.py
+      - run: python web/build/test_gen.py
+      - run: python web/build/test_render.py
+
+      - run: python web/build/gen_index.py
+        env:
+          # Unauthenticated GitHub API is 60 requests an hour, which fails
+          # partway through the foundry listings.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: python web/build/render.py
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
