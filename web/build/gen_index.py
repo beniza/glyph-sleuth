@@ -3,26 +3,35 @@
     python web/build/gen_index.py             # everything, ~10 minutes
     python web/build/gen_index.py --limit 40  # a slice, for development
 
-Writes web/data/*.json. It reads JSON, XML and CSS, and **never a font file**:
-Google publishes each family's coverage as codepoint ranges, so the whole Google
-corpus costs small metadata fetches and no downloads at all. Every other foundry
-is indexed by name, licence and where to get it — its coverage stays unmeasured
-until someone runs the desktop companion against a font they already have, which
-is the only place a font binary is ever opened.
+Writes web/data/*.json, and **no font file, ever**. Reading a font is fine and is
+what every font QA tool does; redistributing one is not. So a release is fetched,
+parsed in memory and dropped: nothing is written to disk, cached into the site,
+or committed, and nothing we publish points at a font URL of ours.
 
-An unmeasured family says so on the page. That is the honest state; a guessed
-range would not be.
+Google publishes each family's coverage as codepoint ranges in its metadata, so
+those ~1,900 families cost small JSON fetches and no downloads at all. The other
+foundries are measured from their own latest release — cmap for coverage,
+GSUB/GPOS for the script tags and lookup counts, fvar for axes, silf for
+Graphite.
+
+A family whose release cannot be read is still indexed, as a stub, and says
+"not measured yet" on the page. That is the honest state; a guessed range would
+not be.
 """
 import argparse
 import collections
+import datetime
+import hashlib
 import io
 import json
 import os
 import re
 import sys
+import tarfile
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -76,6 +85,9 @@ SOURCES = [
 ]
 
 OUT_DATA = os.path.join(ROOT, "web", "data")
+# Stamped onto every measurement: a verdict is about the release it was read
+# from, on the day it was read, not a permanent property of the family.
+TODAY = datetime.date.today().isoformat()
 HEADERS = {"User-Agent": "glyph-sleuth-index/1.0 (+https://github.com/beniza/glyph-sleuth)"}
 
 
@@ -223,14 +235,14 @@ def family_from_stylesheet(sheet):
     return found.group(1).strip() if found else None
 
 
-def foundry_record(name, source, page, css=None, licence=""):
-    """A family we know exists but have not measured.
+def foundry_record(name, source, page, css=None, licence="", facts=None):
+    """One indexed family from a foundry.
 
-    No ranges, and `tier` says why: opening the font is the companion's job, on
-    a contributor's own machine. Until then the page says "not measured yet"
-    rather than implying a coverage we never computed.
+    With `facts` from measure() it is a measured family; without them it is a
+    stub — indexed and findable, but the page says "not measured yet" rather
+    than implying a coverage nobody computed.
     """
-    return {
+    record = {
         "name": name,
         "ranges": [],
         "source": source,
@@ -242,6 +254,139 @@ def foundry_record(name, source, page, css=None, licence=""):
         "css": css,
         "tier": "stub",
     }
+    if facts:
+        record.update({k: v for k, v in facts.items() if k != "family"})
+        record["tier"] = "measured"
+    return record
+
+
+# --------------------------------------------------------------- measuring
+
+# We may read a font; we may never redistribute one. A release is downloaded,
+# parsed in memory and dropped — no file is written, cached to the site, or
+# committed, and nothing we publish ever points at a font URL of ours.
+
+FONT_SUFFIXES = (".ttf", ".otf")
+
+
+def extract_fonts(blob):
+    """{member name: bytes} for the font files in a release archive.
+
+    Kept in memory deliberately: the archive is read and discarded, so there is
+    never a font file on disk to accidentally publish.
+    """
+    found = {}
+    if blob[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            members = archive.namelist()
+            for name in members:
+                if is_font_member(name):
+                    found[name] = archive.read(name)
+        return found
+    with tarfile.open(fileobj=io.BytesIO(blob)) as archive:
+        for member in archive.getmembers():
+            if member.isfile() and is_font_member(member.name):
+                found[member.name] = archive.extractfile(member).read()
+    return found
+
+
+def is_font_url(url):
+    """Is this stylesheet `src` a font file?
+
+    Split the query off first: SMC cache-busts with "?v=Version2.000", and a
+    plain endswith() sees no font there at all.
+    """
+    path = urllib.parse.urlsplit(url).path
+    return path.lower().endswith(FONT_SUFFIXES + (".woff2", ".woff"))
+
+
+def is_font_member(name):
+    base = os.path.basename(name)
+    # macOS resource forks are named like the file they shadow and are not fonts.
+    if base.startswith("._") or "__MACOSX" in name:
+        return False
+    return name.lower().endswith(FONT_SUFFIXES)
+
+
+# Style words that mean this is not the face to measure or set a specimen in.
+NOT_REGULAR = ("bold", "italic", "oblique", "thin", "light", "medium", "black",
+               "semibold", "extrabold", "heavy", "condensed", "expanded")
+
+
+def pick_faces(members):
+    """One face per family in a release: the upright regular where there is one.
+
+    A specimen set in Bold Italic tells you about the wrong drawing, and a
+    release carrying two families (Meera and Meera Inimai) is two answers, not
+    one — the same distinction `same_family` protects in the index.
+    """
+    by_family = collections.defaultdict(list)
+    for name in members:
+        if not is_font_member(name):
+            continue
+        stem = os.path.basename(name).rsplit(".", 1)[0]
+        by_family[squash(stem.split("-")[0])].append(name)
+
+    picked = []
+    for family in sorted(by_family):
+        faces = sorted(by_family[family])
+        regular = [f for f in faces
+                   if not any(word in os.path.basename(f).lower() for word in NOT_REGULAR)]
+        picked.append((regular or faces)[0])
+    return picked
+
+
+def measure(blob):
+    """Everything a font file can tell us, read in memory from its own tables.
+
+    Tier 1 is `cmap`: which codepoints exist. Tier 2 is the `GSUB`/`GPOS` script
+    list: which OpenType tag the font declares — a face can cover every
+    codepoint of a script and still declare only the old tag, which is exactly
+    the failure the site exists to show. Tier 3 needs a shaper and is not here.
+    """
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(io.BytesIO(blob), fontNumber=0, lazy=True)
+    facts = {
+        "ranges": ranges_from(font.getBestCmap().keys()),
+        "tags": [],
+        "gsub": 0,
+        "gpos": 0,
+        "features": [],
+        "axes": [],
+        # Graphite lives in `silf`. Absent means not applicable, which the
+        # matrix says differently from "failed".
+        "graphite": "Silf" in font,
+        "checksum": "sha256:" + hashlib.sha256(blob).hexdigest(),
+        "version": "",
+        "family": "",
+    }
+
+    tags, features = set(), set()
+    for table_tag in ("GSUB", "GPOS"):
+        if table_tag not in font:
+            continue
+        table = font[table_tag].table
+        for record in getattr(table.ScriptList, "ScriptRecord", []) or []:
+            tags.add(record.ScriptTag.strip())
+        for record in getattr(table.FeatureList, "FeatureRecord", []) or []:
+            features.add(record.FeatureTag.strip())
+        lookups = getattr(table.LookupList, "Lookup", []) or []
+        facts["gsub" if table_tag == "GSUB" else "gpos"] = len(lookups)
+    facts["tags"] = sorted(tags)
+    facts["features"] = sorted(features)
+
+    if "fvar" in font:
+        facts["axes"] = [{"tag": axis.axisTag, "min": axis.minValue,
+                          "default": axis.defaultValue, "max": axis.maxValue}
+                         for axis in font["fvar"].axes]
+
+    name = font["name"]
+    facts["family"] = str(name.getBestFamilyName() or "")
+    version = name.getDebugName(5) or ""
+    facts["version"] = version.replace("Version ", "").strip()
+    font.close()
+    return facts
 
 
 def projects(source, token=None):
@@ -270,27 +415,90 @@ def projects(source, token=None):
     return sorted(p for p in found if p.startswith(prefix) and p not in source["skip"])
 
 
-def foundry_family(source, project):
-    """One indexed family from a foundry project — metadata only.
+GITHUB_RELEASE = "https://api.github.com/repos/{org}/{project}/releases/latest"
+GITHUB_RELEASE_FULL = "https://api.github.com/repos/{project}/releases/latest"
+GITLAB_RELEASES = "https://gitlab.com/api/v4/projects/{project}/releases"
 
-    For a foundry that publishes its own stylesheet we read the family name out
-    of it, which also gives the "Use it" snippet a real URL to point at. For the
-    rest, the repository name is the best handle we have without opening a font,
-    and the companion will correct it when it measures the family.
+
+def release_faces(source, project, token=None):
+    """[(label, bytes)] for the faces to measure in a project's latest release.
+
+    A foundry that publishes its own stylesheet is read straight from it; the
+    rest ship a release archive. Either way the bytes stay in memory.
+    """
+    if source["host"] == "css":
+        sheet = fetch_text(f"{source['base']}/fonts/{project}.css")
+        # The first @font-face is the upright regular; the rest are weights.
+        for url in CSS_URL.findall(sheet):
+            if is_font_url(url):
+                full = url if url.startswith("http") else source["base"] + url
+                label = os.path.basename(urllib.parse.urlsplit(url).path)
+                return [(label, fetch(full))], sheet
+        return [], sheet
+
+    if source["host"] in ("github", "github-repos"):
+        url = (GITHUB_RELEASE_FULL.format(project=project) if source["host"] == "github-repos"
+               else GITHUB_RELEASE.format(org=source["org"], project=project))
+        release = fetch_json(url, token)
+        assets = [a for a in release.get("assets", [])
+                  if a["name"].endswith((".zip", ".tar.xz"))]
+        if not assets:
+            return [], None
+        blob = fetch(assets[0]["browser_download_url"], token)
+        tag = release.get("tag_name")
+    else:
+        group = urllib.parse.quote(f"{source['group']}/{project}", safe="")
+        releases = fetch_json(GITLAB_RELEASES.format(project=group))
+        if not releases:
+            return [], None
+        # GitLab serves built fonts from a job artifact whose URL ends
+        # ".../download?job=build-tag" — no extension to filter on, so take the
+        # link and let extract_fonts sniff what it actually is.
+        links = [l["url"] for l in releases[0].get("assets", {}).get("links", [])]
+        if not links:
+            return [], None
+        blob = fetch(links[0])
+        tag = releases[0].get("tag_name")
+
+    members = extract_fonts(blob)
+    return [(name, members[name]) for name in pick_faces(members)], tag
+
+
+def foundry_family(source, project, token=None):
+    """One indexed family from a foundry project, measured from its release.
+
+    The release is fetched, parsed in memory and dropped. If anything about it
+    fails — no release, a moved URL, an unreadable face — the family is still
+    indexed, as a stub, because a family we cannot measure today is still a
+    family someone is looking for.
     """
     page = source["page"].format(project=project)
-    if source["host"] == "css":
-        css = f"{source['base']}/fonts/{project}.css"
-        try:
-            name = family_from_stylesheet(fetch_text(css))
-        except Exception:
-            return None
-        if not name:
-            return None
-        return foundry_record(name, source["id"], page, css=css)
+    css = f"{source['base']}/fonts/{project}.css" if source["host"] == "css" else None
+    fallback_name = project.split("/")[-1].replace("font-", "").replace("-", " ").title()
 
-    name = project.split("/")[-1].replace("font-", "").replace("-", " ").title()
-    return foundry_record(name, source["id"], page)
+    try:
+        faces, extra = release_faces(source, project, token)
+    except Exception as error:
+        print(f"  !! {project}: {error}")
+        return foundry_record(fallback_name, source["id"], page, css=css)
+
+    if source["host"] == "css" and extra:
+        fallback_name = family_from_stylesheet(extra) or fallback_name
+
+    if not faces:
+        return foundry_record(fallback_name, source["id"], page, css=css)
+
+    label, blob = faces[0]
+    try:
+        facts = measure(blob)
+    except Exception as error:
+        print(f"  !! {project} ({label}): {error}")
+        return foundry_record(fallback_name, source["id"], page, css=css)
+
+    facts["provenance"] = {"file": label, "release": extra if source["host"] != "css" else css,
+                           "read": TODAY}
+    return foundry_record(facts.get("family") or fallback_name, source["id"], page,
+                          css=css, facts=facts)
 
 
 # ----------------------------------------------------------------- languages
@@ -546,7 +754,7 @@ def main():
         found = projects(source, token)
         found = found[:args.limit] if args.limit else found
         have = [squash(f["name"]) for f in fonts]
-        for font in in_parallel(found, lambda p: foundry_family(source, p), "families"):
+        for font in in_parallel(found, lambda p: foundry_family(source, p, token), "families"):
             # Already indexed — by Google, or by another project of this family.
             if any(same_family(squash(font["name"]), name) for name in have):
                 continue

@@ -3,8 +3,11 @@
 Covers the range arithmetic, the family-merging rule, the stylesheet reading,
 and the constraint the whole design rests on: nothing here downloads a font.
 """
-import sys
+import hashlib
+import io
 import os
+import sys
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gen_index
@@ -92,19 +95,147 @@ def test_foundry_record():
     assert font["css"] == "https://smc.org.in/fonts/manjari.css"
 
 
-def test_no_font_is_ever_downloaded():
-    """The constraint that shaped the whole design, asserted rather than trusted.
+def test_no_font_is_ever_served():
+    """The constraint that shaped the design, asserted rather than trusted.
 
-    No font binary is fetched, mirrored or hosted by our infrastructure — not
-    even transiently in a build step. Real computed numbers come from a
-    contributor's own machine, or they do not exist yet and the page says so.
+    Reading a font is fine — that is what every font QA tool does, and the
+    licences permit it plainly. Redistributing one is not. So the generator may
+    download and parse a release in memory, but must never write a font file
+    into what we publish, and must never keep one.
     """
     source = open(gen_index.__file__, encoding="utf-8").read()
-    for banned in ("fontTools", "woff2", "ttLib", "zipfile", "tarfile",
-                   "build_face", "extract_fonts", "prune_fonts"):
-        assert banned not in source, f"{banned} is back in the generator"
-    # Fetching is text and JSON only, and the allowlist says so out loud.
+    # No output directory for fonts, and no woff2 conversion: the two things
+    # the archive did that made us a font host.
     assert not hasattr(gen_index, "OUT_FONTS")
+    # `flavor` is how fontTools re-emits a face as a webfont. Reading a .woff2 a
+    # foundry already serves is fine; writing one of our own is what made the
+    # archive a font host.
+    assert "flavor" not in source, "we are re-emitting webfonts again"
+    # Nothing is opened for binary writing, so no font can reach the disk.
+    assert '"wb"' not in source and "'wb'" not in source, "something writes binary files"
+    # Everything written goes to the data directory, never a font directory.
+    assert gen_index.OUT_DATA.endswith(os.path.join("web", "data"))
+
+
+def test_parsed_fonts_are_not_kept():
+    # A parsed release lives in memory and is dropped. If a path to a font file
+    # is ever returned in a record, we have started hosting by accident.
+    record = gen_index.foundry_record(
+        name="Manjari", source="smc", page="https://smc.org.in/fonts/#/manjari",
+        css="https://smc.org.in/fonts/manjari.css")
+    assert "file" not in record, "a font path is back in the index"
+
+
+def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None):
+    """A real font, built in memory, so the parser is tested against the thing
+    it actually parses rather than a stub of it."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    names = [".notdef"] + [f"g{cp:04X}" for cp in codepoints]
+    builder = FontBuilder(1000, isTTF=True)
+    builder.setupGlyphOrder(names)
+    builder.setupCharacterMap({cp: f"g{cp:04X}" for cp in codepoints})
+    empty = TTGlyphPen(None).glyph()
+    builder.setupGlyf({name: empty for name in names})
+    builder.setupHorizontalMetrics({name: (500, 0) for name in names})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": "Test Face", "styleName": "Regular",
+                            "version": "1.234"})
+    builder.setupOS2()
+    builder.setupPost()
+    if axes:
+        builder.setupFvar(axes, [])
+    if fea:
+        addOpenTypeFeaturesFromString(builder.font, fea)
+    blob = io.BytesIO()
+    builder.save(blob)
+    return blob.getvalue()
+
+
+def test_measure_coverage():
+    facts = gen_index.measure(sample_font())
+    # cmap -> the same range form the client bisects.
+    assert facts["ranges"] == [[0x0D15, 0x0D16], [0x0D7B, 0x0D7B]]
+    # Nothing declared and nothing to shape with, said plainly rather than as 0.
+    assert facts["tags"] == []
+    assert facts["gsub"] == 0 and facts["gpos"] == 0
+    assert facts["features"] == []
+    assert facts["axes"] == []
+    # No silf table: Graphite is not applicable, which is not the same as failing.
+    assert facts["graphite"] is False
+
+
+def test_measure_opentype():
+    fea = """
+    languagesystem mlm2 dflt;
+    feature akhn {
+        sub g0D15 g0D16 by g0D7B;
+    } akhn;
+    feature pres {
+        sub g0D16 by g0D15;
+    } pres;
+    """
+    facts = gen_index.measure(sample_font(fea=fea))
+    # The tag the font declares is the tier-2 evidence the whole site turns on:
+    # a face can cover every codepoint and still declare only the old tag.
+    assert facts["tags"] == ["mlm2"]
+    assert sorted(facts["features"]) == ["akhn", "pres"]
+    assert facts["gsub"] == 2                 # one lookup per feature here
+    assert facts["gpos"] == 0
+
+
+def test_measure_variable():
+    facts = gen_index.measure(sample_font(axes=[("wght", 400, 400, 700, "Weight")]))
+    assert facts["axes"] == [{"tag": "wght", "min": 400, "default": 400, "max": 700}]
+
+
+def test_measure_provenance():
+    blob = sample_font()
+    facts = gen_index.measure(blob)
+    # A number nobody can reproduce is a number nobody should trust: every
+    # measurement carries the file it came from and the version it claims.
+    assert facts["checksum"] == "sha256:" + hashlib.sha256(blob).hexdigest()
+    assert facts["version"] == "1.234"
+    assert facts["family"] == "Test Face"
+
+
+def test_pick_faces():
+    # One face per family, and it must be the upright regular — a specimen set
+    # in Bold Italic tells you about the wrong drawing.
+    members = ["Manjari-Bold.ttf", "Manjari-Regular.ttf", "Manjari-Thin.ttf",
+               "OFL.txt", "documentation/manual.pdf"]
+    assert gen_index.pick_faces(members) == ["Manjari-Regular.ttf"]
+    # No Regular in the release: take the first face rather than nothing.
+    assert gen_index.pick_faces(["Gayathri-Thin.ttf", "Gayathri-Bold.ttf"]) \
+        == ["Gayathri-Bold.ttf"]
+    # Two families in one archive are two answers, not one.
+    both = gen_index.pick_faces(["Meera-Regular.ttf", "MeeraInimai-Regular.ttf"])
+    assert len(both) == 2
+    assert gen_index.pick_faces(["README.md"]) == []
+
+
+def test_font_url_with_query():
+    # SMC cache-busts its own stylesheet: the src URL ends
+    # ".woff2?v=Version2.000", so a plain endswith() sees no font at all and
+    # every SMC family silently falls back to a stub.
+    assert gen_index.is_font_url("/downloads/fonts/manjari/Manjari-Regular.woff2?v=Version2.000")
+    assert gen_index.is_font_url("https://x/Gayathri-Regular.ttf")
+    assert not gen_index.is_font_url("/fonts/manjari.css")
+    assert not gen_index.is_font_url("/fonts/specimen.png?woff2=no")
+
+
+def test_extract_fonts():
+    blob = io.BytesIO()
+    with zipfile.ZipFile(blob, "w") as archive:
+        archive.writestr("release/Manjari-Regular.ttf", b"font bytes")
+        archive.writestr("release/OFL.txt", b"licence")
+        # macOS resource forks look like fonts and are not.
+        archive.writestr("__MACOSX/._Manjari-Regular.ttf", b"junk")
+    found = gen_index.extract_fonts(blob.getvalue())
+    assert list(found) == ["release/Manjari-Regular.ttf"]
+    assert found["release/Manjari-Regular.ttf"] == b"font bytes"
 
 
 def test_sources_are_declarative():

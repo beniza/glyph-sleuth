@@ -1,7 +1,8 @@
 # Progress
 
-The resumable checklist. `HANDOFF.md` says what we're building and why; this says
-how far we've got. Tick items as they land, and keep the notes under a phase
+The resumable checklist. `HANDOFF.md` says what we're building and why,
+`BUILD-PLAN.md` says in what order and on what reasoning; this says how far we've
+got. Tick items as they land, and keep the notes under a phase
 current — an interrupted session should be able to start here and nowhere else.
 
 Method is test-driven throughout: the failing test comes first, for every
@@ -20,16 +21,41 @@ question, it's in; if it changes a file, it's out.**
 - [x] Fix `HANDOFF.md` §8 manifest: it pointed at `project/`, not the real paths
 - [x] `.github/workflows/pages.yml` — publish `site/`
 - [x] `README.md` + `LICENSE` (MIT, carried from the archive branch)
-- [ ] Enable Pages in the repo settings (Source: GitHub Actions) — manual step
+- [x] Pages live at <https://beniza.github.io/glyph-sleuth/> (was already set to
+      build from Actions, so `pages.yml` just took over)
 
 ## Phase 1 — Generator and the ten built pages
 
 Ported from `archive/pre-rebuild`, with the font-hosting path removed.
 
-- [ ] `shared/` — `ucd.py`, `chars.py`, `langs.py`, `store.py` as-is
-- [ ] `web/build/gen_index.py` ← `scripts/gen_web_index.py`, minus `OUT_FONTS`,
-      `build_face`, `extract_fonts`, `prune_fonts`
-- [ ] `web/core.js` ← `web/core.js`, logic only, no DOM
+- [x] `shared/` — `ucd.py`, `chars.py`, `langs.py`, `store.py` as-is (7 tests)
+- [x] `web/build/gen_index.py` ← `scripts/gen_web_index.py`, minus the whole
+      font-downloading half (9 tests). Non-Google foundries are indexed as
+      `tier: "stub"` with no ranges until the companion measures them
+- [x] `web/core.js` ← the archive's, logic only, no DOM (17 tests), with
+      `useIt()` replacing `embed()` and one further-reading link per page
+### Phase 1a — restore measurement under the corrected font policy
+
+The data layer above landed while `HANDOFF.md` §4's stricter "never fetch a font
+even in CI" rule was still in force. That rule turned out to be stricter than the
+brief it consolidates, and it would have left the flagship Malayalam faces
+permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected to
+**fetch and parse, never host** — see `BUILD-PLAN.md`.
+
+- [x] Restore the release-reading path in `gen_index.py`, parsing only: `cmap`
+      for coverage, `GSUB`/`GPOS` for tags and lookup counts, `fvar` for axes,
+      `silf` for Graphite. Nothing written, binary discarded after parsing
+- [x] Provenance on every computed fact: file, release/stylesheet, checksum, date
+- [x] A family whose release cannot be read degrades to a stub with a printed
+      reason, rather than failing the build or vanishing
+- [x] `test_no_font_is_ever_downloaded` → `test_no_font_is_ever_served`
+- [ ] HarfBuzz in CI (`uharfbuzz`) against the shared `SEQUENCES` list, filling
+      the `hb` column with real verdicts. **Blocked**: `SEQUENCES` arrives with
+      the font pages in Phase 1b, so this lands with them
+- [ ] Correct the same drift in `HANDOFF.md` §4 and `README.md`
+
+### Phase 1b — the pages
+
 - [ ] Static HTML rendering: entity pages generated, index pages served whole
       with JS filtering on top, tool pages as shells
 - [ ] Home
@@ -86,9 +112,10 @@ Blocked on data decisions, not code.
 
 ## Constraints that do not move
 
-- No font binary is ever fetched, mirrored or hosted by our infrastructure —
-  not even transiently in a build step. Google's coverage metadata is JSON, not
-  a binary, and is fine.
+- **Fetch and parse, never host.** CI may download a public OFL/GPL+FE release,
+  parse it in memory and discard it. It may never host, mirror, serve or commit
+  a font file, and no page or snippet may point at a font URL of ours.
+- Nothing the visitor types leaves the browser. No uploads, no accounts.
 - Never claim something the page cannot show.
 - `same_family` merges on a known suffix only, never a shared prefix.
 - Coverage is composition-aware.
