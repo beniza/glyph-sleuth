@@ -34,6 +34,7 @@ Ported from `archive/pre-rebuild`, with the font-hosting path removed.
       `tier: "stub"` with no ranges until the companion measures them
 - [x] `web/core.js` ← the archive's, logic only, no DOM (17 tests), with
       `useIt()` replacing `embed()` and one further-reading link per page
+
 ### Phase 1a — restore measurement under the corrected font policy
 
 The data layer above landed while `HANDOFF.md` §4's stricter "never fetch a font
@@ -52,7 +53,7 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 - [ ] HarfBuzz in CI (`uharfbuzz`) against the shared `SEQUENCES` list, filling
       the `hb` column with real verdicts. **Blocked**: `SEQUENCES` arrives with
       the font pages in Phase 1b, so this lands with them
-- [ ] Correct the same drift in `HANDOFF.md` §4 and `README.md`
+- [x] Correct the same drift in `HANDOFF.md` §4 and `README.md`
 
 ### Phase 1b — the pages
 

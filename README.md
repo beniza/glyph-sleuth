@@ -27,16 +27,16 @@ Start at [`docs/PROGRESS.md`](docs/PROGRESS.md) for where the work stands, and
 | Where | `web/`, published from `site/` | `desktop/` |
 | Emits | pages | a small stamped JSON record, as a pull request |
 
-The desktop half is a companion, not a second front end. It exists because the
-facts that need a font file open — OpenType tags, lookup counts, shaping
-verdicts — have to be computed somewhere, and it is not going to be here:
+> **Fetch and parse, never host.** The build downloads a family's public release,
+> reads its tables in memory and drops it. It never hosts, mirrors, serves or
+> commits a font file, and nothing published here points at a font URL of ours.
+> Specimens render from wherever the family is actually distributed.
 
-> **No font binary is ever fetched, mirrored or hosted by Glyph Sleuth's own
-> infrastructure**, not even transiently in a build step.
+Nothing you type ever leaves your browser. No uploads, no accounts, no server.
 
-Specimens render from wherever the family is actually distributed. Real computed
-numbers come from a contributor's own machine, or they do not exist yet and the
-page says so.
+The desktop half is a companion, not a second front end: it measures the fonts
+the build cannot reach — unreleased, in development, proprietary, or internal to
+an organisation — on the machine that already has them.
 
 ## Scope
 

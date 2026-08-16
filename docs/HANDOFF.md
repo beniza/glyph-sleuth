@@ -106,11 +106,23 @@ data shapes (`FAMILIES`/`FONT_DETAIL`/`SHAPING`), which were still moving as of 
 handoff (the matrix alone adds a `graphite` field). Build the web app's remaining pieces
 first; spec the companion's exporter against the settled schema once it exists, not before.
 
-This is also the resolution to a constraint that must not be relaxed during implementation:
-**no font binary should ever be fetched, mirrored, or hosted by Glyph Sleuth's own
-infrastructure**, even transiently in a build pipeline. Real computed numbers come from the
-companion running on a contributor's own machine, or they don't exist yet and the page says
-so — never from Glyph Sleuth reaching out to fetch a font itself.
+> **Corrected during implementation — see `BUILD-PLAN.md`.** This section
+> originally read: *"no font binary should ever be fetched, mirrored, or hosted by
+> Glyph Sleuth's own infrastructure, even transiently in a build pipeline."* That
+> is stricter than `chats/chat1.md` §10, which forbids **hosting** a font,
+> editing or generating one, and uploading what the visitor types — but says
+> nothing about a build step reading a public font. The stricter wording came
+> from a Claude Design sandbox limitation that §1 of the companion addendum
+> itself calls "not a constraint on the shipped product".
+>
+> The rule as built is **fetch and parse, never host**: CI may download a public
+> OFL/GPL+FE release, parse it in memory and discard it; it may never host,
+> mirror, serve or commit a font file, and nothing we publish points at a font
+> URL of ours. Redistribution is what carries the weight, and none happens.
+>
+> This also narrows the companion's purpose, for the better: it is now for fonts
+> CI **cannot** reach — unreleased, in development, proprietary, SIL-internal —
+> rather than the only route to any real number at all.
 
 ## 5 · Scope and content-growth philosophy
 
