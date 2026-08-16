@@ -239,6 +239,38 @@ def test_extract_fonts():
     assert found["release/Manjari-Regular.ttf"] == b"font bytes"
 
 
+def test_google_face_url():
+    # Google's css2 serves woff2 to a modern UA and ttf to an old one. Either
+    # is readable; what matters is getting a real file URL out of the sheet,
+    # because the metadata alone stops at coverage.
+    sheet = """
+    /* malayalam */
+    @font-face {
+      font-family: 'Manjari';
+      font-style: normal;
+      font-weight: 400;
+      src: url(https://fonts.gstatic.com/s/manjari/v9/abc.woff2) format('woff2');
+      unicode-range: U+0307, U+0323, U+0D00-0D7F;
+    }
+    """
+    assert gen_index.face_url_from_stylesheet(sheet) == \
+        "https://fonts.gstatic.com/s/manjari/v9/abc.woff2"
+    assert gen_index.face_url_from_stylesheet("/* nothing */") is None
+
+
+def test_only_relevant_families_are_parsed():
+    """Downloading 1,900 releases to answer a question about Malayalam would be
+    rude to the CDN and slow for no gain.
+
+    A family is worth opening when it covers a script we have sequences for —
+    that is where tiers 2 and 3 mean anything.
+    """
+    malayalam = {"ranges": [[0x0D00, 0x0D7F]]}
+    latin_only = {"ranges": [[0x0020, 0x007E]]}
+    assert gen_index.worth_parsing(malayalam)
+    assert not gen_index.worth_parsing(latin_only)
+
+
 def test_shape_verdicts():
     # Tier 3, and the reason the site exists: a face can cover every codepoint
     # of a sequence and still not draw it. A .notdef in the output, or a

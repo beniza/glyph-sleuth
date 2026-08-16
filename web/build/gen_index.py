@@ -191,6 +191,60 @@ def google_record(meta, detail):
     }
 
 
+CSS_SRC = re.compile(r"src:\s*url\(([^)]+)\)")
+
+
+def face_url_from_stylesheet(sheet):
+    """The actual font file behind a css2 stylesheet, or None.
+
+    Google's metadata stops at coverage, so tiers 2 and 3 need the file itself
+    — and Google serves it publicly, like any other foundry.
+    """
+    found = CSS_SRC.search(sheet)
+    return found.group(1).strip("'\" ") if found else None
+
+
+def worth_parsing(font):
+    """Is this family worth opening?
+
+    Only if it covers a script we have authored sequences for. Downloading
+    every family to answer a question about Malayalam would be rude to the CDN
+    and slow, and tiers 2 and 3 say nothing about a face the script never
+    reaches.
+    """
+    return any(countInRange(font.get("ranges") or [], first, last)
+               for blocks in SHAPED_SCRIPTS.values() for first, last in blocks)
+
+
+def measure_google_face(font):
+    """Open a Google family's real font file and fill in what metadata cannot.
+
+    Coverage stays as published — it is authoritative and already parsed — but
+    the declared tags, lookup counts, Graphite and the shaping verdicts can
+    only come from the file.
+    """
+    try:
+        sheet = fetch_text(font["css"] + "&display=swap")
+        url = face_url_from_stylesheet(sheet)
+        if not url:
+            return font
+        blob = fetch(url)
+        facts = measure(blob)
+    except Exception as error:
+        print(f"  !! {font['name']}: {error}")
+        return font
+
+    label = os.path.basename(urllib.parse.urlsplit(url).path)
+    facts.pop("ranges", None)          # Google's published coverage is the fuller one.
+    facts.pop("family", None)
+    font.update(facts)
+    font["provenance"] = {"file": label, "release": url, "read": TODAY}
+    for script, blocks in SHAPED_SCRIPTS.items():
+        if any(countInRange(font["ranges"], first, last) for first, last in blocks):
+            font.setdefault("results", {})[script] = shape_all(blob, label, script)
+    return font
+
+
 def google_font(meta):
     try:
         detail = fetch_json(GF_FAMILY.format(family=urllib.parse.quote(meta["family"])))
@@ -885,6 +939,14 @@ def main():
     print("Google Fonts")
     families = google_families(args.limit)
     fonts = in_parallel(families, google_font, "coverage")
+
+    # Google carries the flagship Malayalam families too, so stopping at its
+    # metadata would leave exactly the faces this site is about with coverage
+    # and no tags, no lookups and no verdicts. Only the families that reach a
+    # script we have sequences for get opened.
+    wanted = [font for font in fonts if worth_parsing(font)]
+    print(f"  {len(wanted)} of them reach a script we can shape — reading those files")
+    in_parallel(wanted, measure_google_face, "tables")
 
     for source in [] if args.google_only else SOURCES:
         print(f"{source['id'].upper()} — families Google doesn't carry")

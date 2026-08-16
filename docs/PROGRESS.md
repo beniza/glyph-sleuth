@@ -52,9 +52,10 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 - [x] `test_no_font_is_ever_downloaded` → `test_no_font_is_ever_served`
 - [x] HarfBuzz in CI (`uharfbuzz`) against the authored sequence list, now
       `web/content/sequences.json` and shared with the companion
-- [ ] Shape Google's families too — they are public and downloadable, but the
-      index only holds their metadata, so a face URL has to be fetched per
-      family. Currently only the foundry families carry verdicts
+- [x] Shape Google's families too — its metadata stops at coverage, and Google
+      carries the flagship Malayalam faces, so those pages had no tags and no
+      verdicts. Only families reaching a script we have sequences for get
+      opened, which is tens of files rather than 1,900
 - [x] Correct the same drift in `HANDOFF.md` §4 and `README.md`
 
 ### Phase 1b — the pages
