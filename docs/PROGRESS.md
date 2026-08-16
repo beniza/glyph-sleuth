@@ -67,7 +67,11 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
       questions, index links. Still to add once their pages exist: the worked
       verdict, and the query examples that fill the search field
 - [ ] Script page — engine strip in the filter-chips row, no collapse bar
-- [ ] Font family page — real CSS "Use it" fallback chain
+- [x] Font family page — facts, coverage by block, declared tags, the evidence
+      matrix with its legend, the "Use it" fallback chain, provenance
+- [ ] Licence for foundry families: the release carries OFL.txt but we do not
+      read it yet, so those pages show an em dash
+- [ ] Font shaping tables page (`/font/<id>/shaping/`) — GSUB/GPOS lookups
 - [ ] Font shaping tables
 - [ ] Character page
 - [ ] Block page
@@ -79,7 +83,7 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 
 Known gaps to fix while building (`HANDOFF.md` §6), not new design work:
 
-- [ ] CSS snippet: Google `@import` → foundry's own CSS → honest self-host state
+- [x] CSS snippet: Google → foundry's own CSS → honest self-host state
 - [ ] Home's "Only have a picture of it" links to `/identify/`
 - [ ] Size slider and sample-word state encode into the URL
 - [ ] `collapseData` not ported — dead code

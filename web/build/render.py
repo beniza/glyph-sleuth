@@ -15,6 +15,10 @@ import json
 import os
 import re
 import shutil
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gen_index as gen
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT_SITE = os.path.join(ROOT, "site")
@@ -62,7 +66,7 @@ def font_href(font):
     return link(f"/font/{slug(font['name'])}/")
 
 
-def page(title, body, kind=None, code=None, description=None):
+def page(title, body, kind=None, code=None, description=None, extra_head=""):
     """The shell every page shares: masthead, nav, content, colophon."""
     nav = "\n".join(
         f'        <a href="{link(href)}">{esc(label)}</a>' for label, href in NAV)
@@ -83,6 +87,7 @@ def page(title, body, kind=None, code=None, description=None):
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{WEBFONTS}">
   <link rel="stylesheet" href="{link("/style.css")}">
+{extra_head}
 </head>
 <body>
   <header class="masthead">
@@ -215,6 +220,220 @@ def home(fonts, scripts, languages):
                             "the evidence behind both.")
 
 
+def count_in_range(ranges, first, last):
+    total = 0
+    for lo, hi in ranges:
+        if hi < first:
+            continue
+        if lo > last:
+            break
+        total += min(hi, last) - max(lo, first) + 1
+    return total
+
+
+def use_it(font):
+    """The CSS to set text in this face, and which of three honest states it is
+    in. Mirrors core.js useIt() — the client needs the same answer on Compare.
+
+    Never a fabricated @import for a family that has none, which is what the
+    prototype's font page did for every family regardless.
+    """
+    name = esc(font["name"])
+    if font.get("source") == "google":
+        slug_name = font["name"].replace(" ", "+")
+        return ("Served from Google Fonts.",
+                f'&lt;link rel="stylesheet"\n      href="https://fonts.googleapis.com/css2'
+                f'?family={slug_name}&amp;display=swap"&gt;\n\n'
+                f'font-family: "{name}", sans-serif;')
+    if font.get("css"):
+        return ("Served from the foundry's own site.",
+                f'&lt;link rel="stylesheet" href="{esc(font["css"])}"&gt;\n\n'
+                f'font-family: "{name}", sans-serif;')
+    file = font["name"].replace(" ", "") + ".woff2"
+    return ("This family is not served from a public CDN — download it and host the file "
+            "yourself.",
+            f'@font-face {{\n  font-family: "{name}";\n  src: url("{file}") format("woff2");\n'
+            f'  font-display: swap;\n}}\n\nfont-family: "{name}", sans-serif;')
+
+
+# The matrix, and why three of its four columns are usually empty. Stated on
+# the page so a reader does not read an empty column as a rendering fault.
+MATRIX_LEGEND = ("A browser cannot reach DirectWrite or CoreText, so those columns are "
+                 "filled from platform test runs and are empty until one exists. Graphite "
+                 "reads <em>not applicable</em> for a font carrying no "
+                 "<span class=\"mono\">silf</span> table.")
+
+ENGINES = [("hb", "HarfBuzz"), ("dw", "DirectWrite"), ("ct", "CoreText"), ("gr", "Graphite")]
+
+
+def verdict_cell(value, applicable=True):
+    """A verdict, or the honest absence of one.
+
+    Three states, three treatments: a verdict; "not tested", because we have
+    not run it; "not applicable", because the question does not arise. A blank
+    would read as a pass, which is the one thing it must never do.
+    """
+    if value is None:
+        return ('<span class="untested">not applicable</span>' if not applicable
+                else '<span class="untested">not tested</span>')
+    verdict = value.get("verdict", "")
+    return f'<span class="{esc(verdict)}">{esc(verdict)}</span>'
+
+
+def coverage_rows(font, blocks):
+    """What the face covers, block by block — the blocks it actually touches."""
+    rows = []
+    for first, last, name in blocks:
+        covered = count_in_range(font.get("ranges") or [], first, last)
+        if not covered:
+            continue
+        rows.append(f'      <tr><th scope="row">{esc(name)}</th>'
+                    f'<td class="mono">U+{first:04X}–{last:04X}</td>'
+                    f'<td class="mono">{covered}/{last - first + 1}</td></tr>')
+    return rows
+
+
+def evidence_rows(font, script="Mlym"):
+    rows = []
+    for entry in gen.sequences(script):
+        result = ((font.get("results") or {}).get(script) or {}).get(entry["id"])
+        if not result:
+            continue
+        cells = []
+        for key, _label in ENGINES:
+            applicable = not (key == "gr" and not font.get("graphite"))
+            cells.append(f"<td>{verdict_cell(result.get(key), applicable)}</td>")
+        note = result.get("hb", {}).get("note") or entry.get("note") or ""
+        command = result.get("hb", {}).get("command", "")
+        rows.append(
+            f'      <tr><th scope="row"><span class="specimen-inline">{esc(entry["out"])}</span>'
+            f'<span class="mono"> {esc(entry["codes"])}</span></th>'
+            + "".join(cells) + "</tr>\n"
+            f'      <tr class="detail"><td colspan="5"><code class="mono">{esc(command)}</code>'
+            + (f'<div class="quiet">{esc(note)}</div>' if note else "")
+            + "</td></tr>")
+    return rows
+
+
+def font_page(font, blocks):
+    name = font["name"]
+    measured = font.get("tier") == "measured"
+    # Measured coverage and read tables are different facts. Google publishes
+    # coverage as metadata and nothing else, so a Google family has real
+    # coverage and no idea what tags it declares — and saying "none" there
+    # would be the site inventing an answer nobody looked for.
+    parsed = bool(font.get("checksum"))
+    note, snippet = use_it(font)
+
+    facts = [("Foundry", font.get("source", "").upper() or "—"),
+             ("Licence", font.get("licence") or "—")]
+    if measured:
+        facts.append(("Codepoints", f"{count_in_range(font['ranges'], 0, 0x10FFFF):,}"))
+    # Lookup counts and a release version only exist if we opened the file.
+    if parsed:
+        facts += [("Release", font.get("version") or "—"),
+                  ("GSUB lookups", font.get("gsub", 0)),
+                  ("GPOS lookups", font.get("gpos", 0))]
+    facts_html = "\n".join(
+        f'        <div><dt>{esc(label)}</dt><dd class="mono">{esc(value)}</dd></div>'
+        for label, value in facts)
+
+    # The face itself, from wherever it is actually distributed. We serve none.
+    face_css = ""
+    if font.get("source") == "google":
+        face_css = ("https://fonts.googleapis.com/css2?family="
+                    + font["name"].replace(" ", "+") + "&display=swap")
+    elif font.get("css"):
+        face_css = font["css"]
+
+    body = [f'    <section class="claim">\n      <h1>{esc(name)}</h1>']
+    if not measured:
+        body.append('      <p class="quiet">This family is indexed but '
+                    '<strong>not measured yet</strong> — we have not read its released font '
+                    'file, so it carries no coverage, no declared tags and no shaping '
+                    'verdict. What is below is what the foundry publishes about it.</p>')
+    body.append("    </section>")
+
+    body.append('    <section>\n      <h2 class="eyebrow">Facts</h2>\n'
+                f'      <dl class="facts">\n{facts_html}\n      </dl>\n    </section>')
+
+    if face_css:
+        body.append('    <section>\n      <h2 class="eyebrow">Specimen</h2>\n'
+                    '      <p class="specimen">മലയാളം സ്ത്രീ ൻ്റ</p>\n'
+                    '      <p class="quiet">Drawn by your browser from the family\'s own '
+                    'distribution, not from us.</p>\n    </section>')
+
+    if measured:
+        rows = coverage_rows(font, blocks)
+        if rows:
+            body.append('    <section>\n      <h2 class="eyebrow">Coverage, by block</h2>\n'
+                        '      <table>\n        <thead><tr><th>Block</th><th>Range</th>'
+                        '<th>Covered</th></tr></thead>\n      <tbody>\n'
+                        + "\n".join(rows) + "\n      </tbody>\n      </table>\n"
+                        '      <p class="quiet">A script is rarely one block, which is where '
+                        'support quietly dies.</p>\n    </section>')
+
+        tags = font.get("tags") or []
+        if parsed:
+            told = ('      <p class="mono">' + esc(" · ".join(tags)) + "</p>\n"
+                    '      <p class="quiet">From the <span class="mono">GSUB</span> and '
+                    '<span class="mono">GPOS</span> script lists. A face can cover every '
+                    'codepoint of a script and still declare only the tag an older shaper '
+                    'will not look for.</p>\n')
+        else:
+            # "none" here would be the site asserting the font declares no tags,
+            # when nobody opened the file to look. Measured coverage and unread
+            # tables are two facts, and blurring them is the exact move this
+            # site exists to argue against.
+            told = ('      <p class="untested">not read</p>\n'
+                    '      <p class="quiet">This family\'s coverage comes from the metadata '
+                    'its distributor publishes, which does not include the '
+                    '<span class="mono">GSUB</span> and <span class="mono">GPOS</span> '
+                    'tables. Which tags it declares is unknown here — not absent.</p>\n')
+        body.append('    <section>\n      <h2 class="eyebrow">Script tags declared</h2>\n'
+                    + told + "    </section>")
+
+        evidence = evidence_rows(font)
+        if evidence:
+            heads = "".join(f"<th>{label}</th>" for _key, label in ENGINES)
+            body.append('    <section>\n      <h2 class="eyebrow">Evidence</h2>\n'
+                        f'      <table class="matrix">\n        <thead><tr><th>Sequence</th>'
+                        f"{heads}</tr></thead>\n      <tbody>\n"
+                        + "\n".join(evidence) + "\n      </tbody>\n      </table>\n"
+                        f'      <p class="quiet">{MATRIX_LEGEND}</p>\n    </section>')
+
+    body.append('    <section>\n      <h2 class="eyebrow">Use it</h2>\n'
+                f'      <p class="quiet">{esc(note)}</p>\n'
+                f'      <pre class="snippet mono">{snippet}</pre>\n    </section>')
+
+    provenance = font.get("provenance")
+    if provenance:
+        body.append('    <section>\n      <h2 class="eyebrow">Provenance</h2>\n'
+                    f'      <p class="quiet">Read from <span class="mono">'
+                    f'{esc(provenance.get("file"))}</span> on {esc(provenance.get("read"))}, '
+                    f'via <a href="{esc(provenance.get("release"))}">the release the foundry '
+                    f'publishes ↗ — external</a>. Checksum '
+                    f'<span class="mono">{esc(font.get("checksum"))}</span>.</p>\n'
+                    "    </section>")
+
+    if font.get("url"):
+        body.append('    <section>\n      <h2 class="eyebrow">Where it comes from</h2>\n'
+                    f'      <p><a href="{esc(font["url"])}">{esc(name)} at its source ↗ '
+                    "— external</a></p>\n    </section>")
+
+    # The specimen is set in the family itself, loaded from its own
+    # distribution. A page-scoped rule rather than an inline style, so the
+    # markup stays free of presentation attributes.
+    head = ""
+    if face_css:
+        head = (f'  <link rel="stylesheet" href="{esc(face_css)}">\n'
+                f'  <style>.specimen {{ font-family: "{esc(name)}", serif; }}</style>')
+    return page(name, "\n".join(body), kind="font family", code=slug(name),
+                description=f"{name}: what it covers, the OpenType script tags it declares, "
+                            f"and how it shapes the sequences the script turns on.",
+                extra_head=head)
+
+
 def write(path, markup):
     """One directory per route, so URLs end in a slash and carry no extension."""
     full = os.path.join(OUT_SITE, path.strip("/"), "index.html") if path != "/" \
@@ -246,9 +465,18 @@ def main():
     scripts = (load("scripts") or {}).get("scripts", [])
     languages = (load("languages") or {}).get("languages", [])
 
+    blocks = (load("blocks") or {}).get("blocks", [])
+
     shutil.copyfile(os.path.join(ROOT, "web", "style.css"),
                     os.path.join(OUT_SITE, "style.css"))
-    print(f"  wrote {write('/', home(fonts['fonts'], scripts, languages))}")
+    write("/", home(fonts["fonts"], scripts, languages))
+    print("  wrote home")
+
+    for font in fonts["fonts"]:
+        write(f"/font/{slug(font['name'])}/", font_page(font, blocks))
+    measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
+    print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
+          f"{len(fonts['fonts']) - measured} not yet")
 
 
 if __name__ == "__main__":

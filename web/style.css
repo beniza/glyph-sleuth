@@ -179,6 +179,42 @@ h1 {
 .paths .q { display: block; font-size: 17px; margin-bottom: 8px; }
 .paths .links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 8px; }
 
+/* The specimen: the one large voice on the page. */
+.specimen {
+  font-size: 64px;
+  line-height: 1.35;
+  margin: 0 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 22px 20px;
+}
+.specimen-inline { font-size: 22px; margin-right: 10px; }
+
+table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+th, td { text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); }
+thead th {
+  font-family: var(--cond);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom-color: var(--ink);
+}
+tbody th { font-weight: 400; }
+tr.detail td { padding-top: 0; border-bottom: 1px solid var(--rule); }
+tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
+
+.snippet {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 14px 16px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
 /* Verdicts. Three states, three treatments — and "not tested" is a state, not
    a blank, because a blank reads as a pass. */
 .clean { color: var(--proof); }

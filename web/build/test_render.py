@@ -128,6 +128,123 @@ def test_font_href_is_stable():
     assert render.font_href({"name": "Baloo Chettan 2"}) == f"{base}/font/baloo-chettan-2/"
 
 
+MANJARI = {
+    "name": "Manjari", "source": "smc", "licence": "OFL", "tier": "measured",
+    "version": "2.200", "ranges": [[0x0020, 0x007E], [0x0D00, 0x0D7F]],
+    "tags": ["DFLT", "latn", "mlm2", "mlym"], "gsub": 48, "gpos": 3,
+    "features": ["akhn", "blwf", "pres"], "axes": [], "graphite": False,
+    "url": "https://smc.org.in/fonts/#/manjari",
+    "css": "https://smc.org.in/fonts/manjari.css",
+    "checksum": "sha256:ffdb7aac", "faces": [],
+    "provenance": {"file": "Manjari-Regular.woff2",
+                   "release": "https://smc.org.in/fonts/manjari.css", "read": "2026-08-17"},
+    "results": {"Mlym": {
+        "nta": {"hb": {"verdict": "clean", "glyphs": ["nta"], "note": "",
+                       "command": "hb-shape --font-file=Manjari-Regular.woff2 "
+                                  "--unicodes=0D7B,0D4D,0D31 --features=blwf,pres "
+                                  "--script=Mlym --language=ml"},
+                "dw": None, "ct": None, "gr": None},
+    }},
+}
+
+BLOCKS = [[0x0020, 0x007F, "Basic Latin"], [0x0D00, 0x0D7F, "Malayalam"]]
+
+
+def test_font_page_shows_its_evidence():
+    html = render.font_page(MANJARI, BLOCKS)
+
+    # Tier 1: what it covers, by block, not as one number.
+    assert "Malayalam" in html and "Basic Latin" in html
+    # Tier 2: the tags it declares. This is the fact coverage cannot give you.
+    for tag in ("mlym", "mlm2"):
+        assert tag in html
+    # Tier 3: the verdict, and the command that reproduces it.
+    assert "hb-shape --font-file=Manjari-Regular.woff2" in html
+    assert "clean" in html
+
+    # Provenance: which file, from where, when. A number nobody can reproduce
+    # is a number nobody should trust.
+    assert "Manjari-Regular.woff2" in html
+    assert "2026-08-17" in html
+    assert "sha256:ffdb7aac" in html
+
+
+def test_matrix_says_not_tested_rather_than_nothing():
+    """The three treatments, and the reason the matrix exists.
+
+    A blank cell reads as a pass. DirectWrite and CoreText are not reachable
+    from this build, and Graphite does not apply to a font with no silf table
+    — three different facts, none of them "it worked".
+    """
+    html = render.font_page(MANJARI, BLOCKS)
+    for engine in ("HarfBuzz", "DirectWrite", "CoreText", "Graphite"):
+        assert engine in html, engine
+    assert "not tested" in html
+    assert "not applicable" in html
+    # And the legend that stops empty columns reading as a rendering bug.
+    assert "cannot reach DirectWrite or CoreText" in html
+
+
+def test_use_it_never_invents_an_import():
+    # Google: its own CDN.
+    google = dict(MANJARI, source="google", name="Baloo Chettan 2",
+                  css="https://fonts.googleapis.com/css2?family=Baloo+Chettan+2")
+    assert "fonts.googleapis.com/css2?family=Baloo+Chettan+2" in render.font_page(google, BLOCKS)
+
+    # A foundry that serves its own stylesheet: point at theirs.
+    smc = render.font_page(MANJARI, BLOCKS)
+    assert "https://smc.org.in/fonts/manjari.css" in smc
+    assert "googleapis.com/css2?family=Manjari" not in smc
+
+    # Neither: say so, and give a @font-face template rather than a fake link.
+    alone = dict(MANJARI, source="rit", css=None, name="RIT Rachana")
+    html = render.font_page(alone, BLOCKS)
+    assert "@font-face" in html
+    assert "not served from a public CDN" in html
+    # And no page points at a font *file* served by us. The self-host template
+    # names a bare filename on purpose: it is the reader's copy, not ours.
+    ours = re.compile(r'(?:href|src)="[^"]*' + re.escape(render.BASE) + r'[^"]*\.(?:woff2?|ttf|otf)')
+    for state in (smc, html):
+        assert not ours.search(state), "we are linking a font file of our own"
+
+
+def test_coverage_measured_but_tables_unread():
+    """Google's metadata gives coverage and nothing else.
+
+    Rendering that as "script tags declared: none" states, in the site's own
+    voice, that the font declares no tags — when nobody looked. Measured
+    coverage and unread tables are two different facts and the page has to keep
+    them apart, or it is doing the exact thing it accuses coverage badges of.
+    """
+    google = {"name": "ABeeZee", "source": "google", "tier": "measured",
+              "licence": "OFL", "ranges": [[0x0020, 0x007E]], "tags": [],
+              "gsub": 0, "gpos": 0, "features": [], "axes": [], "faces": ["400"],
+              "css": "https://fonts.googleapis.com/css2?family=ABeeZee",
+              "url": "https://fonts.google.com/specimen/ABeeZee"}
+    html = render.font_page(google, BLOCKS)
+
+    # Coverage is real and shown.
+    assert "Basic Latin" in html
+    # The tables were never opened, and the page says that rather than "none".
+    assert ">none<" not in html
+    assert "not read" in html
+    assert "does not include" in html
+    # No invented lookup counts either.
+    assert "GSUB lookups" not in html
+
+
+def test_unmeasured_family_says_so():
+    stub = {"name": "RIT Panmana", "source": "rit", "tier": "stub", "ranges": [],
+            "licence": "", "url": "https://gitlab.com/rit-fonts/RIT-Panmana",
+            "css": None, "tags": [], "features": [], "axes": [], "faces": []}
+    html = render.font_page(stub, BLOCKS)
+    assert "not measured yet" in html
+    # No invented zeros: a family we did not read has no coverage, which is not
+    # the same as covering nothing.
+    assert "0/0" not in html
+    assert "0 codepoints" not in html
+
+
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}
 if __name__ == "__main__":
     for name, test in tests.items():
