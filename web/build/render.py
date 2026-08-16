@@ -19,6 +19,12 @@ import shutil
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT_SITE = os.path.join(ROOT, "site")
 
+# GitHub Pages serves a project site under /<repo>/, not at the domain root, so
+# every internal URL needs that prefix — without it the stylesheet 404s and the
+# page renders unstyled. Set SITE_BASE="" to build for a root domain, or for
+# serving the folder locally.
+BASE = os.environ.get("SITE_BASE", "/glyph-sleuth").rstrip("/")
+
 # Loaded from Google's CDN, like every specimen. We host no font files.
 WEBFONTS = ("https://fonts.googleapis.com/css2"
             "?family=IBM+Plex+Sans:wght@400;500;600"
@@ -38,19 +44,28 @@ def esc(value):
     return html_module.escape(str(value), quote=True)
 
 
+def link(path):
+    """An internal path, prefixed with wherever the site is actually served."""
+    if path.startswith(("http://", "https://", "#", "mailto:")):
+        return path
+    if BASE and path.startswith(BASE + "/"):
+        return path
+    return BASE + path
+
+
 def slug(name):
     """The stable handle a family's URL is keyed on."""
     return re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")
 
 
 def font_href(font):
-    return f"/font/{slug(font['name'])}/"
+    return link(f"/font/{slug(font['name'])}/")
 
 
 def page(title, body, kind=None, code=None, description=None):
     """The shell every page shares: masthead, nav, content, colophon."""
     nav = "\n".join(
-        f'        <a href="{href}">{esc(label)}</a>' for label, href in NAV)
+        f'        <a href="{link(href)}">{esc(label)}</a>' for label, href in NAV)
     where = ""
     if kind:
         where = (f'<div class="where">{esc(kind)}'
@@ -67,12 +82,12 @@ def page(title, body, kind=None, code=None, description=None):
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{WEBFONTS}">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="{link("/style.css")}">
 </head>
 <body>
   <header class="masthead">
     <div class="column">
-      <a class="wordmark" href="/">Glyph Sleuth</a>
+      <a class="wordmark" href="{link("/")}">Glyph Sleuth</a>
       <nav aria-label="Sections">
 {nav}
       </nav>
@@ -110,10 +125,10 @@ def counts(fonts):
 def home(fonts, scripts, languages):
     total, measured = counts(fonts)
     script_links = "\n".join(
-        f'          <a href="/script/{esc(s["code"])}/">{esc(s["name"])}</a>'
+        f'          <a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>'
         for s in scripts[:12])
     language_links = "\n".join(
-        f'          <a href="/lang/{esc(l["id"])}/">{esc(l["name"])}</a>'
+        f'          <a href="{link("/lang/" + l["id"] + "/")}">{esc(l["name"])}</a>'
         for l in languages[:12])
     family_links = "\n".join(
         f'          <a href="{font_href(f)}">{esc(f["name"])}</a>'
@@ -156,13 +171,13 @@ def home(fonts, scripts, languages):
         <div>
           <span class="q">What is this character?</span>
           <div class="links">
-            <a href="/inspect/">Paste or type anything</a>
+            <a href="{link("/inspect/")}">Paste or type anything</a>
           </div>
         </div>
         <div>
           <span class="q">Only have a picture of it?</span>
           <div class="links">
-            <a href="/identify/">Draw it, or drop an image</a>
+            <a href="{link("/identify/")}">Draw it, or drop an image</a>
           </div>
           <p class="quiet">Shape similarity against real glyph outlines,
              computed in the browser. Not handwriting recognition.</p>
@@ -178,18 +193,18 @@ def home(fonts, scripts, languages):
           <div class="links">
 {script_links or '          <span class="quiet">None yet.</span>'}
           </div>
-          <div><a href="/scripts/">All scripts, with counts</a></div>
+          <div><a href="{link("/scripts/")}">All scripts, with counts</a></div>
         </div>
         <div>
           <span class="q">Languages</span>
           <div class="links">
 {language_links or '          <span class="quiet">None yet.</span>'}
           </div>
-          <div><a href="/languages/">All languages, filterable</a></div>
+          <div><a href="{link("/languages/")}">All languages, filterable</a></div>
         </div>
         <div>
           <span class="q">Font families</span>
-          <div><a href="/fonts/">All {total:,} indexed families</a></div>
+          <div><a href="{link("/fonts/")}">All {total:,} indexed families</a></div>
         </div>
       </div>
     </section>

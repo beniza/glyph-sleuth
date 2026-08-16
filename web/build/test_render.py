@@ -22,6 +22,29 @@ def test_escaping():
     assert render.esc(118) == "118"
 
 
+def test_every_internal_link_carries_the_base():
+    """The site is served from /glyph-sleuth/, not from the domain root.
+
+    Absolute paths written from "/" gave a masthead that 404s on the domain
+    root and a stylesheet that never loads — the page rendered unstyled and the
+    wordmark went nowhere. Every internal URL goes through link().
+    """
+    assert render.link("/") == f"{render.BASE}/"
+    assert render.link("/fonts/") == f"{render.BASE}/fonts/"
+    # Already-based paths are not doubled up.
+    assert render.link(render.link("/fonts/")) == f"{render.BASE}/fonts/"
+    # External URLs are left exactly as they are.
+    assert render.link("https://smc.org.in/") == "https://smc.org.in/"
+
+    html = render.home([{"name": "Manjari", "tier": "measured", "ranges": []}],
+                       scripts=[{"code": "Mlym", "name": "Malayalam"}],
+                       languages=[{"id": "mal", "name": "Malayalam", "tag": "ml"}])
+    for href in re.findall(r'(?:href|src)="([^"]+)"', html):
+        if href.startswith(("http://", "https://", "#", "mailto:")):
+            continue
+        assert href.startswith(render.BASE + "/"), f"{href} escapes the base path"
+
+
 def test_page_shell():
     html = render.page("Malayalam", "<p>body text</p>", kind="script", code="Mlym")
 
@@ -37,10 +60,10 @@ def test_page_shell():
     # The nav is on every page, as real links rather than a JS router.
     for label, href in (("Scripts", "/scripts/"), ("Fonts", "/fonts/"),
                         ("Identify", "/identify/"), ("Compare", "/compare/")):
-        assert f'href="{href}"' in html, href
+        assert f'href="{render.link(href)}"' in html, href
         assert f">{label}</a>" in html, label
     # Styles are a stylesheet, not a wall of inline attributes.
-    assert '<link rel="stylesheet" href="/style.css">' in html
+    assert f'<link rel="stylesheet" href="{render.link("/style.css")}">' in html
     assert "style=" not in html
 
 
@@ -83,7 +106,7 @@ def test_home_says_what_it_measured():
     assert re.search(r"Not measured yet.*?<dd[^>]*>1</dd>", facts, re.S)
 
     # The promise the prototype left inert now goes somewhere.
-    assert 'href="/identify/"' in html
+    assert f'href="{render.link("/identify/")}"' in html
 
 
 def test_home_links_are_real_paths():
@@ -92,16 +115,17 @@ def test_home_links_are_real_paths():
     # Hash routes were a prototype artefact. A generated page needs a real URL
     # or there is nothing for a crawler to follow.
     assert "#/" not in html
-    assert 'href="/script/Mlym/"' in html
-    assert 'href="/lang/mal/"' in html
+    assert f'href="{render.link("/script/Mlym/")}"' in html
+    assert f'href="{render.link("/lang/mal/")}"' in html
 
 
 def test_font_href_is_stable():
     # The slug is what every link between pages is keyed on, so it has to
     # survive spaces, case and punctuation the same way every time.
-    assert render.font_href({"name": "Noto Sans Malayalam"}) == "/font/noto-sans-malayalam/"
-    assert render.font_href({"name": "RIT Rachana"}) == "/font/rit-rachana/"
-    assert render.font_href({"name": "Baloo Chettan 2"}) == "/font/baloo-chettan-2/"
+    base = render.BASE
+    assert render.font_href({"name": "Noto Sans Malayalam"}) == f"{base}/font/noto-sans-malayalam/"
+    assert render.font_href({"name": "RIT Rachana"}) == f"{base}/font/rit-rachana/"
+    assert render.font_href({"name": "Baloo Chettan 2"}) == f"{base}/font/baloo-chettan-2/"
 
 
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}
