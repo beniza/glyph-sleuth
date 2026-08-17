@@ -564,43 +564,112 @@ def font_page(font, blocks):
                 extra_head=head)
 
 
-def fonts_index(fonts):
-    """Every indexed family, in the markup.
+def verdict_of(font):
+    """One word for how a family shapes, across the sequences we ran.
 
-    The list is served whole; filtering and sorting are enhancement on top of
-    rows that are already there. With JS off this is still the full index, and
-    a crawler sees every family rather than an empty shell.
+    A family nothing was run against gets "none", not a pass — the whole point
+    of the tiers is that untested and clean are different answers.
+    """
+    results = (font.get("results") or {}).get("Mlym") or {}
+    if not results:
+        return "none"
+    verdicts = {(r.get("hb") or {}).get("verdict") for r in results.values()}
+    if "fail" in verdicts:
+        return "fail"
+    if "caveat" in verdicts:
+        return "caveat"
+    return "clean"
+
+
+VERDICT_WORDS = {"clean": "shapes cleanly", "caveat": "shapes with caveats",
+                 "fail": "breaks", "none": "not tested"}
+
+MALAYALAM = (0x0D00, 0x0D7F)
+
+
+def fonts_index(fonts):
+    """Every indexed family, in the markup, with the controls to narrow it.
+
+    The list is served whole; filter, facets and sort are enhancement over rows
+    that are already there. With JS off this is still the full index, and a
+    crawler sees every family rather than an empty shell.
     """
     total, measured = counts(fonts)
+    ordered = sorted(fonts, key=lambda f: f["name"].lower())
+
+    malayalam = sum(1 for f in ordered
+                    if count_in_range(f.get("ranges") or [], *MALAYALAM) > 40)
+    facets = [("all", "all", total),
+              ("malayalam", "Malayalam", malayalam),
+              ("measured", "measured", measured),
+              ("not measured yet", "not measured yet", total - measured),
+              ("clean", "shapes cleanly",
+               sum(1 for f in ordered if verdict_of(f) == "clean")),
+              ("fail", "breaks", sum(1 for f in ordered if verdict_of(f) == "fail"))]
+    chips = "\n".join(
+        f'        <button class="facet{" on" if key == "all" else ""}" data-facet="{key}"'
+        f' data-count="{count}"><span>{esc(label)}</span>'
+        f'<span class="count mono">{count:,}</span></button>'
+        for key, label, count in facets if count or key == "all")
+
+    sorts = "\n".join(
+        f'        <button class="sort{" on" if key == "name" else ""}" data-sort="{key}">'
+        f"{esc(label)}</button>"
+        for key, label in (("name", "name"), ("verdict", "verdict"),
+                           ("coverage", "coverage")))
+
     rows = []
-    for font in sorted(fonts, key=lambda f: f["name"].lower()):
+    for font in ordered:
         covered = count_in_range(font.get("ranges") or [], 0, 0x10FFFF)
+        mlym = count_in_range(font.get("ranges") or [], *MALAYALAM)
+        verdict = verdict_of(font)
         state = (f'<span class="mono">{covered:,}</span>' if font.get("tier") == "measured"
                  else '<span class="untested">not measured yet</span>')
-        tags = " · ".join(font.get("tags") or [])
+        shows = (f'<span class="{verdict}">{esc(VERDICT_WORDS[verdict])}</span>'
+                 if verdict != "none" else '<span class="untested">not tested</span>')
         rows.append(
-            f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
-            f'<td class="quiet">{esc(font.get("source", "").upper())}</td>'
-            f'<td class="quiet">{esc(font.get("licence") or "—")}</td>'
-            f'<td>{state}</td>'
-            f'<td class="mono">{esc(tags)}</td></tr>')
+            f'      <tr data-name="{esc(font["name"].lower())}"'
+            f' data-source="{esc(font.get("source", ""))}"'
+            f' data-tier="{esc(font.get("tier", ""))}"'
+            f' data-coverage="{covered}" data-malayalam="{mlym}"'
+            f' data-verdict="{verdict}">'
+            f'<th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
+            f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td>'
+            f'<td class="quiet mono">{esc(font.get("licence") or "—")}</td>'
+            f"<td>{state}</td>"
+            f"<td>{shows}</td></tr>")
 
-    body = f"""    <section class="claim">
-      <h1>Font families</h1>
-      <p class="quiet">{total:,} indexed · {measured:,} measured from their own release ·
-         {total - measured:,} not measured yet. Codepoints counts what the family covers
-         across all of Unicode; the script tags are what it declares, where we have read
-         the file.</p>
+    body = f"""    <section class="entity-head">
+      <div class="head-row">
+        <h1>Font families</h1>
+        <p class="showing quiet">Showing <span data-showing>{total:,}</span> of {total:,}</p>
+      </div>
+      <p class="quiet">{measured:,} measured from their own released file ·
+         {total - measured:,} not measured yet. Verdicts are for the Malayalam exemplar
+         sequences; a family that breaks there may be flawless in another script, and one
+         marked <em>not tested</em> has simply not been run against them.</p>
     </section>
 
     <section>
+      <div class="controls">
+        <input type="search" class="filter" placeholder="filter this list"
+               aria-label="Filter families by name">
+        <div class="facets">
+{chips}
+        </div>
+      </div>
+      <div class="sorts"><span class="eyebrow-inline">sort</span>
+{sorts}
+      </div>
       <table class="index">
-        <thead><tr><th>Family</th><th>Source</th><th>Licence</th><th>Codepoints</th>
-          <th>Script tags</th></tr></thead>
+        <thead><tr><th>Family</th><th>Foundry</th><th>Licence</th><th>Codepoints</th>
+          <th>Malayalam verdict</th></tr></thead>
       <tbody>
 {chr(10).join(rows)}
       </tbody>
       </table>
+      <p class="empty quiet" hidden>Nothing matches that. Try a shorter word, or clear the
+         filter to see all {total:,} families.</p>
     </section>
 """
     return page("Font families", body, kind="index", code=f"{total:,} families",

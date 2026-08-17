@@ -136,6 +136,51 @@ def test_specimen_suits_the_font():
     assert "മ" not in render.specimen_text({"ranges": [[0x0020, 0x007E], [0x0D00, 0x0D05]]})[0]
 
 
+def test_fonts_index_controls():
+    """Filter, facets and sort — over rows that are already served.
+
+    The controls narrow what is shown; they never fetch. With JS off the page
+    is the full index, which is also what a crawler reads.
+    """
+    fonts = [
+        dict(MANJARI, name="Manjari", slug="manjari"),
+        dict(MANJARI, name="Gayathri", slug="gayathri", results={"Mlym": {
+            "nta": {"hb": {"verdict": "fail", "glyphs": [], "note": "", "command": ""},
+                    "dw": None, "ct": None, "gr": None}}}),
+        {"name": "ABeeZee", "slug": "abeezee", "source": "google", "tier": "measured",
+         "licence": "OFL", "ranges": [[0x20, 0x7E]], "tags": [], "checksum": "x"},
+        {"name": "RIT Panmana", "slug": "rit-panmana", "source": "rit", "tier": "stub",
+         "ranges": [], "licence": "", "url": "x", "css": None},
+    ]
+    html = render.fonts_index(fonts)
+
+    # A text filter, and the facets the design calls for, each carrying its own
+    # count so the number is visible before you click it.
+    assert 'type="search"' in html
+    for facet, count in (("all", 4), ("malayalam", 2), ("measured", 3),
+                         ("not measured yet", 1)):
+        assert f'data-facet="{facet}"' in html, facet
+        assert f'data-count="{count}"' in html, (facet, count)
+
+    # Sort controls, name first because that is the order the page is served in.
+    for key in ("name", "coverage", "verdict"):
+        assert f'data-sort="{key}"' in html, key
+
+    # Every row carries what the filters need, so filtering is a DOM pass and
+    # never a fetch.
+    assert 'data-name="manjari"' in html
+    assert 'data-source="smc"' in html
+    assert 'data-tier="measured"' in html
+    assert 'data-coverage="' in html
+    assert 'data-verdict="clean"' in html and 'data-verdict="fail"' in html
+    # And a family with nothing shaped says so rather than claiming a verdict.
+    assert 'data-verdict="none"' in html
+
+    # The count the design shows, correct before any JS runs — JS only updates
+    # the first number as the filters narrow it.
+    assert re.search(r"Showing\s*<span data-showing>4</span>\s*of\s*4", html)
+
+
 def test_fonts_index_lists_every_family_in_the_html():
     """The nav promises this page, so it has to exist — and it has to carry the
     families in the markup, not fetch them.

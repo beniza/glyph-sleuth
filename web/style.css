@@ -255,6 +255,75 @@ a.fact:hover .value { color: var(--ink); }
 .rule-top { border-top: 1px solid var(--rule); padding-top: 10px; margin-top: 10px; }
 .break { word-break: break-all; }
 
+/* Index controls: filter, facets, sort. Chrome, so they stay quiet. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.filter {
+  flex: 1 1 240px;
+  min-width: 200px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 9px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.facets { display: flex; flex-wrap: wrap; gap: 8px; }
+.facet {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: var(--cond);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.facet .count { letter-spacing: 0; font-size: 11px; }
+.facet:hover { border-color: var(--ink); color: var(--ink); }
+.facet.on { background: var(--ink); border-color: var(--ink); color: var(--bone); }
+
+.sorts {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+.eyebrow-inline {
+  font-family: var(--cond);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sort {
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.sort:hover { color: var(--ink); }
+.sort.on { color: var(--ink); border-bottom-color: var(--ink); }
+
+.showing { margin: 0; font-size: 13px; }
+.index th[scope="row"] { font-weight: 400; }
+
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   font-family: var(--mono);
