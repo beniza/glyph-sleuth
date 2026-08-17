@@ -36,6 +36,7 @@ docs/
   HANDOFF.md            the consolidating brief
   BUILD-PLAN.md         this document
   PROGRESS.md           the resumable checklist
+  TODO.md               known problems and deferred ideas, worst first
   addenda/              the five settled feature specs
   chats/                original design transcript
   prototype/            the v2 spec bundle: README, PLAN, TODO, conventions, screenshots

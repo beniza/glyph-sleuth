@@ -1,8 +1,8 @@
 # Progress
 
 The resumable checklist. `HANDOFF.md` says what we're building and why,
-`BUILD-PLAN.md` says in what order and on what reasoning; this says how far we've
-got. Tick items as they land, and keep the notes under a phase
+`BUILD-PLAN.md` says in what order and on what reasoning, `TODO.md` lists every
+known problem and deferred idea; this says how far we've got. Tick items as they land, and keep the notes under a phase
 current — an interrupted session should be able to start here and nowhere else.
 
 Method is test-driven throughout: the failing test comes first, for every
