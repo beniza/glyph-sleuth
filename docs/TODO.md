@@ -28,11 +28,15 @@ Home's "What is this character?" question currently points at a block and the
 scripts index, and says plainly that a paste-anything field is not built yet.
 Restore the nav entries and home's links as each lands.
 
-- [ ] Character pages exist only for Basic Latin, Latin-1 Supplement, General
-      Punctuation and the blocks of the scripts we shape — 590 pages. Everything
-      else shows its codepoint as plain text, and the page set is passed to every
-      page that might link one so a link is never written to a page we chose not
-      to build. Widening that set is a decision about build size, not a bug.
+- [x] Character pages now cover every block small enough to be about a writing
+      system rather than a repertoire — 32,808 pages, up from 590. The bound is
+      the block's assigned count, not a hand-picked list, so Tamil, Greek,
+      Cyrillic, Arabic, Hebrew and the rest are all clickable. Eleven blocks
+      exceed it (CJK Unified Ideographs and its nine extensions, Hangul
+      Syllables: 110,233 codepoints between them) and their block pages say so.
+- [ ] Watch the build cost: 33,000 files is most of the artifact and the deploy.
+      If Pages starts refusing it, the fallback is blocks a measured family
+      actually covers rather than every small block.
 
 ## 2 · Silent truncation and unpinned inputs
 

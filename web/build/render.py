@@ -463,7 +463,15 @@ SPECIMENS = {
 # How many cells a block chart draws before it says what it dropped.
 CHART_LIMIT = 256
 
-CHAR_PAGE_BLOCKS = {"Basic Latin", "Latin-1 Supplement", "General Punctuation"}
+# Which blocks get a page per codepoint: every block small enough to be about a
+# writing system rather than a repertoire. Eleven blocks hold 110,233 of
+# Unicode's 143,041 assigned codepoints — CJK Unified Ideographs with its nine
+# extensions, and Hangul Syllables — and a page each for those would be a
+# hundred thousand files saying little beyond a name. Everything under this
+# bound gets one, which is 32,808 pages and covers every script whose shaping is
+# worth inspecting. Tamil's chart cells were not links until this replaced a
+# hand-picked list of three blocks.
+CHAR_PAGE_MAX_BLOCK = 1000
 
 LATIN_SPECIMEN = ("Handgloves & Quartz", "The quick brown fox jumps over the lazy dog.")
 
@@ -848,7 +856,7 @@ def rule_row(rule):
             f'<span class="names mono">{esc(rule["in"])} → {esc(rule["out"])}</span></div>')
 
 
-def glyph_cell(glyph):
+def glyph_cell(glyph, chars_built=()):
     """The glyph itself, drawn rather than named.
 
     An encoded glyph is set from its codepoint. A glyph with no codepoint —
@@ -860,7 +868,11 @@ def glyph_cell(glyph):
     substitution rather than a picture of one.
     """
     if glyph.get("cp") is not None:
-        return f'<span class="glyph">{esc(chr(glyph["cp"]))}</span>'
+        drawn = f'<span class="glyph">{esc(chr(glyph["cp"]))}</span>'
+        # The glyph is what a reader points at, so it carries the link to the
+        # character — where every other family's drawing of it is.
+        return (f'<a href="{link(f"/char/{glyph["cp"]:04X}/")}">{drawn}</a>'
+                if glyph["cp"] in chars_built else drawn)
     recipe = glyph.get("from")
     if recipe and recipe["features"]:
         features = " ".join(f"ff-{esc(tag)}" for tag in recipe["features"])
@@ -927,7 +939,7 @@ def glyphs_page(font, chars_built=()):
             for tag in glyph["consumed"])
         rows.append(
             f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}">'
-            f'<td>{glyph_cell(glyph)}</td>'
+            f'<td>{glyph_cell(glyph, chars_built)}</td>'
             f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
             f"<td>{reach}</td>"
             f'<td><div class="chips">{chips}</div></td>'
@@ -1302,14 +1314,48 @@ def feature_page(tag, content, fonts):
 
 # --------------------------------------------------------------- characters
 
-def char_page(cp, name, block, fonts, chars_built):
-    """One codepoint: what it is, and which indexed families draw it."""
+def assigned_by_block(blocks):
+    """{block name: [assigned codepoints]} — what is actually encoded.
+
+    Unassigned codepoints get no page and no chart cell: nothing can cover them,
+    and a coverage figure counting them would be wrong.
+    """
+    import unicodedata
+
+    out = {}
+    for first, last, name in blocks:
+        found = []
+        for cp in range(first, last + 1):
+            try:
+                unicodedata.name(chr(cp))
+            except ValueError:
+                continue
+            found.append(cp)
+        out[name] = found
+    return out
+
+
+def coverage_index(fonts, wanted):
+    """{codepoint: [families covering it]} for the codepoints that get a page.
+
+    Walked once per font rather than once per page: the naive version asks every
+    family about every codepoint, which is 33,000 times 1,885 range walks.
+    """
+    index = collections.defaultdict(list)
+    for font in fonts:
+        for first, last in font.get("ranges") or []:
+            for cp in range(first, last + 1):
+                if cp in wanted:
+                    index[cp].append(font)
+    return index
+
+
+def char_page(cp, name, block, covering, chars_built):
+    """One codepoint: what it is, and how each indexed family draws it."""
     import unicodedata
 
     ch = chr(cp)
     category = unicodedata.category(ch)
-    covering = [font for font in fonts if count_in_range(font.get("ranges") or [], cp, cp)]
-    measured = [font for font in covering if font.get("tier") == "measured"]
 
     facts = [fact(f"U+{cp:04X}", "codepoint"),
              fact(category, "general category"),
@@ -1439,12 +1485,21 @@ def block_page(block, fonts, chars_built):
         f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
         for font, n in covering[:100])
 
-    truncated = ""
+    notes = []
+    # A chart whose cells are links except where they silently are not is worse
+    # than one that says which it is.
+    if assigned and not any(cp in chars_built for cp in assigned):
+        notes.append('<p class="quiet">The characters in this block do not have pages of '
+                     f'their own: at {len(assigned):,} assigned codepoints it is a '
+                     "repertoire rather than a writing system, and a page each would be "
+                     "tens of thousands of files saying little beyond a name. The cells "
+                     "above show the character and its codepoint.</p>")
     if shown <= last:
-        truncated = (f'<p class="quiet">Showing the first {CHART_LIMIT:,} of '
+        notes.append(f'<p class="quiet">Showing the first {CHART_LIMIT:,} of '
                      f'{last - first + 1:,} codepoints in this block. The rest are in '
                      f'<a href="https://www.unicode.org/charts/PDF/U{first - (first % 0x80):04X}.pdf">'
                      "the Unicode chart ↗ — external</a>.</p>")
+    truncated = "\n      ".join(notes)
 
     body = f"""    <section class="entity-head">
       <h1>{esc(name)}</h1>
@@ -1845,11 +1900,16 @@ def main():
     # set is passed to every page that might link a character, so a link is only
     # ever written to a page that exists — a 404 we generated ourselves is worse
     # than a plain codepoint.
-    char_blocks = [(first, last) for first, last, name in blocks
-                   if name in CHAR_PAGE_BLOCKS]
-    for script_blocks in gen.SHAPED_SCRIPTS.values():
-        char_blocks += [(first, last) for first, last in script_blocks]
-    chars_built = {cp for first, last in char_blocks for cp in range(first, last + 1)}
+    assigned = assigned_by_block(blocks)
+    chars_built = {cp for name, cps in assigned.items()
+                   if len(cps) <= CHAR_PAGE_MAX_BLOCK for cp in cps}
+    print(f"  {len(chars_built):,} codepoints get a page; "
+          f"{sum(1 for cps in assigned.values() if len(cps) > CHAR_PAGE_MAX_BLOCK)} blocks "
+          f"are too large for one each")
+
+    # Which families cover each of those codepoints, computed once. Asking per
+    # page would be 33,000 pages times 1,885 families of range walking.
+    covering_fonts = coverage_index(fonts["fonts"], chars_built)
 
     write("/", home(fonts["fonts"], scripts, languages))
     print("  wrote home")
@@ -1882,17 +1942,21 @@ def main():
         write(f"/feature/{tag}/", feature_page(tag, content, fonts["fonts"]))
     print(f"  wrote {len(tags)} feature pages")
 
-    written = 0
+    import bisect
     import unicodedata
+
+    # Bisected, not scanned: "which block is this codepoint in" asked 33,000
+    # times against 327 blocks is ten million comparisons for no reason.
+    starts = [block[0] for block in blocks]
+    written = 0
     for cp in sorted(chars_built):
-        try:
-            name = unicodedata.name(chr(cp))
-        except ValueError:
-            continue
-        block = next((b for b in blocks if b[0] <= cp <= b[1]), None)
-        write(f"/char/{cp:04X}/", char_page(cp, name, block, fonts["fonts"], chars_built))
+        at = bisect.bisect_right(starts, cp) - 1
+        block = blocks[at] if at >= 0 and blocks[at][1] >= cp else None
+        write(f"/char/{cp:04X}/",
+              char_page(cp, unicodedata.name(chr(cp)), block,
+                        covering_fonts.get(cp, []), chars_built))
         written += 1
-    print(f"  wrote {written} character pages")
+    print(f"  wrote {written:,} character pages")
 
     for block in blocks:
         write(f"/block/{slug(block[2])}/", block_page(block, fonts["fonts"], chars_built))

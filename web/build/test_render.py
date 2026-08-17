@@ -536,8 +536,13 @@ def test_char_page_draws_the_glyph_in_each_family():
         {"name": "ABeeZee", "slug": "abeezee", "source": "google", "tier": "measured",
          "ranges": [[0x0020, 0x007E]], "licence": "OFL"},
     ]
+    # Which families cover it is worked out once for the whole build, so the
+    # page is handed the list rather than filtering 1,885 families itself.
+    index = render.coverage_index(fonts, {0x0D15})
+    assert [f["name"] for f in index[0x0D15]] == ["Manjari", "Baloo Chettan 2"]
+
     html = render.char_page(0x0D15, "MALAYALAM LETTER KA",
-                            [0x0D00, 0x0D7F, "Malayalam"], fonts, {0x0D15})
+                            [0x0D00, 0x0D7F, "Malayalam"], index[0x0D15], {0x0D15})
 
     # A tile per family that has it, each drawn in that family.
     assert 'class="draws' in html
@@ -565,6 +570,36 @@ def test_char_page_says_how_many_faces_it_drew():
                             [0x0D00, 0x0D7F, "Malayalam"], fonts, {0x0D15})
     assert html.count('class="tile-glyph') == render.DRAWN_LIMIT
     assert f"{render.DRAWN_LIMIT} of 40" in html
+
+
+def test_every_script_gets_character_pages():
+    """Tamil's chart cells were not links, because character pages existed only
+    for Latin and the two scripts we shape.
+
+    The bound is now the block's size, not a hand-picked list: every block small
+    enough to be about a writing system gets a page per codepoint. Eleven blocks
+    hold 110,233 of Unicode's 143,041 assigned codepoints, and a page each for
+    those would be a hundred thousand files saying little beyond a name.
+    """
+    blocks = [[0x0B80, 0x0BFF, "Tamil"], [0x0D00, 0x0D7F, "Malayalam"],
+              [0x4E00, 0x9FFF, "CJK Unified Ideographs"]]
+    assigned = render.assigned_by_block(blocks)
+
+    assert len(assigned["Tamil"]) <= render.CHAR_PAGE_MAX_BLOCK
+    assert len(assigned["Malayalam"]) <= render.CHAR_PAGE_MAX_BLOCK
+    assert len(assigned["CJK Unified Ideographs"]) > render.CHAR_PAGE_MAX_BLOCK
+
+    # Unassigned codepoints are never included: nothing can cover them.
+    assert 0x0B80 not in assigned["Tamil"]
+    assert 0x0B95 in assigned["Tamil"]                    # TAMIL LETTER KA
+
+
+def test_block_page_says_when_its_characters_have_no_pages():
+    # A chart of cells that are links except where they silently are not is
+    # worse than a chart that says which it is.
+    big = [0x4E00, 0x9FFF, "CJK Unified Ideographs"]
+    html = render.block_page(big, [], chars_built=set())
+    assert "do not have pages of their own" in html
 
 
 def test_pages_only_link_characters_that_exist():
