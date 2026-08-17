@@ -75,8 +75,15 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
       per family; we have none, so the section is omitted rather than faked
 - [ ] Licence for foundry families: the release carries OFL.txt but we do not
       read it yet, so those pages show an em dash
-- [x] Font shaping tables page (`/font/<id>/shaping/`) — every lookup a
-      feature runs, its type, its rule count and sample rules
+- [x] Lookups page (`/font/<id>/lookups/`) — every lookup a feature runs, its
+      type, rule count and sample rules, shown in the script with the glyph
+      names beside them. Renamed from "shaping": shaping is the engine's job and
+      a script engineer cannot change it; lookups are what they write
+- [x] Glyphs page (`/font/<id>/glyphs/`) — every glyph, encoded or built by a
+      rule, which features produce and consume it, and which are reachable by
+      nothing at all
+- [x] Devanagari as a second shaped script; expected output now verified by
+      shaping the expected form and comparing glyph runs
 - [ ] GPOS anchor diagrams on the shaping page — the prototype draws mark
       attachment; we currently report attachment counts only
 - [ ] Font shaping tables

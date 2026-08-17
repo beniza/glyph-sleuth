@@ -127,14 +127,15 @@ def test_parsed_fonts_are_not_kept():
     assert "file" not in record, "a font path is back in the index"
 
 
-def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None):
+def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
+                extra_glyphs=()):
     """A real font, built in memory, so the parser is tested against the thing
     it actually parses rather than a stub of it."""
     from fontTools.fontBuilder import FontBuilder
     from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
     from fontTools.pens.ttGlyphPen import TTGlyphPen
 
-    names = [".notdef"] + [f"g{cp:04X}" for cp in codepoints]
+    names = [".notdef"] + [f"g{cp:04X}" for cp in codepoints] + list(extra_glyphs)
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(names)
     builder.setupCharacterMap({cp: f"g{cp:04X}" for cp in codepoints})
@@ -267,7 +268,17 @@ def test_lookup_tables():
     rule = by_feature["akhn"]["rules"][0]
     assert rule["in"] == "g0D15 g0D4D g0D15"
     assert rule["out"] == "g0D7B"
-    assert by_feature["pres"]["rules"][0] == {"in": "g0D15", "out": "g0D16"}
+    single = by_feature["pres"]["rules"][0]
+    assert (single["in"], single["out"]) == ("g0D15", "g0D16")
+
+    # And the characters behind the names, because "g0D15" is one developer's
+    # private naming and ക is the thing a reader recognises.
+    assert single["inText"] == "ക" and single["outText"] == "ഖ"
+    assert rule["inText"] == "ക്ക"
+    # A glyph the cmap does not reach has no character to show, and that is
+    # reported as nothing rather than guessed at. Real ligature glyphs are the
+    # usual case: Manjari's k1k1 has no codepoint of its own.
+    assert gen_index.glyph_text(["k1k1"], {"k1": 0x0D15}) is None
 
     # A font with no positioning has no GPOS rows — not a row saying zero.
     assert tables["gpos"] == []
@@ -283,6 +294,63 @@ def test_lookup_rules_are_capped():
     row = tables["gsub"][0]
     assert row["n"] == 16                       # every rule counted
     assert len(row["rules"]) == gen_index.RULE_SAMPLES  # only a few shown
+
+
+def test_glyph_inventory():
+    """Every glyph in the font, and what the layout rules do with it.
+
+    A font is not its codepoints. The glyphs that carry the writing — half
+    forms, conjuncts, chillus, positional variants — have no codepoints at all,
+    and a glyph no rule ever produces can never appear in text however well
+    drawn it is. That is the thing worth making obvious.
+    """
+    fea = """
+    feature akhn { sub g0D15 g0D4D g0D15 by lig; } akhn;
+    """
+    blob = sample_font(codepoints=(0x0D15, 0x0D4D), fea=fea, extra_glyphs=("lig", "orphan"))
+    glyphs = gen_index.glyphs(blob)
+    by_name = {g["name"]: g for g in glyphs}
+
+    # Encoded glyphs carry the codepoint that reaches them.
+    assert by_name["g0D15"]["cp"] == 0x0D15
+    # A ligature has no codepoint, and is produced by the feature that builds it.
+    assert by_name["lig"]["cp"] is None
+    assert by_name["lig"]["produced"] == ["akhn"]
+    # The components are consumed by it, which is how you read the pipeline
+    # backwards from a shape you can see.
+    assert "akhn" in by_name["g0D15"]["consumed"]
+
+    # And the finding the page exists for: a glyph nothing can reach.
+    assert by_name["orphan"]["cp"] is None
+    assert by_name["orphan"]["produced"] == []
+    assert by_name["orphan"]["consumed"] == []
+    # .notdef is not an orphan worth reporting — it is the fallback by design.
+    assert ".notdef" not in [g["name"] for g in glyphs if g.get("orphan")]
+    assert by_name["orphan"]["orphan"] is True
+    assert by_name["g0D15"]["orphan"] is False
+
+
+def test_orphans_are_counted_from_every_rule():
+    """The rule *samples* are capped at six; the roles must not be.
+
+    Computing "unreachable" from the sampled rules called 441 of Manjari's 911
+    glyphs unreachable — every glyph produced by a seventh rule or later. The
+    page would have accused a good font of carrying dead weight, in the site's
+    own confident voice.
+    """
+    sources = list(range(0x0D15, 0x0D15 + 12))
+    many = "\n".join(f"    sub g{cp:04X} g0D4D by lig{n};"
+                     for n, cp in enumerate(sources))
+    fea = "feature akhn {\n" + many + "\n} akhn;"
+    blob = sample_font(codepoints=tuple(sources) + (0x0D4D,), fea=fea,
+                       extra_glyphs=tuple(f"lig{n}" for n in range(12)) + ("orphan",))
+    by_name = {g["name"]: g for g in gen_index.glyphs(blob)}
+
+    # The twelfth ligature is past the sample cap and is still not an orphan.
+    assert by_name["lig11"]["produced"] == ["akhn"]
+    assert by_name["lig11"]["orphan"] is False
+    # And the one nothing reaches still is.
+    assert by_name["orphan"]["orphan"] is True
 
 
 def test_google_face_url():
@@ -354,6 +422,53 @@ def test_woff2_is_unwrapped_before_shaping():
     # A plain TTF is passed through untouched.
     plain = sample_font(codepoints=(0x0D15,))
     assert gen_index.as_sfnt(plain) == plain
+
+
+def test_expected_output_is_checked():
+    """"It shaped something" is not "it shaped the right thing".
+
+    The verdict used to pass any run with no .notdef and no dotted circle, so a
+    font substituting the wrong glyph passed. The check is font-independent:
+    shape the expected text with the same font and compare the glyph runs.
+    Glyph *names* could not do this — every foundry names its glyphs
+    differently.
+    """
+    blob = sample_font(codepoints=(0x0D15, 0x0D16))
+
+    # Input shapes to what the author said it should.
+    assert gen_index.shape(blob, "0D15", expected="ക")["verdict"] == "clean"
+
+    # Input shapes to something else. Not a failure — the font drew a glyph —
+    # but not the agreed result either, which is exactly what "caveat" is for.
+    off = gen_index.shape(blob, "0D15", expected="ഖ")
+    assert off["verdict"] == "caveat"
+    assert "expected" in off["note"]
+
+    # With nothing to compare against, the old rule stands and says so.
+    assert gen_index.shape(blob, "0D15")["verdict"] == "clean"
+    # A missing glyph is still a failure, whatever was expected.
+    assert gen_index.shape(blob, "0D15 0D7B", expected="ക")["verdict"] == "fail"
+
+
+def test_devanagari_sequences():
+    # A second script, to prove the depth is not Malayalam-shaped: same file,
+    # same fields, and the dev2/deva split is the same trap as mlm2/mlym.
+    entries = gen_index.sequences("Deva")
+    assert entries, "no Devanagari sequences"
+    by_id = {entry["id"]: entry for entry in entries}
+    assert by_id["kssa"]["codes"] == "0915 094D 0937"
+    assert by_id["kssa"]["out"] == "क्ष"
+    for entry in entries:
+        assert entry["langs"] and entry["out"] and entry["note"]
+        # Codes must be real hex, or the shaper silently gets nothing.
+        assert all(0 <= int(code, 16) <= 0x10FFFF for code in entry["codes"].split())
+
+
+def test_every_shaped_script_declares_its_blocks():
+    # A script with sequences but no blocks would never be shaped — nothing
+    # would match the gate that decides which families to open.
+    for script in gen_index.all_sequences():
+        assert script in gen_index.SHAPED_SCRIPTS, f"{script} has sequences but no blocks"
 
 
 def test_hb_shape_command():

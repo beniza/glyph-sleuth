@@ -8,5 +8,14 @@
     { "id": "nta", "codes": "0D7B 0D4D 0D31", "needs": ["blwf", "pres"], "langs": "ml, jns", "out": "ൻ്റ", "note": "recommended nta" },
     { "id": "ntaLegacy", "codes": "0D28 0D4D 0D31", "needs": ["akhn", "blwf"], "langs": "ml", "out": "ൻ്റ", "note": "legacy nta, InScript input" },
     { "id": "reph", "codes": "0D4E 0D15", "needs": ["abvs"], "langs": "ml", "out": "ൎക", "note": "dot reph" }
+  ],
+  "Deva": [
+    { "id": "kssa", "codes": "0915 094D 0937", "needs": ["akhn", "half"], "langs": "hi", "out": "क्ष", "note": "ksha, the conjunct every Devanagari font is judged by" },
+    { "id": "reph", "codes": "0930 094D 0915", "needs": ["rphf", "abvs"], "langs": "hi", "out": "र्क", "note": "repha: ra + virama reorders above the following consonant" },
+    { "id": "rakar", "codes": "0915 094D 0930", "needs": ["blwf", "pstf"], "langs": "hi", "out": "क्र", "note": "rakar: ra below the base, the mirror case of repha" },
+    { "id": "half", "codes": "0915 094D 0924", "needs": ["half", "pres"], "langs": "hi", "out": "क्त", "note": "a half form joining two consonants" },
+    { "id": "nukta", "codes": "0915 093C", "needs": ["nukt"], "langs": "hi", "out": "क़", "note": "nukta below the base; a font may draw it clear of the descender or on top of it" },
+    { "id": "eyelash", "codes": "0930 093C 094D 0939", "needs": ["rphf", "blwf"], "langs": "mr", "out": "ऱ्ह", "note": "the Marathi eyelash ra, which Hindi-only fonts routinely get wrong" },
+    { "id": "iMatra", "codes": "0915 093F", "needs": ["pres"], "langs": "hi", "out": "कि", "note": "the i-matra is stored after its consonant and drawn before it — the reordering every Indic shaper has to do" }
   ]
 }

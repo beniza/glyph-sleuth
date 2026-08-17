@@ -438,6 +438,25 @@ def specimen_text(font, blocks=()):
     return LATIN_SPECIMEN
 
 
+def face_css_of(font):
+    """Where the browser can get this face — Google's CDN, or the foundry's own
+    stylesheet. Never a URL of ours; we serve no font files."""
+    if font.get("source") == "google":
+        return ("https://fonts.googleapis.com/css2?family="
+                + font["name"].replace(" ", "+") + "&display=swap")
+    return font.get("css") or ""
+
+
+def face_head(font, name):
+    """Load the family so the page can set specimens and glyphs in it."""
+    css = face_css_of(font)
+    if not css:
+        return ""
+    return (f'  <link rel="stylesheet" href="{esc(css)}">\n'
+            f'  <style>.specimen, .specimen-small, .glyph '
+            f'{{ font-family: "{esc(name)}", serif; }}</style>')
+
+
 def fact(value, label, href=None):
     """One cell of the facts strip: a mono value over a small caps label.
 
@@ -473,12 +492,7 @@ def font_page(font, blocks):
     results = {script: rows for script, rows in (font.get("results") or {}).items() if rows}
 
     # The face itself, from wherever it is actually distributed. We serve none.
-    face_css = ""
-    if font.get("source") == "google":
-        face_css = ("https://fonts.googleapis.com/css2?family="
-                    + name.replace(" ", "+") + "&display=swap")
-    elif font.get("css"):
-        face_css = font["css"]
+    face_css = face_css_of(font)
 
     # The facts strip. Only facts we have — no zeros standing in for things
     # nobody measured.
@@ -496,7 +510,7 @@ def font_page(font, blocks):
     if parsed:
         facts.append(fact(len(font.get("tags") or []), "script tags"))
         facts.append(fact(f"{font.get('gsub', 0)} · {font.get('gpos', 0)}",
-                          "GSUB · GPOS lookups", font_href(font) + "shaping/"))
+                          "GSUB · GPOS lookups", font_href(font) + "lookups/"))
     if font.get("faces"):
         facts.append(fact(len(font["faces"]), "weights"))
     rows_all = [row for rows in results.values() for row in rows.values()]
@@ -576,7 +590,9 @@ def font_page(font, blocks):
              f'      <p class="quiet">{esc(note)}</p>']
     links = []
     if font.get("tables"):
-        links.append(f'<a href="{font_href(font)}shaping/">Shaping tables</a>')
+        links.append(f'<a href="{font_href(font)}lookups/">Lookups</a>')
+    if font.get("glyphs"):
+        links.append(f'<a href="{font_href(font)}glyphs/">Glyphs</a>')
     if font.get("url"):
         links.append(f'<a href="{esc(font["url"])}">Download {esc(name)} ↗</a>')
     links.append(f'<a href="{link("/compare/")}">Compare with another family</a>')
@@ -609,16 +625,20 @@ def font_page(font, blocks):
                      ' publishes ↗ — external</a>.<br>'
                      f'<span class="mono break">{esc(font.get("checksum"))}</span></p>')
 
-    columns = [c for c in ("\n".join(left), "\n".join(middle), "\n".join(right)) if c.strip()]
-    body.append('    <section class="columns">\n'
-                + "\n".join(f'      <div>\n{column}\n      </div>' for column in columns)
-                + '\n    </section>')
+    # The evidence gets the full width. It was in a third of it, beside two
+    # other columns, and a matrix of four engine columns plus an hb-shape line
+    # does not fit in 300px — the verdicts wrapped into each other and the
+    # command ran under the panel to its right.
+    if middle:
+        body.append('    <section class="evidence">\n' + "\n".join(middle) + "\n    </section>")
 
-    head = ""
-    if face_css:
-        head = (f'  <link rel="stylesheet" href="{esc(face_css)}">\n'
-                f'  <style>.specimen, .specimen-small {{ font-family: "{esc(name)}", serif; }}'
-                '</style>')
+    columns = [c for c in ("\n".join(left), "\n".join(right)) if c.strip()]
+    if columns:
+        body.append('    <section class="split">\n'
+                    + "\n".join(f'      <div>\n{column}\n      </div>' for column in columns)
+                    + '\n    </section>')
+
+    head = face_head(font, name)
     return page(name, "\n".join(body), kind="font family",
                 code=font.get("slug") or slug(name),
                 description=f"{name}: what it covers, the OpenType script tags it declares, "
@@ -765,6 +785,144 @@ def fonts_index(fonts, blocks=()):
                             f"OpenType script tag or by the Unicode block they cover.")
 
 
+def rule_row(rule):
+    """One rule, in the script first and the font's glyph names second.
+
+    Glyph names are the font developer's private business: nobody should have to
+    learn that Manjari calls chillu n `n1cil` to read what a lookup does. Where
+    the cmap reaches a glyph we show the character; a ligature glyph has no
+    codepoint of its own, so the output is drawn by letting the browser shape
+    the input — which is the same substitution, performed rather than described.
+    """
+    into = (f'<span class="glyph">{esc(rule["outText"])}</span>' if rule.get("outText")
+            else (f'<span class="glyph" data-shaped>{esc(rule["inText"])}</span>'
+                  if rule.get("inText") else ""))
+    shown = ""
+    if rule.get("inText"):
+        shown = (f'<span class="glyph">{esc(rule["inText"])}</span>'
+                 f'<span class="arrow">→</span>{into}')
+    return (f'<div class="rule">{shown}'
+            f'<span class="names mono">{esc(rule["in"])} → {esc(rule["out"])}</span></div>')
+
+
+def glyph_cell(glyph, components):
+    """The glyph itself, drawn rather than named.
+
+    An encoded glyph is set from its codepoint. A glyph with no codepoint —
+    every conjunct, half form and chillu ligature — is drawn by setting the
+    input that produces it and letting the browser's shaper build it, which is
+    the only way to show it without publishing the outlines themselves.
+    """
+    if glyph.get("cp") is not None:
+        return f'<span class="glyph">{esc(chr(glyph["cp"]))}</span>'
+    text = components.get(glyph["name"])
+    if text:
+        return (f'<span class="glyph" title="shaped from {esc(text)}">{esc(text)}</span>')
+    return '<span class="glyph faint">—</span>'
+
+
+def glyphs_page(font):
+    """Every glyph in the family, and what the layout does with each one."""
+    inventory = font.get("glyphs") or []
+    name = font["name"]
+
+    if not inventory:
+        body = (f'    <section class="entity-head">\n      <h1>{esc(name)}: glyphs</h1>\n'
+                '      <p class="quiet">This family is <strong>not measured yet</strong> — '
+                'its font file has not been read, so there is no glyph list to show.</p>\n'
+                "    </section>")
+        return page(f"{name} glyphs", body, kind="glyphs",
+                    code=font.get("slug") or slug(name))
+
+    # For an unencoded glyph, the input that builds it — read out of the
+    # ligature rules we already extracted.
+    components = {}
+    for row in (font.get("tables") or {}).get("gsub", []):
+        for rule in row["rules"]:
+            if rule.get("inText") and not rule.get("outText"):
+                components.setdefault(rule["out"], rule["inText"])
+
+    encoded = [g for g in inventory if g["cp"] is not None]
+    built = [g for g in inventory if g["cp"] is None and (g["produced"] or g["consumed"])]
+    orphans = [g for g in inventory if g["orphan"]]
+
+    rows = []
+    for glyph in inventory:
+        if glyph["cp"] is not None:
+            reach = (f'<a href="{link("/char/" + f"{glyph["cp"]:04X}" + "/")}" class="mono">'
+                     f'U+{glyph["cp"]:04X}</a>')
+            state = "encoded"
+        elif glyph["produced"]:
+            reach = '<span class="quiet">built by a rule</span>'
+            state = "built"
+        else:
+            reach = '<span class="fail">unreachable</span>'
+            state = "orphan"
+        chips = " ".join(
+            f'<a class="chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
+            for tag in glyph["produced"])
+        used = " ".join(
+            f'<a class="chip quiet-chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
+            for tag in glyph["consumed"])
+        rows.append(
+            f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}">'
+            f'<td>{glyph_cell(glyph, components)}</td>'
+            f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
+            f"<td>{reach}</td>"
+            f'<td><div class="chips">{chips}</div></td>'
+            f'<td><div class="chips">{used}</div></td></tr>')
+
+    facets = [("all", "all", len(inventory)),
+              ("encoded", "encoded", len(encoded)),
+              ("built", "built by a rule", len(built)),
+              ("orphan", "unreachable", len(orphans))]
+    chips_html = "\n".join(
+        f'        <button class="facet{" on" if key == "all" else ""}" data-facet="{key}"'
+        f' data-count="{count}"><span>{esc(label)}</span>'
+        f'<span class="count mono">{count:,}</span></button>'
+        for key, label, count in facets)
+
+    body = f"""    <section class="entity-head">
+      <div class="head-row">
+        <h1>{esc(name)}: glyphs</h1>
+        <p class="showing quiet">Showing <span data-showing>{len(inventory):,}</span>
+           of {len(inventory):,}</p>
+      </div>
+      <p class="quiet">A font is not its codepoints. {len(built):,} of these
+         {len(inventory):,} glyphs have no codepoint at all — they are the conjuncts, half
+         forms and positional variants the layout rules build — and
+         {len(orphans):,} are reachable by nothing: no codepoint, and no rule that produces
+         them. However well drawn, those cannot appear in text.</p>
+      <p class="quiet">Glyphs are drawn by your browser from the family's own
+         distribution. An unencoded glyph is shown by setting the input that produces it,
+         so what you see is the shaper doing the substitution rather than a picture of it.</p>
+    </section>
+
+    <section>
+      <div class="controls">
+        <input type="search" class="filter" placeholder="filter by glyph name"
+               aria-label="Filter glyphs by name">
+        <div class="facets">
+{chips_html}
+        </div>
+      </div>
+      <table class="index glyph-table">
+        <thead><tr><th>Glyph</th><th>Name</th><th>Reached by</th><th>Produced by</th>
+          <th>Consumed by</th></tr></thead>
+      <tbody>
+{chr(10).join(rows)}
+      </tbody>
+      </table>
+      <p class="empty quiet" hidden>No glyph matches that name.</p>
+    </section>
+"""
+    return page(f"{name} glyphs", body, kind="glyphs",
+                code=font.get("slug") or slug(name),
+                description=f"Every glyph in {name}: which are encoded, which the layout "
+                            f"rules build, and which nothing can reach.",
+                extra_head=face_head(font, name))
+
+
 def lookup_rows(rows):
     """One row per lookup, grouped under its feature.
 
@@ -782,10 +940,7 @@ def lookup_rows(rows):
                     f'<a href="{link("/feature/" + feature + "/")}">{esc(feature)}</a>'
                     "</th></tr>\n")
             seen = feature
-        rules = "".join(
-            f'<div class="rule"><span class="mono">{esc(rule["in"])}</span>'
-            f' → <span class="mono">{esc(rule["out"])}</span></div>'
-            for rule in row["rules"])
+        rules = "".join(rule_row(rule) for rule in row["rules"])
         if not rules:
             rules = ('<div class="quiet">This lookup chains other lookups rather than '
                      'mapping glyphs, so there is nothing to list — only when it fires.</div>'
@@ -800,10 +955,10 @@ def lookup_rows(rows):
     return out
 
 
-def shaping_page(font):
+def lookups_page(font):
     name = font["name"]
     tables = font.get("tables") or {}
-    body = [f'    <section class="claim">\n      <h1>{esc(name)}: shaping tables</h1>\n'
+    body = [f'    <section class="claim">\n      <h1>{esc(name)}: lookups</h1>\n'
             f'      <p class="quiet">The working behind the verdicts on '
             f'<a href="{font_href(font)}">the family page</a>: which lookups each feature '
             f'runs, of what type, and the rules they carry.</p>\n    </section>']
@@ -812,7 +967,7 @@ def shaping_page(font):
         body.append('    <section>\n      <p class="quiet">This family is '
                     '<strong>not measured yet</strong> — its font file has not been read, so '
                     'there are no lookups to show.</p>\n    </section>')
-        return page(f"{name} shaping tables", "\n".join(body), kind="shaping tables",
+        return page(f"{name} lookups", "\n".join(body), kind="lookups",
                     code=slug(name))
 
     for key, title, note in (
@@ -831,7 +986,7 @@ def shaping_page(font):
                     "      <tbody>\n" + "\n".join(rows) + "\n      </tbody>\n      </table>\n"
                     f'      <p class="quiet">{note}</p>\n    </section>')
 
-    return page(f"{name} shaping tables", "\n".join(body), kind="shaping tables",
+    return page(f"{name} lookups", "\n".join(body), kind="lookups",
                 code=slug(name),
                 description=f"Every GSUB and GPOS lookup {name} runs, by feature, with the "
                             f"rules behind them.")
@@ -885,12 +1040,14 @@ def main():
     for font in fonts["fonts"]:
         write(f"/font/{font['slug']}/", font_page(font, blocks))
         if font.get("tables"):
-            write(f"/font/{font['slug']}/shaping/", shaping_page(font))
+            write(f"/font/{font['slug']}/lookups/", lookups_page(font))
             shaping += 1
+        if font.get("glyphs"):
+            write(f"/font/{font['slug']}/glyphs/", glyphs_page(font))
     write("/fonts/", fonts_index(fonts["fonts"], blocks))
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
     print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
-          f"{len(fonts['fonts']) - measured} not yet; {shaping} with shaping tables")
+          f"{len(fonts['fonts']) - measured} not yet; {shaping} with lookups")
 
 
 if __name__ == "__main__":

@@ -234,14 +234,39 @@ a.fact:hover .value { color: var(--ink); }
   line-height: 1.25;
 }
 
-/* Three columns of working, side by side, as the prototype lays them out. */
-.columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 30px 44px;
+/* The evidence gets the full width. Four engine columns and an hb-shape line
+   do not fit in a third of the page: at 300px the verdicts wrapped into each
+   other and the command ran underneath the panel beside it. */
+.evidence { max-width: 100%; }
+.evidence .matrix { table-layout: auto; }
+.matrix th[scope="row"] { min-width: 15ch; }
+.matrix td { white-space: nowrap; }
+.matrix tr.detail td { white-space: normal; }
+.matrix tr.detail code {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
 }
-.columns h2 { margin-top: 30px; }
+
+/* Everything else pairs up. Two columns, not three — a 1,180px page split
+   three ways leaves nothing wide enough to hold a table. */
+.split, .columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 30px 44px;
+  align-items: start;
+}
+.split h2, .columns h2 { margin-top: 30px; }
+.split > div > h2:first-child,
 .columns > div > h2:first-child { margin-top: 0; }
+
+/* Tables never push the page sideways; they scroll inside their own box. */
+table { display: table; }
+section > table { display: table; }
+.scroll { overflow-x: auto; }
 
 .pair {
   border-top: 1px solid var(--rule);
@@ -383,8 +408,21 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
   border-bottom-color: var(--ink);
 }
 .lookups td { vertical-align: top; }
-.rule { font-size: 13px; }
-.rule .mono { font-size: 12.5px; }
+
+/* A rule, in the script first and the glyph names second. The characters are
+   what a reader recognises; the names are the font developer's own labels. */
+.rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 5px 0;
+  border-top: 1px solid var(--rule);
+}
+.rule:first-child { border-top: none; }
+.glyph { font-size: 26px; line-height: 1.2; }
+.arrow { color: var(--muted); }
+.names { color: var(--muted); font-size: 11.5px; }
 
 .snippet {
   background: var(--panel);
@@ -408,3 +446,10 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
   body { background: #fff; color: #000; }
   a { color: #000; border: none; }
 }
+
+/* The glyph inventory: what a font actually contains, drawn rather than named. */
+.glyph-table td:first-child { width: 3.5em; }
+.glyph-table .glyph { font-size: 30px; }
+.glyph-table .chips { gap: 4px; }
+.quiet-chip { color: var(--muted); background: transparent; }
+.faint { color: var(--faint); }

@@ -437,6 +437,9 @@ def measure(blob):
 
     # The working behind the counts, for the shaping tables page.
     facts["tables"] = lookups(blob)
+    # Every glyph, and what the rules do with it — the page that shows a
+    # font is more than its codepoints.
+    facts["glyphs"] = glyphs(blob)
 
     name = font["name"]
     facts["family"] = str(name.getBestFamilyName() or "")
@@ -592,7 +595,23 @@ def resolve(lookup):
     return subtables
 
 
-def gsub_rules(subtables):
+def glyph_text(names, reverse):
+    """The characters these glyphs are encoded as, or None if any is not.
+
+    Glyph names are a font developer's private business — k1cil means nothing to
+    a reader. Where a glyph is in the cmap we can show the real character; a
+    ligature glyph has no codepoint of its own, and the page draws that by
+    letting the browser shape the input instead.
+    """
+    out = []
+    for name in names:
+        if name not in reverse:
+            return None
+        out.append(chr(reverse[name]))
+    return "".join(out)
+
+
+def gsub_rules(subtables, reverse=None):
     """[{in, out}] — a rule reads as what it does: these glyphs become that."""
     rules, total = [], 0
     for subtable in subtables:
@@ -601,21 +620,22 @@ def gsub_rules(subtables):
             total += len(mapping)
             for source, target in list(mapping.items())[:RULE_SAMPLES]:
                 out = target if isinstance(target, str) else " ".join(target)
-                rules.append({"in": source, "out": out})
+                rules.append(with_text({"in": source, "out": out}, reverse))
             continue
         alternates = getattr(subtable, "alternates", None)
         if alternates:                                 # aalt: one glyph, several choices
             total += len(alternates)
             for source, targets in list(alternates.items())[:RULE_SAMPLES]:
-                rules.append({"in": source, "out": " / ".join(targets)})
+                rules.append(with_text({"in": source, "out": " / ".join(targets)}, reverse))
             continue
         ligatures = getattr(subtable, "ligatures", None)
         if ligatures:
             for first, entries in ligatures.items():
                 total += len(entries)
                 for entry in entries[:RULE_SAMPLES]:
-                    rules.append({"in": " ".join([first] + list(entry.Component)),
-                                  "out": entry.LigGlyph})
+                    rules.append(with_text(
+                        {"in": " ".join([first] + list(entry.Component)),
+                         "out": entry.LigGlyph}, reverse))
             continue
         # Contextual lookups chain other lookups rather than mapping glyphs;
         # counting their rules is honest, listing them is not readable.
@@ -625,6 +645,15 @@ def gsub_rules(subtables):
             if found:
                 total += len(found)
     return rules[:RULE_SAMPLES], total
+
+
+def with_text(rule, reverse):
+    """Add the characters behind a rule's glyph names, where they have any."""
+    if not reverse:
+        return rule
+    rule["inText"] = glyph_text(rule["in"].split(), reverse)
+    rule["outText"] = glyph_text([rule["out"]], reverse)
+    return rule
 
 
 def gpos_rules(subtables):
@@ -646,6 +675,103 @@ def gpos_rules(subtables):
     return total
 
 
+def glyph_roles(sfnt):
+    """Which features produce and consume each glyph, across every rule.
+
+    Uncapped on purpose: this is what decides whether a glyph is reachable, and
+    a sample cannot answer that.
+    """
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(io.BytesIO(sfnt), fontNumber=0, lazy=True)
+    produced = collections.defaultdict(set)
+    consumed = collections.defaultdict(set)
+    if "GSUB" not in font:
+        font.close()
+        return produced, consumed
+
+    table = font["GSUB"].table
+    all_lookups = getattr(table.LookupList, "Lookup", []) or []
+    for record in getattr(table.FeatureList, "FeatureRecord", []) or []:
+        feature = record.FeatureTag.strip()
+        for index in record.Feature.LookupListIndex:
+            if index >= len(all_lookups):
+                continue
+            for subtable in resolve(all_lookups[index]):
+                mapping = getattr(subtable, "mapping", None)
+                if mapping:
+                    for source, target in mapping.items():
+                        consumed[source].add(feature)
+                        for name in ([target] if isinstance(target, str) else target):
+                            produced[name].add(feature)
+                    continue
+                alternates = getattr(subtable, "alternates", None)
+                if alternates:
+                    for source, targets in alternates.items():
+                        consumed[source].add(feature)
+                        for name in targets:
+                            produced[name].add(feature)
+                    continue
+                ligatures = getattr(subtable, "ligatures", None)
+                if ligatures:
+                    for first, entries in ligatures.items():
+                        consumed[first].add(feature)
+                        for entry in entries:
+                            for name in entry.Component:
+                                consumed[name].add(feature)
+                            produced[entry.LigGlyph].add(feature)
+                    continue
+                # A contextual lookup rewrites nothing itself; what it touches
+                # is its coverage, and the lookups it chains are already walked
+                # on their own account.
+                coverage = getattr(subtable, "Coverage", None)
+                for glyph in getattr(coverage, "glyphs", []) or []:
+                    consumed[glyph].add(feature)
+    font.close()
+    return produced, consumed
+
+
+def glyphs(blob, limit=4000):
+    """Every glyph in the font, and what the layout rules do with it.
+
+    A font is not its codepoints. The glyphs that carry Indic writing — half
+    forms, conjuncts, chillus, positional variants — have no codepoints at all,
+    and a glyph no rule ever produces can never appear in text however well it
+    is drawn. Both facts are invisible from a coverage table.
+
+    `produced` is the features whose rules output this glyph; `consumed` is the
+    features whose rules take it as input. A glyph with neither, and no
+    codepoint, is an orphan: unreachable.
+    """
+    from fontTools.ttLib import TTFont
+
+    sfnt = as_sfnt(blob)
+    font = TTFont(io.BytesIO(sfnt), fontNumber=0, lazy=True)
+    order = font.getGlyphOrder()[:limit]
+    reverse = {}
+    for cp, name in font.getBestCmap().items():
+        reverse.setdefault(name, cp)
+    font.close()
+
+    # From *every* rule, not the handful the page samples. Deriving roles from
+    # the samples called 441 of Manjari's 911 glyphs unreachable — everything
+    # produced by a seventh rule or later — which would have accused a good
+    # font of carrying dead weight in our own confident voice.
+    produced, consumed = glyph_roles(sfnt)
+
+    out = []
+    for name in order:
+        cp = reverse.get(name)
+        # .notdef is the fallback by design, not an unreachable glyph.
+        orphan = (cp is None and not produced[name] and not consumed[name]
+                  and name != ".notdef")
+        out.append({"name": name, "cp": cp,
+                    "produced": sorted(produced[name]),
+                    "consumed": sorted(consumed[name]),
+                    "orphan": orphan})
+    return out
+
+
 def lookups(blob):
     """Every feature's lookups, with the rules behind them.
 
@@ -655,6 +781,11 @@ def lookups(blob):
     from fontTools.ttLib import TTFont
 
     font = TTFont(io.BytesIO(as_sfnt(blob)), fontNumber=0, lazy=True)
+    # Glyph name -> the character it is encoded as, so a rule can be shown in
+    # the script rather than in one font developer's naming scheme.
+    reverse = {}
+    for cp, name in font.getBestCmap().items():
+        reverse.setdefault(name, cp)
     out = {"gsub": [], "gpos": []}
     for table_tag, key, names in (("GSUB", "gsub", GSUB_TYPES), ("GPOS", "gpos", GPOS_TYPES)):
         if table_tag not in font:
@@ -673,7 +804,7 @@ def lookups(blob):
                            "ExtSubTable", None) is not None and subtables:
                     kind = names.get(subtables[0].LookupType, kind)
                 if key == "gsub":
-                    rules, total = gsub_rules(subtables)
+                    rules, total = gsub_rules(subtables, reverse)
                 else:
                     rules, total = [], gpos_rules(subtables)
                 out[key].append({"feature": tag, "type": kind, "index": index,
@@ -689,7 +820,13 @@ CONTENT = os.path.join(ROOT, "web", "content")
 # Scripts we have authored sequences for, and the blocks that say a face is
 # meant for one. Malayalam is the flagship, not the limit — adding a script is
 # a sequences.json entry and a line here.
-SHAPED_SCRIPTS = {"Mlym": [(0x0D00, 0x0D7F)]}
+# Every block each script spans, because a script is rarely one block:
+# Devanagari takes three, Arabic nine. Miss one and the families that cover
+# only the supplement are never opened.
+SHAPED_SCRIPTS = {
+    "Mlym": [(0x0D00, 0x0D7F)],
+    "Deva": [(0x0900, 0x097F), (0xA8E0, 0xA8FF), (0x11B00, 0x11B5F)],
+}
 
 
 def countInRange(ranges, first, last):
@@ -702,6 +839,12 @@ def countInRange(ranges, first, last):
             break
         total += min(hi, last) - max(lo, first) + 1
     return total
+
+
+def all_sequences():
+    """Every script we have authored sequences for."""
+    with io.open(os.path.join(CONTENT, "sequences.json"), encoding="utf-8") as handle:
+        return [key for key in json.load(handle) if not key.startswith("_")]
 
 
 def sequences(script="Mlym"):
@@ -748,7 +891,7 @@ def as_sfnt(blob):
     return out.getvalue()
 
 
-def shape(blob, codes, features=None, language="ml", script="Mlym"):
+def shape(blob, codes, features=None, language="ml", script="Mlym", expected=None):
     """Shape one sequence with HarfBuzz and judge the result.
 
     Three things count as the font failing, not the text being wrong:
@@ -768,8 +911,9 @@ def shape(blob, codes, features=None, language="ml", script="Mlym"):
         buffer.language = language
     hb.shape(font, buffer, {feature: True for feature in (features or [])})
 
-    names = []
+    names, gids = [], []
     for info in buffer.glyph_infos:
+        gids.append(info.codepoint)
         try:
             names.append(font.glyph_to_string(info.codepoint))
         except Exception:
@@ -787,7 +931,33 @@ def shape(blob, codes, features=None, language="ml", script="Mlym"):
     elif any("dotted" in name.lower() or name == "uni25CC" for name in names):
         verdict, note = "fail", "a dotted circle survived: the shaper gave up on the cluster"
 
-    return {"verdict": verdict, "glyphs": names, "note": note,
+    # "It shaped something" is not "it shaped the right thing". Shaping the
+    # expected text through the same font and comparing glyph runs is the only
+    # font-independent check available: glyph *names* differ per foundry, so
+    # k1cil in one family says nothing about another.
+    if verdict == "clean" and expected:
+        wanted = hb.Buffer()
+        wanted.add_str(expected)
+        wanted.guess_segment_properties()
+        hb.shape(font, wanted, {feature: True for feature in (features or [])})
+        wanted_gids = [info.codepoint for info in wanted.glyph_infos]
+        if wanted_gids and wanted_gids != gids:
+            # Two different glyph ids can draw the same shape, so this is a
+            # caveat and not a failure: the run differs from the expected
+            # form's, which is worth a look, not proof of a bug.
+            wanted_names = []
+            for info in wanted.glyph_infos:
+                try:
+                    wanted_names.append(font.glyph_to_string(info.codepoint))
+                except Exception:
+                    wanted_names.append(f"gid{info.codepoint}")
+            verdict = "caveat"
+            note = (f"a different glyph run from the expected form {expected}: "
+                    f"{' '.join(names)} against {' '.join(wanted_names)}. Two glyphs "
+                    "can draw the same shape, so this is worth looking at rather "
+                    "than proof of a fault.")
+
+    return {"verdict": verdict, "glyphs": names, "gids": gids, "note": note,
             "shaper": "hb", "version": hb.version_string()}
 
 
@@ -802,7 +972,8 @@ def shape_all(blob, filename, script="Mlym"):
     for entry in sequences(script):
         try:
             hb_result = shape(blob, entry["codes"], entry.get("needs"),
-                              (entry.get("langs") or "ml").split(",")[0].strip(), script)
+                              (entry.get("langs") or "ml").split(",")[0].strip(), script,
+                              expected=entry.get("out"))
         except Exception as error:
             hb_result = {"verdict": "fail", "glyphs": [], "note": str(error), "shaper": "hb"}
         hb_result["command"] = hb_shape_command(

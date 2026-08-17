@@ -386,7 +386,7 @@ def test_use_it_never_invents_an_import():
         assert not ours.search(state), "we are linking a font file of our own"
 
 
-def test_shaping_page_shows_the_working():
+def test_lookups_page_shows_the_working():
     font = dict(MANJARI, tables={
         "gsub": [{"feature": "akhn", "type": "Ligature", "index": 0, "flag": 0, "n": 60,
                   "rules": [{"in": "k1 xx k1", "out": "k1k1"}]},
@@ -395,13 +395,19 @@ def test_shaping_page_shows_the_working():
         "gpos": [{"feature": "abvm", "type": "Mark to base", "index": 0, "flag": 0,
                   "n": 464, "rules": []}],
     })
-    html = render.shaping_page(font)
+    html = render.lookups_page(font)
+
+    # Named "lookups", not "shaping": shaping is the engine's job and a script
+    # engineer cannot change it. Lookups are the part they write.
+    assert "lookups" in html and "shaping tables" not in html
 
     # Grouped by feature, because that is how a reader thinks about it: what
     # does akhn actually do in this font?
     assert "akhn" in html and "abvm" in html
     assert "Ligature" in html and "Mark to base" in html
-    # A rule reads as what it does.
+    # A rule reads as what it does — in the script first, and the font's own
+    # glyph names second. Nobody should have to learn that this family calls
+    # chillu n "n1cil" to understand a substitution.
     assert "k1 xx k1" in html and "k1k1" in html
     # The counts are the full counts, even where only a few rules are shown.
     assert "60" in html and "464" in html
@@ -413,13 +419,13 @@ def test_shaping_page_shows_the_working():
     assert render.font_href(font) in html
 
 
-def test_shaping_page_needs_the_tables():
+def test_lookups_page_needs_the_tables():
     # Nothing to show for a family whose file we never opened, and the page
     # says that instead of rendering an empty table.
     stub = {"name": "RIT Panmana", "source": "rit", "tier": "stub", "ranges": [],
             "licence": "", "url": "x", "css": None, "tags": [], "features": [],
             "axes": [], "faces": []}
-    html = render.shaping_page(stub)
+    html = render.lookups_page(stub)
     assert "not measured yet" in html
     assert "<table" not in html
 
