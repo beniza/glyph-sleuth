@@ -330,6 +330,37 @@ def test_glyph_inventory():
     assert by_name["g0D15"]["orphan"] is False
 
 
+def test_every_built_glyph_carries_a_recipe():
+    """A glyph with no codepoint still has to be drawable.
+
+    The page can only show an unencoded glyph by setting the text that produces
+    it and turning on the feature that does the producing — there is no other
+    way without publishing outlines. So each built glyph records that recipe:
+    the input characters, and the feature to enable.
+    """
+    fea = """
+    feature akhn { sub g0D15 g0D4D g0D15 by lig; } akhn;
+    feature pstf { sub g0D16 by variant; } pstf;
+    """
+    blob = sample_font(codepoints=(0x0D15, 0x0D16, 0x0D4D), fea=fea,
+                       extra_glyphs=("lig", "variant", "orphan"))
+    by_name = {g["name"]: g for g in gen_index.glyphs(blob)}
+
+    # A ligature: the components, in order, as text the browser can shape.
+    assert by_name["lig"]["from"]["text"] == "ക്ക"
+    assert by_name["lig"]["from"]["features"] == ["akhn"]
+
+    # A single substitution: the source character, plus the feature that swaps
+    # it — without the feature the browser would draw the source, not this.
+    assert by_name["variant"]["from"]["text"] == "ഖ"
+    assert by_name["variant"]["from"]["features"] == ["pstf"]
+
+    # Encoded glyphs need no recipe; they are reachable by typing.
+    assert by_name["g0D15"].get("from") is None
+    # And an orphan has none to give, which is the point of it being an orphan.
+    assert by_name["orphan"].get("from") is None
+
+
 def test_orphans_are_counted_from_every_rule():
     """The rule *samples* are capped at six; the roles must not be.
 

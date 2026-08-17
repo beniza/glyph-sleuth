@@ -805,20 +805,45 @@ def rule_row(rule):
             f'<span class="names mono">{esc(rule["in"])} → {esc(rule["out"])}</span></div>')
 
 
-def glyph_cell(glyph, components):
+def glyph_cell(glyph):
     """The glyph itself, drawn rather than named.
 
     An encoded glyph is set from its codepoint. A glyph with no codepoint —
-    every conjunct, half form and chillu ligature — is drawn by setting the
-    input that produces it and letting the browser's shaper build it, which is
-    the only way to show it without publishing the outlines themselves.
+    every conjunct, half form and positional variant — is drawn by setting the
+    input that produces it *and turning on the feature that does the
+    producing*: without the feature the browser draws the input, not the glyph
+    the rule builds. That is the only way to show it without publishing the
+    outlines, and it has the advantage of being the shaper actually doing the
+    substitution rather than a picture of one.
     """
     if glyph.get("cp") is not None:
         return f'<span class="glyph">{esc(chr(glyph["cp"]))}</span>'
-    text = components.get(glyph["name"])
-    if text:
-        return (f'<span class="glyph" title="shaped from {esc(text)}">{esc(text)}</span>')
-    return '<span class="glyph faint">—</span>'
+    recipe = glyph.get("from")
+    if recipe and recipe["features"]:
+        features = " ".join(f"ff-{esc(tag)}" for tag in recipe["features"])
+        return (f'<span class="glyph {features}" '
+                f'title="{esc(recipe["text"])} with {esc(", ".join(recipe["features"]))} on">'
+                f'{esc(recipe["text"])}</span>')
+    if recipe:
+        # Built by a lookup a chaining context calls, so no feature switch
+        # produces it on its own. Drawing the input here would show the
+        # unsubstituted characters as though they were the result.
+        return (f'<span class="faint" title="built from {esc(recipe["text"])} by a lookup a '
+                f'chaining context calls, so it cannot be produced on its own">'
+                f'needs context</span>')
+    # A contextual lookup only fires inside a wider run, so some glyphs cannot
+    # be produced in isolation. Saying so beats an empty cell.
+    return '<span class="faint" title="cannot be produced in isolation">not in isolation</span>'
+
+
+def feature_styles(inventory):
+    """One class per feature that produces a glyph, so the cells need no inline
+    styles: .ff-pstf turns pstf on for that span alone."""
+    tags = sorted({tag for glyph in inventory
+                   for tag in (glyph.get("from") or {}).get("features", [])})
+    rules = "\n".join(
+        f'    .ff-{tag} {{ font-feature-settings: "{tag}" 1; }}' for tag in tags)
+    return f"  <style>\n{rules}\n  </style>" if rules else ""
 
 
 def glyphs_page(font):
@@ -833,14 +858,6 @@ def glyphs_page(font):
                 "    </section>")
         return page(f"{name} glyphs", body, kind="glyphs",
                     code=font.get("slug") or slug(name))
-
-    # For an unencoded glyph, the input that builds it — read out of the
-    # ligature rules we already extracted.
-    components = {}
-    for row in (font.get("tables") or {}).get("gsub", []):
-        for rule in row["rules"]:
-            if rule.get("inText") and not rule.get("outText"):
-                components.setdefault(rule["out"], rule["inText"])
 
     encoded = [g for g in inventory if g["cp"] is not None]
     built = [g for g in inventory if g["cp"] is None and (g["produced"] or g["consumed"])]
@@ -866,7 +883,7 @@ def glyphs_page(font):
             for tag in glyph["consumed"])
         rows.append(
             f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}">'
-            f'<td>{glyph_cell(glyph, components)}</td>'
+            f'<td>{glyph_cell(glyph)}</td>'
             f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
             f"<td>{reach}</td>"
             f'<td><div class="chips">{chips}</div></td>'
@@ -920,7 +937,7 @@ def glyphs_page(font):
                 code=font.get("slug") or slug(name),
                 description=f"Every glyph in {name}: which are encoded, which the layout "
                             f"rules build, and which nothing can reach.",
-                extra_head=face_head(font, name))
+                extra_head=face_head(font, name) + "\n" + feature_styles(inventory))
 
 
 def lookup_rows(rows):

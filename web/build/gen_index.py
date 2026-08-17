@@ -688,7 +688,13 @@ def glyph_roles(sfnt):
     consumed = collections.defaultdict(set)
     if "GSUB" not in font:
         font.close()
-        return produced, consumed
+        return produced, consumed, {}
+
+    # How each produced glyph is made: the input glyph names and the feature
+    # that does the producing. That recipe is the only way to *draw* a glyph
+    # with no codepoint — set its input, turn its feature on, let the browser's
+    # shaper do the substitution.
+    recipe = {}
 
     table = font["GSUB"].table
     all_lookups = getattr(table.LookupList, "Lookup", []) or []
@@ -704,6 +710,7 @@ def glyph_roles(sfnt):
                         consumed[source].add(feature)
                         for name in ([target] if isinstance(target, str) else target):
                             produced[name].add(feature)
+                            recipe.setdefault(name, ([source], feature))
                     continue
                 alternates = getattr(subtable, "alternates", None)
                 if alternates:
@@ -711,6 +718,7 @@ def glyph_roles(sfnt):
                         consumed[source].add(feature)
                         for name in targets:
                             produced[name].add(feature)
+                            recipe.setdefault(name, ([source], feature))
                     continue
                 ligatures = getattr(subtable, "ligatures", None)
                 if ligatures:
@@ -720,6 +728,8 @@ def glyph_roles(sfnt):
                             for name in entry.Component:
                                 consumed[name].add(feature)
                             produced[entry.LigGlyph].add(feature)
+                            recipe.setdefault(entry.LigGlyph,
+                                              ([first] + list(entry.Component), feature))
                     continue
                 # A contextual lookup rewrites nothing itself; what it touches
                 # is its coverage, and the lookups it chains are already walked
@@ -727,8 +737,54 @@ def glyph_roles(sfnt):
                 coverage = getattr(subtable, "Coverage", None)
                 for glyph in getattr(coverage, "glyphs", []) or []:
                     consumed[glyph].add(feature)
+    # Lookups reached only from a chaining context are in no feature's list, so
+    # the walk above never sees what they build. A second pass over every
+    # lookup fills in those recipes with no feature attached: the substitution
+    # fires from its context, not from a feature you can switch on, and the
+    # page says so instead of drawing the unsubstituted input as if it were the
+    # result.
+    for lookup in all_lookups:
+        for subtable in resolve(lookup):
+            ligatures = getattr(subtable, "ligatures", None)
+            if ligatures:
+                for first, entries in ligatures.items():
+                    for entry in entries:
+                        recipe.setdefault(entry.LigGlyph,
+                                          ([first] + list(entry.Component), None))
+                continue
+            mapping = getattr(subtable, "mapping", None)
+            if mapping:
+                for source, target in mapping.items():
+                    for name in ([target] if isinstance(target, str) else target):
+                        recipe.setdefault(name, ([source], None))
+
     font.close()
-    return produced, consumed
+    return produced, consumed, recipe
+
+
+def expand(name, recipe, reverse, depth=0):
+    """The characters that produce a glyph, following recipes as deep as needed.
+
+    Ligatures are built from ligatures: Manjari's k1k1r3 takes k1k1 — itself a
+    ligature with no codepoint — plus r3. Stopping at the first unencoded
+    component left 283 of its 911 glyphs undrawable, so each component is
+    expanded through its own recipe until everything is a real character.
+    """
+    if depth > 6 or name not in recipe:
+        return None, []
+    sources, feature = recipe[name]
+    features = {feature} if feature else set()
+    text = []
+    for source in sources:
+        if source in reverse:
+            text.append(chr(reverse[source]))
+            continue
+        deeper, deeper_features = expand(source, recipe, reverse, depth + 1)
+        if not deeper:
+            return None, []
+        text.append(deeper)
+        features.update(deeper_features)
+    return "".join(text), sorted(features)
 
 
 def glyphs(blob, limit=4000):
@@ -757,7 +813,7 @@ def glyphs(blob, limit=4000):
     # the samples called 441 of Manjari's 911 glyphs unreachable — everything
     # produced by a seventh rule or later — which would have accused a good
     # font of carrying dead weight in our own confident voice.
-    produced, consumed = glyph_roles(sfnt)
+    produced, consumed, recipe = glyph_roles(sfnt)
 
     out = []
     for name in order:
@@ -765,10 +821,17 @@ def glyphs(blob, limit=4000):
         # .notdef is the fallback by design, not an unreachable glyph.
         orphan = (cp is None and not produced[name] and not consumed[name]
                   and name != ".notdef")
-        out.append({"name": name, "cp": cp,
-                    "produced": sorted(produced[name]),
-                    "consumed": sorted(consumed[name]),
-                    "orphan": orphan})
+        entry = {"name": name, "cp": cp,
+                 "produced": sorted(produced[name]),
+                 "consumed": sorted(consumed[name]),
+                 "orphan": orphan}
+        # Only an unencoded glyph needs a recipe: an encoded one is reachable
+        # by typing its character.
+        if cp is None and name in recipe:
+            text, features = expand(name, recipe, reverse)
+            if text:
+                entry["from"] = {"text": text, "features": features}
+        out.append(entry)
     return out
 
 
