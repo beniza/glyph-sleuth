@@ -38,9 +38,11 @@ WEBFONTS = ("https://fonts.googleapis.com/css2"
             "&family=IBM+Plex+Mono:wght@400;500"
             "&display=swap")
 
+# Only routes that exist. Inspect, Identify and Regex go back in when they are
+# built — a nav item that 404s is the site promising something it does not have,
+# on every page.
 NAV = [("Home", "/"), ("Scripts", "/scripts/"), ("Languages", "/languages/"),
-       ("Fonts", "/fonts/"), ("Inspect", "/inspect/"), ("Identify", "/identify/"),
-       ("Compare", "/compare/"), ("Regex", "/regex/")]
+       ("Fonts", "/fonts/"), ("Compare", "/compare/")]
 
 
 def esc(value):
@@ -204,16 +206,18 @@ def home(fonts, scripts, languages):
         <div>
           <span class="q">What is this character?</span>
           <div class="links">
-            <a href="{link("/inspect/")}">Paste or type anything</a>
+            <a href="{link("/block/basic-latin/")}">Browse a block</a>
+            <a href="{link("/scripts/")}">Start from a script</a>
           </div>
+          <p class="quiet">A field that reads any notation you paste is not built yet.</p>
         </div>
         <div>
-          <span class="q">Only have a picture of it?</span>
+          <span class="q">How does a font build this shape?</span>
           <div class="links">
-            <a href="{link("/identify/")}">Draw it, or drop an image</a>
+            <a href="{link("/compare/")}">Compare two families, lookup by lookup</a>
           </div>
-          <p class="quiet">Shape similarity against real glyph outlines,
-             computed in the browser. Not handwriting recognition.</p>
+          <p class="quiet">Every measured family also lists its lookups and its glyphs,
+             including the glyphs no rule can reach.</p>
         </div>
       </div>
     </section>
@@ -453,6 +457,14 @@ SPECIMENS = {
     "Thai": ("ไทย อักษร", "คำ — Thai and Latin."),
     "Ethiopic": ("ግዕዝ ፊደል", "ቃላት — Ethiopic and Latin."),
 }
+# Blocks whose codepoints get a page each. Bounded on purpose: a page per
+# assigned codepoint in Unicode is over a million files, and most would say
+# nothing beyond a name. These are the ones the rest of the site links into.
+# How many cells a block chart draws before it says what it dropped.
+CHART_LIMIT = 256
+
+CHAR_PAGE_BLOCKS = {"Basic Latin", "Latin-1 Supplement", "General Punctuation"}
+
 LATIN_SPECIMEN = ("Handgloves & Quartz", "The quick brown fox jumps over the lazy dog.")
 
 
@@ -877,7 +889,7 @@ def feature_styles(inventory):
     return f"  <style>\n{rules}\n  </style>" if rules else ""
 
 
-def glyphs_page(font):
+def glyphs_page(font, chars_built=()):
     """Every glyph in the family, and what the layout does with each one."""
     inventory = font.get("glyphs") or []
     name = font["name"]
@@ -897,8 +909,9 @@ def glyphs_page(font):
     rows = []
     for glyph in inventory:
         if glyph["cp"] is not None:
-            reach = (f'<a href="{link("/char/" + f"{glyph["cp"]:04X}" + "/")}" class="mono">'
-                     f'U+{glyph["cp"]:04X}</a>')
+            code = f'U+{glyph["cp"]:04X}'
+            reach = (f'<a href="{link(f"/char/{glyph["cp"]:04X}/")}" class="mono">{code}</a>'
+                     if glyph["cp"] in chars_built else f'<span class="mono">{code}</span>')
             state = "encoded"
         elif glyph["produced"]:
             reach = '<span class="quiet">built by a rule</span>'
@@ -1130,6 +1143,583 @@ def lookups_page(font):
                             f"rules behind them.")
 
 
+# ------------------------------------------------------------------ features
+
+# The registered names, so a tag nothing is authored about still says what it
+# is. From the OpenType feature registry — a name, not a claim about the font.
+REGISTERED = {
+    "aalt": "Access all alternates", "abvf": "Above-base forms",
+    "abvm": "Above-base mark positioning", "abvs": "Above-base substitutions",
+    "akhn": "Akhand ligatures", "blwf": "Below-base forms",
+    "blwm": "Below-base mark positioning", "blws": "Below-base substitutions",
+    "calt": "Contextual alternates", "case": "Case-sensitive forms",
+    "ccmp": "Glyph composition and decomposition", "cjct": "Conjunct forms",
+    "clig": "Contextual ligatures", "cswh": "Contextual swash",
+    "dist": "Distances", "dlig": "Discretionary ligatures", "dnom": "Denominators",
+    "fina": "Terminal forms", "frac": "Fractions", "half": "Half forms",
+    "haln": "Halant forms", "hlig": "Historical ligatures", "init": "Initial forms",
+    "isol": "Isolated forms", "kern": "Kerning", "liga": "Standard ligatures",
+    "lnum": "Lining figures", "locl": "Localised forms", "mark": "Mark positioning",
+    "medi": "Medial forms", "mkmk": "Mark to mark positioning", "nukt": "Nukta forms",
+    "numr": "Numerators", "onum": "Oldstyle figures", "ordn": "Ordinals",
+    "pnum": "Proportional figures", "pref": "Pre-base forms",
+    "pres": "Pre-base substitutions", "pstf": "Post-base forms",
+    "psts": "Post-base substitutions", "rkrf": "Rakar forms", "rlig": "Required ligatures",
+    "rphf": "Reph form", "salt": "Stylistic alternates", "sinf": "Scientific inferiors",
+    "smcp": "Small capitals", "ss01": "Stylistic set 1", "subs": "Subscript",
+    "sups": "Superscript", "swsh": "Swash", "titl": "Titling",
+    "tnum": "Tabular figures", "vatu": "Vattu variants", "zero": "Slashed zero",
+}
+
+
+def feature_content():
+    path = os.path.join(ROOT, "web", "content", "features.json")
+    with io.open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def feature_page(tag, content, fonts):
+    """One OpenType feature: what it does, where it runs, who implements it."""
+    detail = (content.get("features") or {}).get(tag) or {}
+    stages = content.get("stages") or []
+    name = detail.get("name") or REGISTERED.get(tag) or "Unregistered feature"
+
+    # Every family that runs this feature, with how much of it it runs. The
+    # count is the interesting part: two families both "implementing" pres can
+    # differ by sixty rules.
+    implementers = []
+    for font in fonts:
+        rows = [row for table in ("gsub", "gpos")
+                for row in (font.get("tables") or {}).get(table, [])
+                if row["feature"] == tag]
+        if rows:
+            implementers.append((font, sum(row["n"] for row in rows), len(rows)))
+    implementers.sort(key=lambda row: (-row[1], row[0]["name"].lower()))
+
+    prose = "\n".join(f'      <p>{esc(paragraph)}</p>' for paragraph in detail.get("prose", []))
+    if not prose:
+        prose = ('      <p class="quiet">No write-up yet. The name above is the registered '
+                 'one from the OpenType feature registry; what this feature does in a '
+                 'particular font is the rule list on that font\'s lookups page.</p>')
+
+    pipeline = ""
+    if tag in stages:
+        cells = "\n".join(
+            f'        <li class="{"on" if stage == tag else ""}">'
+            + (f'<a href="{link("/feature/" + stage + "/")}">{esc(stage)}</a>'
+               if stage != tag else f'<span class="mono">{esc(stage)}</span>')
+            + "</li>"
+            for stage in stages)
+        pipeline = ('    <section>\n      <h2 class="eyebrow">Where it runs</h2>\n'
+                    f'      <ol class="pipeline">\n{cells}\n      </ol>\n'
+                    '      <p class="quiet">The order a shaper applies these in. Position '
+                    'matters: a feature cannot undo what an earlier one did, which is why '
+                    'an error early in the list is the stubborn kind.</p>\n    </section>')
+
+    examples = ""
+    if detail.get("examples"):
+        rows = "\n".join(
+            f'      <tr><th scope="row" class="mono">{esc(ex["codes"])}</th>'
+            f'<td><span class="glyph">{esc(ex["on"])}</span></td>'
+            f'<td><span class="glyph">{esc(ex["off"])}</span></td>'
+            f'<td class="quiet">{esc(ex["note"])}</td></tr>'
+            for ex in detail["examples"])
+        examples = ('    <section>\n      <h2 class="eyebrow">With it, and without</h2>\n'
+                    '      <table>\n        <thead><tr><th>Sequence</th><th>Applied</th>'
+                    '<th>Not applied</th><th></th></tr></thead>\n'
+                    f'      <tbody>\n{rows}\n      </tbody>\n      </table>\n'
+                    '      <p class="quiet">Both columns are set in your browser\'s own '
+                    'fallback face for the script, so they show what the sequence means '
+                    'rather than how any one family draws it.</p>\n    </section>')
+
+    listed = "\n".join(
+        f'      <tr><th scope="row"><a href="{font_href(font)}lookups/">'
+        f'{esc(font["name"])}</a></th>'
+        f'<td class="mono">{rules:,}</td><td class="mono">{lookups}</td>'
+        f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
+        for font, rules, lookups in implementers[:200])
+    who = ('    <section>\n      <h2 class="eyebrow">Implemented by</h2>\n'
+           '      <table class="index">\n        <thead><tr><th>Family</th><th>Rules</th>'
+           '<th>Lookups</th><th>Foundry</th></tr></thead>\n'
+           f'      <tbody>\n{listed}\n      </tbody>\n      </table>\n'
+           f'      <p class="quiet">{len(implementers):,} of the families whose tables we '
+           f'have read run this feature'
+           + (", the 200 largest shown." if len(implementers) > 200 else ".")
+           + ' Rule counts are what the font actually carries, not what it declares.</p>\n'
+           "    </section>") if implementers else (
+        '    <section>\n      <h2 class="eyebrow">Implemented by</h2>\n'
+        '      <p class="quiet">None of the families whose tables we have read run this '
+        'feature.</p>\n    </section>')
+
+    body = f"""    <section class="entity-head">
+      <h1>{esc(tag)}</h1>
+      <p class="byline">{esc(name)}
+         {"· " + esc(detail["table"]) if detail.get("table") else ""}</p>
+    </section>
+
+    <section>
+{prose}
+    </section>
+
+{pipeline}
+{examples}
+{who}
+"""
+    return page(f"{tag} — {name}", body, kind="opentype feature", code=tag,
+                description=f"{tag}, {name}: what the feature does, where it runs in the "
+                            f"shaping order, and which families implement it.")
+
+
+# --------------------------------------------------------------- characters
+
+def char_page(cp, name, block, fonts, chars_built):
+    """One codepoint: what it is, and which indexed families draw it."""
+    import unicodedata
+
+    ch = chr(cp)
+    category = unicodedata.category(ch)
+    covering = [font for font in fonts if count_in_range(font.get("ranges") or [], cp, cp)]
+    measured = [font for font in covering if font.get("tier") == "measured"]
+
+    facts = [fact(f"U+{cp:04X}", "codepoint"),
+             fact(category, "general category"),
+             fact(f"{len(covering):,}", "families with it")]
+    if block:
+        facts.append(fact(block[2], "block", link(f"/block/{slug(block[2])}/")))
+
+    encodings = {
+        "UTF-8": " ".join(f"{b:02X}" for b in ch.encode("utf-8")),
+        "UTF-16": " ".join(f"{b:04X}" for b in
+                           ([cp] if cp <= 0xFFFF else
+                            [0xD800 + ((cp - 0x10000) >> 10), 0xDC00 + ((cp - 0x10000) & 0x3FF)])),
+        "HTML": f"&amp;#{cp};",
+        "CSS": f"\\{cp:04x}",
+        "Python": f"\\u{cp:04x}" if cp <= 0xFFFF else f"\\U{cp:08x}",
+    }
+    rows = "\n".join(
+        f'        <div class="pair"><span class="quiet">{esc(label)}</span>'
+        f'<span class="mono">{value}</span></div>'
+        for label, value in encodings.items())
+
+    neighbours = []
+    for other in (cp - 1, cp + 1):
+        if other in chars_built:
+            neighbours.append(f'<a href="{link(f"/char/{other:04X}/")}">U+{other:04X}</a>')
+
+    families = "\n".join(
+        f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
+        f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td>'
+        f'<td class="quiet mono">{esc(font.get("licence") or "—")}</td></tr>'
+        for font in sorted(measured, key=lambda f: f["name"].lower())[:100])
+
+    body = f"""    <section class="entity-head">
+      <div class="head-row">
+        <h1><span class="glyph-large">{esc(ch) if category[0] not in "CZ" else ""}</span></h1>
+        <p class="quiet">{" · ".join(neighbours)}</p>
+      </div>
+      <p class="byline">{esc(name)}</p>
+      <div class="facts">
+{chr(10).join(facts)}
+      </div>
+    </section>
+
+    <section class="split">
+      <div>
+        <h2 class="eyebrow">How it is written down</h2>
+{rows}
+      </div>
+      <div>
+        <h2 class="eyebrow">Families that have it</h2>
+        <table class="index">
+        <tbody>
+{families}
+        </tbody>
+        </table>
+        <p class="quiet">{len(covering):,} indexed families cover this codepoint. Covering it
+           is not the same as drawing it correctly in context — that is what a font's
+           sequences show.</p>
+      </div>
+    </section>
+"""
+    return page(f"U+{cp:04X} {name}", body, kind="character", code=f"U+{cp:04X}",
+                description=f"U+{cp:04X} {name}: encodings, and which of the indexed font "
+                            f"families cover it.")
+
+
+# -------------------------------------------------------------------- blocks
+
+def block_page(block, fonts, chars_built):
+    """One Unicode block: its chart, and how well the index covers it."""
+    import unicodedata
+
+    first, last, name = block
+    assigned = []
+    for cp in range(first, last + 1):
+        try:
+            unicodedata.name(chr(cp))
+        except ValueError:
+            continue
+        assigned.append(cp)
+
+    covering = [(font, count_in_range(font.get("ranges") or [], first, last))
+                for font in fonts]
+    covering = [(font, n) for font, n in covering if n]
+    complete = [font for font, n in covering if n >= len(assigned)]
+    covering.sort(key=lambda row: (-row[1], row[0]["name"].lower()))
+
+    # The chart, hatched where the codepoint is unassigned — and bounded. CJK
+    # Unified Ideographs is 20,992 codepoints, and a page carrying every cell is
+    # 300 KB of table nobody scrolls. What is dropped is stated, because a
+    # silently short chart reads as a complete one.
+    shown = min(last + 1, first + CHART_LIMIT)
+    cells = []
+    for cp in range(first, shown):
+        try:
+            unicodedata.name(chr(cp))
+            reserved = False
+        except ValueError:
+            reserved = True
+        if reserved:
+            cells.append('        <div class="cell reserved" aria-hidden="true"></div>')
+            continue
+        glyph = chr(cp) if unicodedata.category(chr(cp))[0] not in "CZ" else ""
+        inner = (f'<span class="glyph">{esc(glyph)}</span>'
+                 f'<span class="cp mono">{cp:04X}</span>')
+        cells.append(f'        <div class="cell">'
+                     + (f'<a href="{link(f"/char/{cp:04X}/")}">{inner}</a>'
+                        if cp in chars_built else inner)
+                     + "</div>")
+
+    families = "\n".join(
+        f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
+        f'<td class="mono">{n}/{len(assigned)}</td>'
+        f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
+        for font, n in covering[:100])
+
+    truncated = ""
+    if shown <= last:
+        truncated = (f'<p class="quiet">Showing the first {CHART_LIMIT:,} of '
+                     f'{last - first + 1:,} codepoints in this block. The rest are in '
+                     f'<a href="https://www.unicode.org/charts/PDF/U{first - (first % 0x80):04X}.pdf">'
+                     "the Unicode chart ↗ — external</a>.</p>")
+
+    body = f"""    <section class="entity-head">
+      <h1>{esc(name)}</h1>
+      <p class="byline">U+{first:04X}–{last:04X}</p>
+      <div class="facts">
+{fact(f"{len(assigned)}", "assigned codepoints")}
+{fact(f"{last - first + 1}", "codepoints in the block")}
+{fact(f"{len(complete):,}", "families covering all of it")}
+{fact(f"{len(covering):,}", "families covering some")}
+      </div>
+    </section>
+
+    <section>
+      <h2 class="eyebrow">The chart</h2>
+      <div class="chart">
+{chr(10).join(cells)}
+      </div>
+      <p class="quiet">Hatched cells are unassigned: no character has been encoded there,
+         so no font can cover them and a coverage figure counting them would be wrong.</p>
+      {truncated}
+    </section>
+
+    <section>
+      <h2 class="eyebrow">Coverage across the index</h2>
+      <table class="index">
+        <thead><tr><th>Family</th><th>Covers</th><th>Foundry</th></tr></thead>
+      <tbody>
+{families}
+      </tbody>
+      </table>
+    </section>
+"""
+    return page(name, body, kind="unicode block", code=f"U+{first:04X}–{last:04X}",
+                description=f"{name} (U+{first:04X}–{last:04X}): the chart, and which font "
+                            f"families cover it.")
+
+
+
+# ------------------------------------------------------------------- scripts
+
+def script_coverage(font, script):
+    """How much of a script a face covers, block by block.
+
+    A script is rarely one block — Devanagari takes three, Arabic nine — so
+    "covers Tamil" has to mean every block of Tamil, including the supplement
+    almost nothing has. That distinction is the whole reason this page exists.
+    """
+    rows = []
+    for block in script["blocks"]:
+        covered = sum(count_in_range(font.get("ranges") or [], first, last)
+                      for first, last in block["ranges"])
+        rows.append({"name": block["name"], "chars": block["chars"], "covered": covered})
+    return {"chars": sum(r["chars"] for r in rows),
+            "covered": sum(r["covered"] for r in rows), "blocks": rows}
+
+
+def script_page(script, fonts, languages, chars_built):
+    """One script: the blocks it spans, who writes it, what can set it."""
+    ranked = []
+    for font in fonts:
+        coverage = script_coverage(font, script)
+        if coverage["covered"]:
+            ranked.append((font, coverage))
+    ranked.sort(key=lambda row: (-row[1]["covered"], row[0]["name"].lower()))
+    whole = [row for row in ranked if row[1]["covered"] >= row[1]["chars"]]
+
+    blocks = "\n".join(
+        f'      <tr><th scope="row">'
+        + (f'<a href="{link("/block/" + slug(block["name"]) + "/")}">{esc(block["name"])}</a>'
+           if block.get("name") else "")
+        + f'</th><td class="mono">{block["chars"]}</td>'
+        f'<td class="mono">{sum(1 for _font, cov in ranked if any(b["name"] == block["name"] and b["covered"] >= b["chars"] for b in cov["blocks"])):,}</td></tr>'
+        for block in script["blocks"])
+
+    written_by = [lang for lang in languages if script["code"] in (lang.get("scripts") or [])]
+    langs_html = " ".join(
+        f'<a href="{link("/lang/" + lang["id"] + "/")}">{esc(lang["name"])}</a>'
+        for lang in sorted(written_by, key=lambda l: l["name"].lower())[:60])
+
+    families = "\n".join(
+        f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
+        f'<td class="mono">{cov["covered"]}/{cov["chars"]}</td>'
+        f'<td class="quiet">{esc(" · ".join(font.get("tags") or []) or "not read")}</td>'
+        f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
+        for font, cov in ranked[:100])
+
+    body = f"""    <section class="entity-head">
+      <h1>{esc(script["name"])}</h1>
+      <p class="byline">ISO 15924 <span class="mono">{esc(script["code"])}</span></p>
+      <div class="facts">
+{fact(len(script["blocks"]), "unicode blocks")}
+{fact(f"{script['chars']:,}", "codepoints")}
+{fact(f"{len(whole):,}", "families covering all of it")}
+{fact(f"{len(ranked):,}", "families covering some")}
+{fact(f"{len(written_by):,}", "languages written in it")}
+      </div>
+    </section>
+
+    <section>
+      <h2 class="eyebrow">The blocks it spans</h2>
+      <table>
+        <thead><tr><th>Block</th><th>Codepoints</th><th>Families covering it fully</th></tr></thead>
+      <tbody>
+{blocks}
+      </tbody>
+      </table>
+      <p class="quiet">A script is rarely one block, and this is where support quietly dies:
+         a family can cover the main block completely and have nothing at all in a
+         supplement, while calling itself a font for the script.</p>
+    </section>
+
+    <section>
+      <h2 class="eyebrow">Written by</h2>
+      <div class="links">{langs_html or '<span class="quiet">No language in the index is recorded as using it.</span>'}</div>
+    </section>
+
+    <section>
+      <h2 class="eyebrow">Families that can set it</h2>
+      <table class="index">
+        <thead><tr><th>Family</th><th>Covers</th><th>Declares</th><th>Foundry</th></tr></thead>
+      <tbody>
+{families}
+      </tbody>
+      </table>
+      <p class="quiet">Coverage and declaration are different facts, shown side by side on
+         purpose: a family covering every codepoint while declaring only the old script tag
+         will still fall through to a default shaper on older stacks.</p>
+    </section>
+"""
+    return page(script["name"], body, kind="script", code=script["code"],
+                description=f"{script['name']} ({script['code']}): the Unicode blocks it "
+                            f"spans, the languages written in it, and the font families "
+                            f"that cover it.")
+
+
+def missing_from(ranges, text):
+    """Characters a face cannot produce, directly or by composing the pieces.
+
+    Composition-aware: if the face has every piece of the NFD decomposition, the
+    renderer builds the precomposed character anyway, so it is not missing.
+    """
+    import unicodedata
+
+    missing = []
+    for ch in dict.fromkeys(text):
+        if ch.isspace():
+            continue
+        cp = ord(ch)
+        if count_in_range(ranges, cp, cp):
+            continue
+        pieces = unicodedata.normalize("NFD", ch)
+        if pieces != ch and all(count_in_range(ranges, ord(p), ord(p)) for p in pieces):
+            continue
+        missing.append(ch)
+    return missing
+
+
+def lang_page(language, fonts, scripts, chars_built):
+    """One language: what it needs written down, and what can write it."""
+    exemplars = language.get("exemplars") or ""
+    sample = (language.get("sample") or "").strip()
+
+    fits, partial = [], []
+    if exemplars:
+        for font in fonts:
+            if not font.get("ranges"):
+                continue
+            gaps = missing_from(font["ranges"], exemplars)
+            (fits if not gaps else partial).append((font, gaps))
+        fits.sort(key=lambda row: row[0]["name"].lower())
+        partial.sort(key=lambda row: (len(row[1]), row[0]["name"].lower()))
+
+    tiles = "".join(
+        f'<span class="tile">' +
+        (f'<a href="{link(f"/char/{ord(ch):04X}/")}">{esc(ch)}</a>'
+         if ord(ch) in chars_built else esc(ch)) + "</span>"
+        for ch in exemplars if not ch.isspace())
+
+    used = [script for script in scripts if script["code"] in (language.get("scripts") or [])]
+    script_links = " ".join(
+        f'<a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>' for s in used)
+
+    nearly = "\n".join(
+        f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
+        f'<td class="mono">{len(gaps)}</td>'
+        f'<td class="glyph-small">{esc("".join(gaps[:12]))}</td></tr>'
+        for font, gaps in partial[:40])
+
+    body = f"""    <section class="entity-head">
+      <h1>{esc(language["name"])}</h1>
+      <p class="byline">{esc(language.get("tag") or "")} ·
+         ISO 639-3 <span class="mono">{esc(language.get("iso") or "")}</span></p>
+      <div class="facts">
+{fact(len([c for c in exemplars if not c.isspace()]), "exemplar characters")}
+{fact(f"{len(fits):,}", "families that fit")}
+{fact(len(used), "scripts it is written in")}
+      </div>
+      <p class="quiet">Written in {script_links or "a script not in the index"}. A language
+         is not a script: several may write the same one, and one language may be written in
+         several.</p>
+    </section>
+
+    <section>
+      <h2 class="eyebrow">What it needs</h2>
+      <div class="tiles">{tiles or '<span class="quiet">No exemplar set in SLDR for this language yet.</span>'}</div>
+      <p class="quiet">The exemplar characters SIL's SLDR records for this language — what
+         ordinary text in it actually requires, rather than a whole block.</p>
+    </section>
+
+    {'<section><h2 class="eyebrow">A line of it</h2><p class="specimen-small">'
+     + esc(sample.split(chr(10))[0][:200]) + '</p>'
+     '<p class="quiet">From the Universal Declaration of Human Rights, set in your '
+     'browser&rsquo;s own face for the script.</p></section>' if sample else ''}
+
+    <section>
+      <h2 class="eyebrow">Nearly fits</h2>
+      <table class="index">
+        <thead><tr><th>Family</th><th>Missing</th><th>Which characters</th></tr></thead>
+      <tbody>
+{nearly}
+      </tbody>
+      </table>
+      <p class="quiet">Families that cover most of the exemplar set and drop the rest to a
+         fallback face. Naming the missing characters is the useful part: one absent letter
+         is a different problem from twenty.</p>
+    </section>
+"""
+    return page(language["name"], body, kind="language",
+                code=language.get("tag") or language.get("iso"),
+                description=f"{language['name']}: its exemplar characters, the scripts it is "
+                            f"written in, and which font families can set it.")
+
+
+def scripts_index(scripts, fonts):
+    rows = []
+    for script in sorted(scripts, key=lambda s: s["name"].lower()):
+        whole = sum(1 for font in fonts
+                    if script_coverage(font, script)["covered"] >= script["chars"])
+        rows.append(
+            f'      <tr data-name="{esc(script["name"].lower())}">'
+            f'<th scope="row"><a href="{link("/script/" + script["code"] + "/")}">'
+            f'{esc(script["name"])}</a></th>'
+            f'<td class="mono">{esc(script["code"])}</td>'
+            f'<td class="mono">{len(script["blocks"])}</td>'
+            f'<td class="mono">{script["chars"]:,}</td>'
+            f'<td class="mono">{whole:,}</td></tr>')
+    body = f"""    <section class="entity-head">
+      <div class="head-row">
+        <h1>Scripts</h1>
+        <p class="showing quiet">Showing <span data-showing>{len(scripts):,}</span>
+           of {len(scripts):,}</p>
+      </div>
+      <p class="quiet">Every script the index records a language for, with the Unicode blocks
+         it spans. The last column is the number of families covering every block of it —
+         which is a much smaller number than the one covering the main block.</p>
+    </section>
+
+    <section>
+      <div class="controls">
+        <input type="search" class="filter" placeholder="filter this list"
+               aria-label="Filter scripts by name">
+      </div>
+      <table class="index">
+        <thead><tr><th>Script</th><th>Code</th><th>Blocks</th><th>Codepoints</th>
+          <th>Families covering all</th></tr></thead>
+      <tbody>
+{chr(10).join(rows)}
+      </tbody>
+      </table>
+      <p class="empty quiet" hidden>No script matches that.</p>
+    </section>
+"""
+    return page("Scripts", body, kind="index", code=f"{len(scripts):,} scripts",
+                description="Every script in the index, the Unicode blocks it spans, and how "
+                            "many font families cover all of it.")
+
+
+def languages_index(languages):
+    rows = []
+    for language in sorted(languages, key=lambda l: l["name"].lower()):
+        exemplars = [c for c in (language.get("exemplars") or "") if not c.isspace()]
+        rows.append(
+            f'      <tr data-name="{esc(language["name"].lower())}">'
+            f'<th scope="row"><a href="{link("/lang/" + language["id"] + "/")}">'
+            f'{esc(language["name"])}</a></th>'
+            f'<td class="mono">{esc(language.get("tag") or "")}</td>'
+            f'<td class="mono">{esc(" ".join(language.get("scripts") or []))}</td>'
+            f'<td class="mono">{len(exemplars) or ""}</td></tr>')
+    body = f"""    <section class="entity-head">
+      <div class="head-row">
+        <h1>Languages</h1>
+        <p class="showing quiet">Showing <span data-showing>{len(languages):,}</span>
+           of {len(languages):,}</p>
+      </div>
+      <p class="quiet">Every language with a translation in the UDHR corpus, so there is real
+         text to set. The scripts column is SIL's record of how the language is written — the
+         first is the default, and the rest are real alternatives, not curiosities.</p>
+    </section>
+
+    <section>
+      <div class="controls">
+        <input type="search" class="filter" placeholder="filter this list"
+               aria-label="Filter languages by name">
+      </div>
+      <table class="index">
+        <thead><tr><th>Language</th><th>Tag</th><th>Scripts</th><th>Exemplars</th></tr></thead>
+      <tbody>
+{chr(10).join(rows)}
+      </tbody>
+      </table>
+      <p class="empty quiet" hidden>No language matches that.</p>
+    </section>
+"""
+    return page("Languages", body, kind="index", code=f"{len(languages):,} languages",
+                description="Every language in the index, the scripts it is written in, and "
+                            "the size of its exemplar set.")
+
+
 def write(path, markup):
     """One directory per route, so URLs end in a slash and carry no extension."""
     full = os.path.join(OUT_SITE, path.strip("/"), "index.html") if path != "/" \
@@ -1165,6 +1755,18 @@ def main():
 
     for asset in ("style.css", "app.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
+
+    # Which codepoints get a page of their own. Not all 1.1 million: the blocks
+    # of the scripts we have depth in, plus the Latin every face carries. The
+    # set is passed to every page that might link a character, so a link is only
+    # ever written to a page that exists — a 404 we generated ourselves is worse
+    # than a plain codepoint.
+    char_blocks = [(first, last) for first, last, name in blocks
+                   if name in CHAR_PAGE_BLOCKS]
+    for script_blocks in gen.SHAPED_SCRIPTS.values():
+        char_blocks += [(first, last) for first, last in script_blocks]
+    chars_built = {cp for first, last in char_blocks for cp in range(first, last + 1)}
+
     write("/", home(fonts["fonts"], scripts, languages))
     print("  wrote home")
 
@@ -1181,8 +1783,48 @@ def main():
             write(f"/font/{font['slug']}/lookups/", lookups_page(font))
             shaping += 1
         if font.get("glyphs"):
-            write(f"/font/{font['slug']}/glyphs/", glyphs_page(font))
+            write(f"/font/{font['slug']}/glyphs/", glyphs_page(font, chars_built))
     write("/fonts/", fonts_index(fonts["fonts"], blocks))
+
+    # Features: one page each for every tag any indexed family runs, plus the
+    # ones we have written about.
+    content = feature_content()
+    tags = {row["feature"] for font in fonts["fonts"]
+            for table in ("gsub", "gpos")
+            for row in (font.get("tables") or {}).get(table, [])}
+    tags |= set(content.get("features") or {})
+    tags |= set(content.get("stages") or [])
+    for tag in sorted(tags):
+        write(f"/feature/{tag}/", feature_page(tag, content, fonts["fonts"]))
+    print(f"  wrote {len(tags)} feature pages")
+
+    written = 0
+    import unicodedata
+    for cp in sorted(chars_built):
+        try:
+            name = unicodedata.name(chr(cp))
+        except ValueError:
+            continue
+        block = next((b for b in blocks if b[0] <= cp <= b[1]), None)
+        write(f"/char/{cp:04X}/", char_page(cp, name, block, fonts["fonts"], chars_built))
+        written += 1
+    print(f"  wrote {written} character pages")
+
+    for block in blocks:
+        write(f"/block/{slug(block[2])}/", block_page(block, fonts["fonts"], chars_built))
+    print(f"  wrote {len(blocks)} block pages")
+
+    for script in scripts:
+        write(f"/script/{script['code']}/",
+              script_page(script, fonts["fonts"], languages, chars_built))
+    write("/scripts/", scripts_index(scripts, fonts["fonts"]))
+    print(f"  wrote {len(scripts)} script pages")
+
+    for language in languages:
+        write(f"/lang/{language['id']}/",
+              lang_page(language, fonts["fonts"], scripts, chars_built))
+    write("/languages/", languages_index(languages))
+    print(f"  wrote {len(languages)} language pages")
     write("/compare/", compare_page(fonts["fonts"]))
 
     # One small file per family with lookup tables, for Compare to fetch. Only

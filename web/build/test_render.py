@@ -59,7 +59,7 @@ def test_page_shell():
     assert "<title>Malayalam · Glyph Sleuth</title>" in html
     # The nav is on every page, as real links rather than a JS router.
     for label, href in (("Scripts", "/scripts/"), ("Fonts", "/fonts/"),
-                        ("Identify", "/identify/"), ("Compare", "/compare/")):
+                        ("Languages", "/languages/"), ("Compare", "/compare/")):
         assert f'href="{render.link(href)}"' in html, href
         assert f">{label}</a>" in html, label
     # Styles are a stylesheet, not a wall of inline attributes.
@@ -105,8 +105,13 @@ def test_home_says_what_it_measured():
     assert re.search(r"Measured from a release.*?<dd[^>]*>2</dd>", facts, re.S)
     assert re.search(r"Not measured yet.*?<dd[^>]*>1</dd>", facts, re.S)
 
-    # The promise the prototype left inert now goes somewhere.
-    assert f'href="{render.link("/identify/")}"' in html
+    # Every link on the page goes to a route the build actually writes. The
+    # prototype's inert "picture of it" promise is gone; so is the temptation to
+    # link Identify before it exists, which would be the same fault with a href.
+    for href in re.findall(r'href="([^"]+)"', html):
+        if href.startswith(("http://", "https://")):
+            continue
+        assert not href.endswith(("/identify/", "/inspect/", "/regex/")),             f"{href} is not built yet"
 
 
 def test_home_links_are_real_paths():
@@ -513,6 +518,46 @@ def test_unmeasured_family_says_so():
     # the same as covering nothing.
     assert "0/0" not in html
     assert "0 codepoints" not in html
+
+
+def test_pages_only_link_characters_that_exist():
+    """A page per assigned codepoint would be over a million files, so only some
+    blocks get one — and the pages that link characters are told which.
+
+    Writing a link to a page we chose not to build is a 404 of our own making,
+    which is worse than showing the codepoint as plain text.
+    """
+    font = dict(MANJARI, slug="manjari", glyphs=[
+        {"name": "k1", "cp": 0x0D15, "produced": [], "consumed": ["akhn"], "orphan": False},
+        {"name": "A", "cp": 0x0041, "produced": [], "consumed": [], "orphan": False},
+    ])
+    # Only Latin A has a page in this build.
+    html = render.glyphs_page(font, chars_built={0x0041})
+    assert f'href="{render.link("/char/0041/")}"' in html
+    assert "/char/0D15/" not in html
+    # The codepoint is still shown, just not as a link.
+    assert "U+0D15" in html
+
+
+def test_feature_page_says_what_it_cannot():
+    content = {"stages": ["akhn", "pres"], "features": {
+        "akhn": {"name": "Akhand ligatures", "table": "GSUB",
+                 "prose": ["akhn forms the conjuncts."], "examples": []}}}
+    fonts = [dict(MANJARI, slug="manjari", tables={"gsub": [
+        {"feature": "akhn", "type": "Ligature", "index": 0, "flag": 0, "n": 60, "rules": []}],
+        "gpos": []})]
+
+    written = render.feature_page("akhn", content, fonts)
+    assert "Akhand ligatures" in written
+    assert "akhn forms the conjuncts." in written
+    # Who runs it, and how much of it they run — the count is the interesting part.
+    assert "Manjari" in written and "60" in written
+
+    # A tag nothing is authored about gets its registered name and no invention.
+    bare = render.feature_page("tnum", content, fonts)
+    assert "Tabular figures" in bare
+    assert "No write-up yet" in bare
+    assert "None of the families" in bare
 
 
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}

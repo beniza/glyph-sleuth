@@ -10,26 +10,29 @@ answers a question, it's in; if it changes a file, it's out.**
 
 ---
 
-## 1 · Live bugs — links that go nowhere
+## 1 · The three tool pages
 
-The site links to ten routes that 404 today. Every one is a real dead end a
-reader will hit, and several are in the nav on every page.
+Seven of the ten dead routes are now built: `/feature/<tag>/`, `/char/<hex>/`,
+`/block/<slug>/`, `/script/<code>/`, `/lang/<id>/`, `/scripts/`, `/languages/`.
+Three remain, and rather than link them from the nav they have been *removed*
+from it until they exist — a nav item that 404s is the site promising something
+it does not have, on every page.
 
-- [ ] `/scripts/`, `/languages/` — in the nav on every page
-- [ ] `/inspect/`, `/regex/`, `/identify/` — in the nav on every page, and
-      home's three entry questions point at `/inspect/` and `/identify/`
-- [ ] `/script/<code>/`, `/lang/<id>/` — home's index section links these
-- [ ] `/feature/<tag>/` — the font page's Implements chips, every lookups-page
-      feature heading, and every trace step links here. This is the most-linked
-      missing page on the site
-- [ ] `/char/<hex>/` — every encoded glyph on a glyphs page links here
-- [ ] `/block/<slug>/` — the font page's dominant-block fact links here
+- [ ] `/inspect/<text>` — paste or type any notation and get the reading. Needs
+      `core.js` plus `blocks.json` and `names.txt` served into `site/data/`
+- [ ] `/regex/` — the property reference and live tester. `core.js` already
+      answers `\p{…}` from the engine itself
+- [ ] `/identify/` — draw or drop; Phase 2, and the largest of the three
 
-**Until they exist, the honest options are to build them or stop emitting the
-links.** Emitting a link that 404s is the interface making a promise the site
-does not keep, which is the failure mode this project is otherwise careful
-about. Build order that clears the most dead links per page: feature → char →
-block → script → lang, then the three tool pages.
+Home's "What is this character?" question currently points at a block and the
+scripts index, and says plainly that a paste-anything field is not built yet.
+Restore the nav entries and home's links as each lands.
+
+- [ ] Character pages exist only for Basic Latin, Latin-1 Supplement, General
+      Punctuation and the blocks of the scripts we shape — 590 pages. Everything
+      else shows its codepoint as plain text, and the page set is passed to every
+      page that might link one so a link is never written to a page we chose not
+      to build. Widening that set is a decision about build size, not a bug.
 
 ## 2 · Silent truncation and unpinned inputs
 
