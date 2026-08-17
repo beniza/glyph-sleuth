@@ -1559,17 +1559,58 @@ def missing_from(ranges, text):
     return missing
 
 
-def lang_page(language, fonts, scripts, chars_built):
+def exemplar_needs(exemplars):
+    """[(codepoint, the pieces that would build it)] for an exemplar set."""
+    import unicodedata
+
+    needs = []
+    for ch in dict.fromkeys(exemplars):
+        if ch.isspace():
+            continue
+        pieces = unicodedata.normalize("NFD", ch)
+        needs.append((ord(ch), frozenset(ord(p) for p in pieces) if pieces != ch else None))
+    return needs
+
+
+def covered_subset(font, wanted):
+    """Which of these codepoints a face has. Computed once per font, not once
+    per language: the naive version re-scanned every font's ranges for every
+    exemplar of every language, which is tens of millions of range walks."""
+    ranges = font.get("ranges") or []
+    return frozenset(cp for cp in wanted if count_in_range(ranges, cp, cp))
+
+
+def language_fit(needs, covered):
+    """The characters a face cannot produce from an exemplar set.
+
+    Composition-aware: a precomposed character counts as present when the face
+    has every piece, because that is how the renderer will build it.
+    """
+    gaps = []
+    for cp, pieces in needs:
+        if cp in covered:
+            continue
+        if pieces and pieces <= covered:
+            continue
+        gaps.append(chr(cp))
+    return gaps
+
+
+def lang_page(language, fonts, scripts, chars_built, coverage=None):
     """One language: what it needs written down, and what can write it."""
     exemplars = language.get("exemplars") or ""
     sample = (language.get("sample") or "").strip()
 
     fits, partial = [], []
     if exemplars:
+        needs = exemplar_needs(exemplars)
         for font in fonts:
             if not font.get("ranges"):
                 continue
-            gaps = missing_from(font["ranges"], exemplars)
+            covered = (coverage or {}).get(id(font))
+            if covered is None:
+                covered = covered_subset(font, {cp for cp, _ in needs})
+            gaps = language_fit(needs, covered)
             (fits if not gaps else partial).append((font, gaps))
         fits.sort(key=lambda row: row[0]["name"].lower())
         partial.sort(key=lambda row: (len(row[1]), row[0]["name"].lower()))
@@ -1820,9 +1861,17 @@ def main():
     write("/scripts/", scripts_index(scripts, fonts["fonts"]))
     print(f"  wrote {len(scripts)} script pages")
 
+    # Every codepoint any exemplar set needs, and which fonts have them —
+    # computed once for all languages rather than re-walking every font's
+    # ranges for every exemplar of every language.
+    wanted = set()
+    for language in languages:
+        wanted |= {cp for cp, _pieces in exemplar_needs(language.get("exemplars") or "")}
+    coverage = {id(font): covered_subset(font, wanted) for font in fonts["fonts"]}
+
     for language in languages:
         write(f"/lang/{language['id']}/",
-              lang_page(language, fonts["fonts"], scripts, chars_built))
+              lang_page(language, fonts["fonts"], scripts, chars_built, coverage))
     write("/languages/", languages_index(languages))
     print(f"  wrote {len(languages)} language pages")
     write("/compare/", compare_page(fonts["fonts"]))
