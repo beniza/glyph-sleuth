@@ -119,6 +119,58 @@ def test_home_links_are_real_paths():
     assert f'href="{render.link("/lang/mal/")}"' in html
 
 
+def test_fonts_index_lists_every_family_in_the_html():
+    """The nav promises this page, so it has to exist — and it has to carry the
+    families in the markup, not fetch them.
+
+    Filtering and sorting are JS on top of rows that are already there; with JS
+    off it is still a full list, and a crawler sees every family.
+    """
+    fonts = [dict(MANJARI), dict(MANJARI, name="Gayathri", tier="measured"),
+             {"name": "RIT Panmana", "source": "rit", "tier": "stub", "ranges": [],
+              "licence": "", "url": "x", "css": None}]
+    html = render.fonts_index(fonts)
+
+    for font in fonts:
+        assert esc_name(font["name"]) in html
+        assert render.font_href(font) in html
+    # Counts, and the split between what we measured and what we did not.
+    assert "3" in html and "2" in html
+    # The unmeasured one is marked as such rather than shown as covering nothing.
+    assert "not measured yet" in html
+
+
+def esc_name(name):
+    return render.esc(name)
+
+
+def test_slug_survives_a_name_that_is_not_latin():
+    """RIT's families name themselves in Malayalam.
+
+    Stripping to [a-z0-9] left those slugs empty, so the page was written to
+    /font//index.html — it landed at /font/, and every other such family
+    overwrote it. A site about scripts cannot assume its own font names are
+    Latin.
+    """
+    assert render.slug("ആര്‍ഐടി താര")
+    assert render.slug("ആര്‍ഐടി താര") != render.slug("ആര്‍ഐടി രചന")
+    # Latin names are unchanged by this — the old slugs still work.
+    assert render.slug("Noto Sans Malayalam") == "noto-sans-malayalam"
+    assert render.slug("Baloo Chettan 2") == "baloo-chettan-2"
+    # And a name of pure punctuation still has to produce *something*.
+    assert render.slug("!!!")
+
+
+def test_slugs_are_unique():
+    # Two families sharing a slug means one page silently overwrites the other,
+    # which is how a family disappears from a site that claims to index it.
+    names = ["Noto Sans", "Noto  Sans", "noto sans", "Noto-Sans", "Meera", "Meera Inimai"]
+    taken = {}
+    slugs = [render.unique_slug(name, taken) for name in names]
+    assert len(set(slugs)) == len(slugs), slugs
+    assert slugs[0] == "noto-sans"
+
+
 def test_font_href_is_stable():
     # The slug is what every link between pages is keyed on, so it has to
     # survive spaces, case and punctuation the same way every time.

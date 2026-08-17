@@ -83,7 +83,8 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 - [ ] Feature page
 - [ ] Inspect
 - [ ] Regex
-- [ ] Index pages: `/scripts`, `/languages`, `/fonts`
+- [x] Index page `/fonts/` — every family in the markup, JS filtering later
+- [ ] Index pages: `/scripts/`, `/languages/`
 
 Known gaps to fix while building (`HANDOFF.md` §6), not new design work:
 

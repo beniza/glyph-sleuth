@@ -9,6 +9,7 @@ The design is the prototype's, recreated in a real stylesheet rather than the
 wall of inline styles its template format produced. Tokens, type scale and copy
 come from docs/prototype/README.md, which is final.
 """
+import hashlib
 import html as html_module
 import io
 import json
@@ -58,12 +59,37 @@ def link(path):
 
 
 def slug(name):
-    """The stable handle a family's URL is keyed on."""
-    return re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")
+    """The stable handle a family's URL is keyed on.
+
+    Unicode letters are kept, not stripped: RIT's families name themselves in
+    Malayalam, and reducing those to [a-z0-9] left an empty slug, so the page
+    was written to /font//index.html and landed at /font/ — where the next such
+    family overwrote it. A site about scripts cannot assume its own font names
+    are Latin.
+    """
+    cleaned = re.sub(r"[^\w]+", "-", str(name).lower(), flags=re.UNICODE).strip("-")
+    # A name of pure punctuation still needs a handle to live at.
+    return cleaned or "font-" + hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:8]
+
+
+def unique_slug(name, taken):
+    """A slug no other family already has.
+
+    Two families sharing one is how a page silently overwrites another, and how
+    a family disappears from a site that claims to index it.
+    """
+    base = slug(name)
+    candidate, n = base, 2
+    while candidate in taken and taken[candidate] != name:
+        candidate, n = f"{base}-{n}", n + 1
+    taken[candidate] = name
+    return candidate
 
 
 def font_href(font):
-    return link(f"/font/{slug(font['name'])}/")
+    """Where a family's page lives. The slug is assigned once, in the build, so
+    the link and the file agree even when disambiguation changed it."""
+    return link(f"/font/{font.get('slug') or slug(font['name'])}/")
 
 
 def page(title, body, kind=None, code=None, description=None, extra_head=""):
@@ -434,6 +460,50 @@ def font_page(font, blocks):
                 extra_head=head)
 
 
+def fonts_index(fonts):
+    """Every indexed family, in the markup.
+
+    The list is served whole; filtering and sorting are enhancement on top of
+    rows that are already there. With JS off this is still the full index, and
+    a crawler sees every family rather than an empty shell.
+    """
+    total, measured = counts(fonts)
+    rows = []
+    for font in sorted(fonts, key=lambda f: f["name"].lower()):
+        covered = count_in_range(font.get("ranges") or [], 0, 0x10FFFF)
+        state = (f'<span class="mono">{covered:,}</span>' if font.get("tier") == "measured"
+                 else '<span class="untested">not measured yet</span>')
+        tags = " · ".join(font.get("tags") or [])
+        rows.append(
+            f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
+            f'<td class="quiet">{esc(font.get("source", "").upper())}</td>'
+            f'<td class="quiet">{esc(font.get("licence") or "—")}</td>'
+            f'<td>{state}</td>'
+            f'<td class="mono">{esc(tags)}</td></tr>')
+
+    body = f"""    <section class="claim">
+      <h1>Font families</h1>
+      <p class="quiet">{total:,} indexed · {measured:,} measured from their own release ·
+         {total - measured:,} not measured yet. Codepoints counts what the family covers
+         across all of Unicode; the script tags are what it declares, where we have read
+         the file.</p>
+    </section>
+
+    <section>
+      <table class="index">
+        <thead><tr><th>Family</th><th>Source</th><th>Licence</th><th>Codepoints</th>
+          <th>Script tags</th></tr></thead>
+      <tbody>
+{chr(10).join(rows)}
+      </tbody>
+      </table>
+    </section>
+"""
+    return page("Font families", body, kind="index", code=f"{total:,} families",
+                description=f"{total:,} freely licensed font families, {measured:,} of them "
+                            f"measured from their own released file.")
+
+
 def lookup_rows(rows):
     """One row per lookup, grouped under its feature.
 
@@ -544,12 +614,19 @@ def main():
     write("/", home(fonts["fonts"], scripts, languages))
     print("  wrote home")
 
+    # Assign every slug up front, so a collision is resolved before anything
+    # links to it — and so no page can overwrite another's file.
+    taken = {}
+    for font in fonts["fonts"]:
+        font["slug"] = unique_slug(font["name"], taken)
+
     shaping = 0
     for font in fonts["fonts"]:
-        write(f"/font/{slug(font['name'])}/", font_page(font, blocks))
+        write(f"/font/{font['slug']}/", font_page(font, blocks))
         if font.get("tables"):
-            write(f"/font/{slug(font['name'])}/shaping/", shaping_page(font))
+            write(f"/font/{font['slug']}/shaping/", shaping_page(font))
             shaping += 1
+    write("/fonts/", fonts_index(fonts["fonts"]))
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
     print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
           f"{len(fonts['fonts']) - measured} not yet; {shaping} with shaping tables")
