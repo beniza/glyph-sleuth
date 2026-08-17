@@ -9,6 +9,7 @@ The design is the prototype's, recreated in a real stylesheet rather than the
 wall of inline styles its template format produced. Tokens, type scale and copy
 come from docs/prototype/README.md, which is final.
 """
+import collections
 import hashlib
 import html as html_module
 import io
@@ -360,26 +361,80 @@ TAG_NOTES = {
 }
 
 
-# What to set a specimen in, per script we index deeply. Real words, never
-# lorem: മലയാളം is the language's own name, സ്ത്രീ a four-consonant cluster,
-# ക്ക a geminate, ൻ a chillu.
+# Latin and the punctuation almost every face carries say nothing about what a
+# font is *for*, so they get no vote on which script it belongs to.
+COMMON_BLOCKS = {
+    "Basic Latin", "Latin-1 Supplement", "Latin Extended-A", "Latin Extended-B",
+    "Latin Extended Additional", "General Punctuation", "Spacing Modifier Letters",
+    "Combining Diacritical Marks", "Currency Symbols", "Letterlike Symbols",
+    "Number Forms", "Mathematical Operators", "Geometric Shapes", "Private Use Area",
+    "Alphabetic Presentation Forms", "Superscripts and Subscripts", "Arrows",
+    "Miscellaneous Symbols", "Dingbats", "Specials", "Halfwidth and Fullwidth Forms",
+    "IPA Extensions", "Phonetic Extensions", "Phonetic Extensions Supplement",
+    "Combining Diacritical Marks Supplement", "Combining Diacritical Marks Extended",
+    "Combining Diacritical Marks for Symbols", "Latin Extended-C", "Latin Extended-D",
+    "Latin Extended-E", "Latin Extended-F", "Latin Extended-G", "Modifier Tone Letters",
+    "Supplemental Punctuation", "Small Form Variants",
+}
+
+# Enough of a block to mean the face is for that script, rather than carrying a
+# few of its codepoints incidentally.
+SCRIPT_FLOOR = 24
+
+
+def blocks_covered(font, blocks, floor=SCRIPT_FLOOR):
+    """[(name, covered, total)] for the blocks this face meaningfully covers."""
+    out = []
+    for first, last, name in blocks:
+        covered = count_in_range(font.get("ranges") or [], first, last)
+        if covered >= min(floor, last - first + 1):
+            out.append((name, covered, last - first + 1))
+    return out
+
+
+def dominant_block(font, blocks):
+    """The block this face exists for, or None when there isn't one.
+
+    "Largest block" alone is the wrong test: a workhorse carrying a bit of
+    everything is for none of them in particular. The block has to actually
+    dominate what the face has outside Latin and punctuation.
+    """
+    spend = [(name, covered, total) for name, covered, total in blocks_covered(font, blocks)
+             if name not in COMMON_BLOCKS]
+    if not spend:
+        return None
+    total_outside = sum(covered for _name, covered, _total in spend)
+    best = max(spend, key=lambda row: row[1])
+    return best if best[1] >= total_outside * 0.5 else None
+
+
+# What to set a specimen in, per script. Real words, never lorem. The site is
+# not about any one of these: the face's own dominant block picks the line.
 SPECIMENS = {
-    "Mlym": ((0x0D00, 0x0D7F), "മലയാളം സ്ത്രീ ക്ക ൻ",
-             "ൻ്റെ വാക്കുകൾ — Malayalam and Latin."),
+    "Malayalam": ("മലയാളം സ്ത്രീ ക്ക ൻ", "ൻ്റെ വാക്കുകൾ — Malayalam and Latin."),
+    "Devanagari": ("देवनागरी हिन्दी क्ष", "अक्षर — Devanagari and Latin."),
+    "Arabic": ("العربية كتابة لا", "الحروف — Arabic and Latin."),
+    "Tamil": ("தமிழ் எழுத்து ஸ்ரீ", "சொற்கள் — Tamil and Latin."),
+    "Bengali": ("বাংলা ক্ষ লিপি", "শব্দ — Bengali and Latin."),
+    "Greek and Coptic": ("Ελληνικά γράμμα", "λέξεις — Greek and Latin."),
+    "Cyrillic": ("Кириллица буква", "слова — Cyrillic and Latin."),
+    "Hebrew": ("עברית אות כתב", "מילים — Hebrew and Latin."),
+    "Thai": ("ไทย อักษร", "คำ — Thai and Latin."),
+    "Ethiopic": ("ግዕዝ ፊደል", "ቃላት — Ethiopic and Latin."),
 }
 LATIN_SPECIMEN = ("Handgloves & Quartz", "The quick brown fox jumps over the lazy dog.")
 
 
-def specimen_text(font):
+def specimen_text(font, blocks=()):
     """Text this face can actually draw.
 
-    A Malayalam line set in a Latin face is a row of tofu demonstrating
-    nothing. The prototype could hardcode Malayalam because it was a Malayalam
-    app; an index of 1,885 families cannot.
+    A line of Malayalam set in a Latin face is a row of tofu demonstrating
+    nothing — and so is a line of Latin standing in for a Devanagari face. The
+    font's own dominant block chooses.
     """
-    for (first, last), line, second in SPECIMENS.values():
-        if count_in_range(font.get("ranges") or [], first, last) > 40:
-            return line, second
+    dominant = dominant_block(font, blocks) if blocks else None
+    if dominant and dominant[0] in SPECIMENS:
+        return SPECIMENS[dominant[0]]
     return LATIN_SPECIMEN
 
 
@@ -413,7 +468,9 @@ def font_page(font, blocks):
     # would be the site inventing an answer nobody looked for.
     parsed = bool(font.get("checksum"))
     note, snippet = use_it(font)
-    results = (font.get("results") or {}).get("Mlym") or {}
+    # Whatever scripts we ran sequences against for this face — the site has
+    # no default script, so this follows the data rather than a constant.
+    results = {script: rows for script, rows in (font.get("results") or {}).items() if rows}
 
     # The face itself, from wherever it is actually distributed. We serve none.
     face_css = ""
@@ -427,10 +484,13 @@ def font_page(font, blocks):
     # nobody measured.
     facts = []
     if measured:
-        mlym = count_in_range(font.get("ranges") or [], 0x0D00, 0x0D7F)
-        if mlym:
-            facts.append(fact(f"{mlym}/118", "Malayalam codepoints",
-                              link("/block/malayalam/")))
+        # The script the face is *for*, whichever that is — not one script the
+        # site happens to know best, measured against every family.
+        dominant = dominant_block(font, blocks)
+        if dominant:
+            name_of, covered, total_of = dominant
+            facts.append(fact(f"{covered}/{total_of}", f"{name_of} codepoints",
+                              link(f"/block/{slug(name_of)}/")))
         facts.append(fact(f"{count_in_range(font['ranges'], 0, 0x10FFFF):,}",
                           "codepoints in all"))
     if parsed:
@@ -439,10 +499,10 @@ def font_page(font, blocks):
                           "GSUB · GPOS lookups", font_href(font) + "shaping/"))
     if font.get("faces"):
         facts.append(fact(len(font["faces"]), "weights"))
-    if results:
-        clean = sum(1 for r in results.values()
-                    if (r.get("hb") or {}).get("verdict") == "clean")
-        facts.append(fact(f"{clean} of {len(results)}", "sequences clean"))
+    rows_all = [row for rows in results.values() for row in rows.values()]
+    if rows_all:
+        clean = sum(1 for r in rows_all if (r.get("hb") or {}).get("verdict") == "clean")
+        facts.append(fact(f"{clean} of {len(rows_all)}", "sequences clean"))
 
     head_row = [f'        <h1>{esc(name)}</h1>']
     if face_css:
@@ -454,7 +514,7 @@ def font_page(font, blocks):
     header = ['    <section class="entity-head">', '      <div class="head-row">'] \
         + head_row + ['      </div>', f'      <p class="byline">{esc(byline(font))}</p>']
     if face_css:
-        line, second = specimen_text(font)
+        line, second = specimen_text(font, blocks)
         header += [f'      <p class="specimen">{esc(line)}</p>',
                    f'      <p class="specimen-small">{esc(second)}</p>']
     if facts:
@@ -494,11 +554,13 @@ def font_page(font, blocks):
 
     # Middle column: the evidence.
     middle = []
-    if results:
-        evidence = evidence_rows(font)
+    for script, script_rows in sorted(results.items()):
+        evidence = evidence_rows(font, script)
+        if not evidence:
+            continue
         heads = "".join(f"<th>{label}</th>" for _key, label in ENGINES)
-        shaper = next(iter(results.values())).get("hb") or {}
-        middle.append('      <h2 class="eyebrow">Shapes</h2>\n'
+        shaper = next(iter(script_rows.values())).get("hb") or {}
+        middle.append(f'      <h2 class="eyebrow">Shapes · {esc(script)}</h2>\n'
                       '      <table class="matrix">\n        <thead><tr><th>Sequence</th>'
                       + heads + '</tr></thead>\n      <tbody>\n' + "\n".join(evidence)
                       + '\n      </tbody>\n      </table>\n'
@@ -565,15 +627,15 @@ def font_page(font, blocks):
 
 
 def verdict_of(font):
-    """One word for how a family shapes, across the sequences we ran.
+    """One word for how a family shapes, across every sequence we ran on it.
 
-    A family nothing was run against gets "none", not a pass — the whole point
-    of the tiers is that untested and clean are different answers.
+    A family nothing was run against gets "none", not a pass — untested and
+    clean are different answers, which is the argument the site is making.
     """
-    results = (font.get("results") or {}).get("Mlym") or {}
-    if not results:
+    rows = [row for rows in (font.get("results") or {}).values() for row in rows.values()]
+    if not rows:
         return "none"
-    verdicts = {(r.get("hb") or {}).get("verdict") for r in results.values()}
+    verdicts = {(row.get("hb") or {}).get("verdict") for row in rows}
     if "fail" in verdicts:
         return "fail"
     if "caveat" in verdicts:
@@ -584,27 +646,42 @@ def verdict_of(font):
 VERDICT_WORDS = {"clean": "shapes cleanly", "caveat": "shapes with caveats",
                  "fail": "breaks", "none": "not tested"}
 
-MALAYALAM = (0x0D00, 0x0D7F)
 
-
-def fonts_index(fonts):
+def fonts_index(fonts, blocks=()):
     """Every indexed family, in the markup, with the controls to narrow it.
 
-    The list is served whole; filter, facets and sort are enhancement over rows
-    that are already there. With JS off this is still the full index, and a
-    crawler sees every family rather than an empty shell.
+    The filters are the questions an engineer actually arrives with — which
+    families declare `dev2`, which cover Arabic, which have been measured at
+    all — not a single script's lens over everything.
     """
     total, measured = counts(fonts)
     ordered = sorted(fonts, key=lambda f: f["name"].lower())
 
-    malayalam = sum(1 for f in ordered
-                    if count_in_range(f.get("ranges") or [], *MALAYALAM) > 40)
+    # Only tags and blocks something in the index actually has: an empty filter
+    # option is a dead end wearing the clothes of an answer.
+    tag_counts, block_counts = collections.Counter(), collections.Counter()
+    covered_by = {}
+    for font in ordered:
+        tag_counts.update(font.get("tags") or [])
+        names = [name for name, _covered, _total in blocks_covered(font, blocks)
+                 if name not in COMMON_BLOCKS]
+        covered_by[id(font)] = names
+        block_counts.update(names)
+
+    def options(name, label, counted):
+        rows = "\n".join(
+            f'          <option value="{esc(slug(key) if name == "block" else key)}">'
+            f"{esc(key)} ({count:,})</option>"
+            for key, count in sorted(counted.items()))
+        return (f'        <label class="pick"><span>{esc(label)}</span>\n'
+                f'          <select name="{name}">\n'
+                f'          <option value="">any</option>\n{rows}\n'
+                "          </select></label>")
+
     facets = [("all", "all", total),
-              ("malayalam", "Malayalam", malayalam),
               ("measured", "measured", measured),
               ("not measured yet", "not measured yet", total - measured),
-              ("clean", "shapes cleanly",
-               sum(1 for f in ordered if verdict_of(f) == "clean")),
+              ("clean", "shapes cleanly", sum(1 for f in ordered if verdict_of(f) == "clean")),
               ("fail", "breaks", sum(1 for f in ordered if verdict_of(f) == "fail"))]
     chips = "\n".join(
         f'        <button class="facet{" on" if key == "all" else ""}" data-facet="{key}"'
@@ -621,8 +698,10 @@ def fonts_index(fonts):
     rows = []
     for font in ordered:
         covered = count_in_range(font.get("ranges") or [], 0, 0x10FFFF)
-        mlym = count_in_range(font.get("ranges") or [], *MALAYALAM)
         verdict = verdict_of(font)
+        tags = font.get("tags") or []
+        names = covered_by[id(font)]
+        dominant = dominant_block(font, blocks) if blocks else None
         state = (f'<span class="mono">{covered:,}</span>' if font.get("tier") == "measured"
                  else '<span class="untested">not measured yet</span>')
         shows = (f'<span class="{verdict}">{esc(VERDICT_WORDS[verdict])}</span>'
@@ -631,12 +710,16 @@ def fonts_index(fonts):
             f'      <tr data-name="{esc(font["name"].lower())}"'
             f' data-source="{esc(font.get("source", ""))}"'
             f' data-tier="{esc(font.get("tier", ""))}"'
-            f' data-coverage="{covered}" data-malayalam="{mlym}"'
+            f' data-coverage="{covered}"'
+            f' data-tags="{esc(" ".join(tags))}"'
+            f' data-blocks="{esc(" ".join(slug(n) for n in names))}"'
             f' data-verdict="{verdict}">'
             f'<th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
             f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td>'
             f'<td class="quiet mono">{esc(font.get("licence") or "—")}</td>'
+            f'<td class="quiet">{esc(dominant[0] if dominant else "")}</td>'
             f"<td>{state}</td>"
+            f'<td class="mono">{esc(" ".join(tags))}</td>'
             f"<td>{shows}</td></tr>")
 
     body = f"""    <section class="entity-head">
@@ -645,36 +728,41 @@ def fonts_index(fonts):
         <p class="showing quiet">Showing <span data-showing>{total:,}</span> of {total:,}</p>
       </div>
       <p class="quiet">{measured:,} measured from their own released file ·
-         {total - measured:,} not measured yet. Verdicts are for the Malayalam exemplar
-         sequences; a family that breaks there may be flawless in another script, and one
-         marked <em>not tested</em> has simply not been run against them.</p>
+         {total - measured:,} not measured yet. Filter by the OpenType script tag a family
+         declares, or by the Unicode block it covers — a family may cover a block and still
+         not declare the tag a shaper looks for, which is the gap worth finding.</p>
     </section>
 
     <section>
       <div class="controls">
         <input type="search" class="filter" placeholder="filter this list"
                aria-label="Filter families by name">
+{options("tag", "script tag", tag_counts)}
+{options("block", "covers block", block_counts)}
+      </div>
+      <div class="controls">
         <div class="facets">
 {chips}
         </div>
-      </div>
-      <div class="sorts"><span class="eyebrow-inline">sort</span>
+        <div class="sorts"><span class="eyebrow-inline">sort</span>
 {sorts}
+        </div>
       </div>
       <table class="index">
-        <thead><tr><th>Family</th><th>Foundry</th><th>Licence</th><th>Codepoints</th>
-          <th>Malayalam verdict</th></tr></thead>
+        <thead><tr><th>Family</th><th>Foundry</th><th>Licence</th><th>Mainly</th>
+          <th>Codepoints</th><th>Declares</th><th>Shaping</th></tr></thead>
       <tbody>
 {chr(10).join(rows)}
       </tbody>
       </table>
       <p class="empty quiet" hidden>Nothing matches that. Try a shorter word, or clear the
-         filter to see all {total:,} families.</p>
+         filters to see all {total:,} families.</p>
     </section>
 """
     return page("Font families", body, kind="index", code=f"{total:,} families",
                 description=f"{total:,} freely licensed font families, {measured:,} of them "
-                            f"measured from their own released file.")
+                            f"measured from their own released file. Filter by declared "
+                            f"OpenType script tag or by the Unicode block they cover.")
 
 
 def lookup_rows(rows):
@@ -799,7 +887,7 @@ def main():
         if font.get("tables"):
             write(f"/font/{font['slug']}/shaping/", shaping_page(font))
             shaping += 1
-    write("/fonts/", fonts_index(fonts["fonts"]))
+    write("/fonts/", fonts_index(fonts["fonts"], blocks))
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
     print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
           f"{len(fonts['fonts']) - measured} not yet; {shaping} with shaping tables")

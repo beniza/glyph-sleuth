@@ -273,6 +273,30 @@ a.fact:hover .value { color: var(--ink); }
   font-family: var(--mono);
   font-size: 13px;
 }
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--cond);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pick select {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 7px 8px;
+  max-width: 220px;
+}
+
 .facets { display: flex; flex-wrap: wrap; gap: 8px; }
 .facet {
   display: flex;

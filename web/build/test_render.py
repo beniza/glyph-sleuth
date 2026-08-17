@@ -119,6 +119,62 @@ def test_home_links_are_real_paths():
     assert f'href="{render.link("/lang/mal/")}"' in html
 
 
+def test_no_script_is_the_default_subject():
+    """Malayalam was how the tiers got built, not what the site is about.
+
+    A page about a Devanagari face must not measure itself against Malayalam,
+    and the index must not have a Malayalam column. The flagship script is a
+    depth of coverage, never a lens the whole site is seen through.
+    """
+    deva = {"name": "Annapurna SIL", "source": "sil", "tier": "measured",
+            "checksum": "x", "ranges": [[0x0020, 0x007E], [0x0900, 0x097F]],
+            "tags": ["deva", "dev2"], "gsub": 128, "gpos": 4, "features": [],
+            "axes": [], "faces": [], "licence": "OFL", "url": "x", "css": None}
+    html = render.font_page(deva, FULL_BLOCKS)
+    assert "Devanagari" in html
+    assert "Malayalam" not in html
+
+    index = render.fonts_index([deva])
+    assert "Malayalam" not in index
+
+
+def test_dominant_script_is_the_font_s_own():
+    latin_and_deva = {"ranges": [[0x0020, 0x007E], [0x0900, 0x097F]]}
+    assert render.dominant_block(latin_and_deva, FULL_BLOCKS)[0] == "Devanagari"
+    # Latin and punctuation say nothing about what a face is *for*, so a
+    # Latin-only face has no script to name rather than being called Basic Latin.
+    assert render.dominant_block({"ranges": [[0x0020, 0x007E]]}, FULL_BLOCKS) is None
+    # A handful of stray codepoints outside Latin is not a script either.
+    assert render.dominant_block({"ranges": [[0x0020, 0x007E], [0x0900, 0x0903]]},
+                                 FULL_BLOCKS) is None
+
+
+def test_index_filters_on_what_engineers_ask():
+    """Script tags and block coverage, which is what the questions are about:
+    "which families declare dev2", "which cover Arabic"."""
+    fonts = [
+        {"name": "Annapurna SIL", "slug": "a", "source": "sil", "tier": "measured",
+         "checksum": "x", "ranges": [[0x0900, 0x097F]], "tags": ["deva", "dev2"],
+         "licence": "OFL"},
+        {"name": "Scheherazade", "slug": "s", "source": "sil", "tier": "measured",
+         "checksum": "x", "ranges": [[0x0600, 0x06FF]], "tags": ["arab"],
+         "licence": "OFL"},
+    ]
+    html = render.fonts_index(fonts, FULL_BLOCKS)
+
+    # Every row carries its tags and the blocks it covers, so the filters are a
+    # DOM pass rather than a fetch.
+    assert 'data-tags="deva dev2"' in html
+    assert "devanagari" in html and "arabic" in html
+
+    # And the controls exist, with counts, listing what is actually there.
+    assert 'name="tag"' in html and 'name="block"' in html
+    assert 'value="dev2"' in html
+    assert 'value="arabic"' in html
+    # No tag or block that nothing carries.
+    assert 'value="mlym"' not in html
+
+
 def test_specimen_suits_the_font():
     """Setting Malayalam words in a Latin face shows a row of tofu.
 
@@ -127,13 +183,20 @@ def test_specimen_suits_the_font():
     actually draw, or the page is demonstrating the wrong thing.
     """
     malayalam = {"name": "Manjari", "ranges": [[0x0D00, 0x0D7F]]}
+    devanagari = {"name": "Annapurna SIL", "ranges": [[0x0900, 0x097F]]}
     latin = {"name": "ABeeZee", "ranges": [[0x0020, 0x007E]]}
-    assert "മ" in render.specimen_text(malayalam)[0]
-    assert "മ" not in render.specimen_text(latin)[0]
-    assert render.specimen_text(latin)[0].strip()
-    # A Latin face that happens to carry a handful of Malayalam codepoints is
-    # still a Latin face; the threshold is coverage, not presence.
-    assert "മ" not in render.specimen_text({"ranges": [[0x0020, 0x007E], [0x0D00, 0x0D05]]})[0]
+
+    # Each face demonstrates itself in its own script, chosen from the face,
+    # never from a script the site happens to know best.
+    assert "മ" in render.specimen_text(malayalam, FULL_BLOCKS)[0]
+    assert "दे" in render.specimen_text(devanagari, FULL_BLOCKS)[0]
+    assert "മ" not in render.specimen_text(devanagari, FULL_BLOCKS)[0]
+    assert render.specimen_text(latin, FULL_BLOCKS)[0].strip()
+    assert "മ" not in render.specimen_text(latin, FULL_BLOCKS)[0]
+    # A Latin face carrying a handful of Malayalam codepoints is still a Latin
+    # face; the threshold is coverage, not presence.
+    assert "മ" not in render.specimen_text(
+        {"ranges": [[0x0020, 0x007E], [0x0D00, 0x0D05]]}, FULL_BLOCKS)[0]
 
 
 def test_fonts_index_controls():
@@ -155,10 +218,10 @@ def test_fonts_index_controls():
     html = render.fonts_index(fonts)
 
     # A text filter, and the facets the design calls for, each carrying its own
-    # count so the number is visible before you click it.
+    # count so the number is visible before you click it. No script-specific
+    # facet: the index is not seen through one script's lens.
     assert 'type="search"' in html
-    for facet, count in (("all", 4), ("malayalam", 2), ("measured", 3),
-                         ("not measured yet", 1)):
+    for facet, count in (("all", 4), ("measured", 3), ("not measured yet", 1)):
         assert f'data-facet="{facet}"' in html, facet
         assert f'data-count="{count}"' in html, (facet, count)
 
@@ -262,6 +325,7 @@ MANJARI = {
 }
 
 BLOCKS = [[0x0020, 0x007F, "Basic Latin"], [0x0D00, 0x0D7F, "Malayalam"]]
+FULL_BLOCKS = BLOCKS + [[0x0600, 0x06FF, "Arabic"], [0x0900, 0x097F, "Devanagari"]]
 
 
 def test_font_page_shows_its_evidence():

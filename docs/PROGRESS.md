@@ -86,7 +86,11 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
 - [ ] Feature page
 - [ ] Inspect
 - [ ] Regex
-- [x] Index page `/fonts/` — every family in the markup, JS filtering later
+- [x] Index page `/fonts/` — every family in the markup; filter by name, by
+      declared OpenType script tag, by Unicode block covered; facets for
+      measured/unmeasured and shaping; sort by name, verdict or coverage
+- [x] No script is the site's default lens — the font page measures each face
+      against its own dominant block, and the specimen is set in that script
 - [ ] Index pages: `/scripts/`, `/languages/`
 
 Known gaps to fix while building (`HANDOFF.md` §6), not new design work:

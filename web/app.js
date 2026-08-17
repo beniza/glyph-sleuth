@@ -20,11 +20,20 @@ if (table) {
   let facet = "all";
   let sort = "name";
 
+  const tagPick = document.querySelector('select[name="tag"]');
+  const blockPick = document.querySelector('select[name="block"]');
+
+  const has = (value, wanted) => value.split(" ").filter(Boolean).includes(wanted);
+
   const matches = (row, text) => {
     if (text && !row.dataset.name.includes(text)) return false;
+    // The two questions engineers actually arrive with: does it declare this
+    // tag, does it cover this block. They compose — "covers Devanagari but
+    // declares only deva" is the gap worth finding, and needs both at once.
+    if (tagPick?.value && !has(row.dataset.tags || "", tagPick.value)) return false;
+    if (blockPick?.value && !has(row.dataset.blocks || "", blockPick.value)) return false;
     switch (facet) {
       case "all": return true;
-      case "malayalam": return Number(row.dataset.malayalam) > 40;
       case "measured": return row.dataset.tier === "measured";
       case "not measured yet": return row.dataset.tier !== "measured";
       default: return row.dataset.verdict === facet;
@@ -57,6 +66,8 @@ if (table) {
   };
 
   search?.addEventListener("input", apply);
+  tagPick?.addEventListener("change", apply);
+  blockPick?.addEventListener("change", apply);
   facets.forEach((button) => button.addEventListener("click", () => {
     facet = button.dataset.facet;
     facets.forEach((other) => other.classList.toggle("on", other === button));
