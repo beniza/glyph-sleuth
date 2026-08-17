@@ -520,6 +520,53 @@ def test_unmeasured_family_says_so():
     assert "0 codepoints" not in html
 
 
+def test_char_page_draws_the_glyph_in_each_family():
+    """Naming the families that have a character is half an answer.
+
+    Two faces can both cover U+0D15 and draw it quite differently, and that
+    difference is the thing a reader came to see. Each family draws it in its
+    own face, loaded from its own distribution.
+    """
+    fonts = [
+        {"name": "Manjari", "slug": "manjari", "source": "smc", "tier": "measured",
+         "ranges": [[0x0D00, 0x0D7F]], "licence": "OFL",
+         "css": "https://smc.org.in/fonts/manjari.css"},
+        {"name": "Baloo Chettan 2", "slug": "baloo-chettan-2", "source": "google",
+         "tier": "measured", "ranges": [[0x0D00, 0x0D7F]], "licence": "OFL"},
+        {"name": "ABeeZee", "slug": "abeezee", "source": "google", "tier": "measured",
+         "ranges": [[0x0020, 0x007E]], "licence": "OFL"},
+    ]
+    html = render.char_page(0x0D15, "MALAYALAM LETTER KA",
+                            [0x0D00, 0x0D7F, "Malayalam"], fonts, {0x0D15})
+
+    # A tile per family that has it, each drawn in that family.
+    assert 'class="draws' in html
+    assert html.count('class="tile-glyph') == 2, "one tile per covering family"
+    # The face is loaded from where the family is actually distributed: the
+    # foundry's own stylesheet, and Google's CDN for Google's families.
+    assert "https://smc.org.in/fonts/manjari.css" in html
+    assert "family=Baloo+Chettan+2" in html
+    # A family without the character is not shown drawing it.
+    assert "ABeeZee" not in html
+    # Each tile is keyed to its own family, so no two rows borrow a face.
+    assert ".f-manjari" in html and ".f-baloo-chettan-2" in html
+    # And the tile links to the family it draws.
+    assert render.link("/font/manjari/") in html
+
+
+def test_char_page_says_how_many_faces_it_drew():
+    # Loading a hundred webfonts on one page is not a page. The cap is stated,
+    # because a grid of twenty-four when there are nine hundred reads as
+    # "twenty-four families have this" unless it says otherwise.
+    fonts = [{"name": f"Face {n}", "slug": f"face-{n}", "source": "google",
+              "tier": "measured", "ranges": [[0x0D00, 0x0D7F]], "licence": "OFL"}
+             for n in range(40)]
+    html = render.char_page(0x0D15, "MALAYALAM LETTER KA",
+                            [0x0D00, 0x0D7F, "Malayalam"], fonts, {0x0D15})
+    assert html.count('class="tile-glyph') == render.DRAWN_LIMIT
+    assert f"{render.DRAWN_LIMIT} of 40" in html
+
+
 def test_pages_only_link_characters_that_exist():
     """A page per assigned codepoint would be over a million files, so only some
     blocks get one — and the pages that link characters are told which.

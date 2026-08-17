@@ -528,3 +528,32 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
 .pipeline li a { border: none; }
 .pipeline li.on { background: var(--ink); border-color: var(--ink); }
 .pipeline li.on .mono { color: var(--bone); }
+
+/* How a character is drawn, family by family. The point is the comparison, so
+   the tiles are a grid rather than a list: differences read across a row. */
+.drawn {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+.draws {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 6px 8px;
+  background: var(--panel);
+  border: none;
+}
+.draws:hover { background: var(--bone); }
+.tile-glyph { font-size: 44px; line-height: 1.1; color: var(--ink); }
+.draws-name {
+  font-family: var(--cond);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--muted);
+  text-align: center;
+}
+.draws:hover .draws-name { color: var(--ink); }

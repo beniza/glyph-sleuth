@@ -1143,6 +1143,36 @@ def lookups_page(font):
                             f"rules behind them.")
 
 
+# How many faces one page will load to draw a character in. A grid of nine
+# hundred webfonts is not a page; what is dropped is stated, as everywhere else.
+DRAWN_LIMIT = 24
+
+
+def face_styles(fonts):
+    """Load these families, and give each a class that sets it.
+
+    Google's CDN takes every family in one request, which is the difference
+    between one stylesheet and twenty-four. Foundry families each bring their
+    own. We serve none of it.
+    """
+    google = [font["name"].replace(" ", "+") for font in fonts
+              if font.get("source") == "google"]
+    links = []
+    if google:
+        query = "&".join(f"family={name}" for name in google)
+        links.append('  <link rel="stylesheet" '
+                     f'href="https://fonts.googleapis.com/css2?{query}&display=swap">')
+    for font in fonts:
+        if font.get("source") != "google" and font.get("css"):
+            links.append(f'  <link rel="stylesheet" href="{esc(font["css"])}">')
+
+    rules = "\n".join(
+        f'    .f-{esc(font.get("slug") or slug(font["name"]))} '
+        f'{{ font-family: "{esc(font["name"])}", serif; }}'
+        for font in fonts)
+    return "\n".join(links) + "\n  <style>\n" + rules + "\n  </style>"
+
+
 # ------------------------------------------------------------------ features
 
 # The registered names, so a tag nothing is authored about still says what it
@@ -1306,11 +1336,24 @@ def char_page(cp, name, block, fonts, chars_built):
         if other in chars_built:
             neighbours.append(f'<a href="{link(f"/char/{other:04X}/")}">U+{other:04X}</a>')
 
-    families = "\n".join(
-        f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
-        f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td>'
-        f'<td class="quiet mono">{esc(font.get("licence") or "—")}</td></tr>'
-        for font in sorted(measured, key=lambda f: f["name"].lower())[:100])
+    # Drawn, not just named. Two faces can both cover a codepoint and draw it
+    # quite differently, and that difference is what a reader came to see.
+    ordered = sorted(covering, key=lambda f: (f.get("tier") != "measured",
+                                              f["name"].lower()))
+    drawn = ordered[:DRAWN_LIMIT]
+    tiles = "\n".join(
+        f'        <a class="draws" href="{font_href(font)}">'
+        f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}">'
+        f'{esc(ch)}</span>'
+        f'<span class="draws-name">{esc(font["name"])}</span></a>'
+        for font in drawn)
+    faces = face_styles(drawn)
+    # What the grid dropped, said out loud: twenty-four tiles where nine hundred
+    # families have the character would otherwise read as "twenty-four have it".
+    drawn_note = (f"Showing {len(drawn)} of {len(covering):,} families that cover it, "
+                  "measured ones first — a page cannot load nine hundred webfonts."
+                  if len(covering) > len(drawn) else
+                  f"All {len(covering):,} indexed families that cover this codepoint.")
 
     body = f"""    <section class="entity-head">
       <div class="head-row">
@@ -1329,21 +1372,21 @@ def char_page(cp, name, block, fonts, chars_built):
 {rows}
       </div>
       <div>
-        <h2 class="eyebrow">Families that have it</h2>
-        <table class="index">
-        <tbody>
-{families}
-        </tbody>
-        </table>
-        <p class="quiet">{len(covering):,} indexed families cover this codepoint. Covering it
-           is not the same as drawing it correctly in context — that is what a font's
-           sequences show.</p>
+        <h2 class="eyebrow">How it is drawn</h2>
+        <div class="drawn">
+{tiles}
+        </div>
+        <p class="quiet">{drawn_note}
+           Each is drawn by your browser in that family's own face, from that family's own
+           distribution. Covering a codepoint is not the same as drawing it correctly in
+           context — that is what a font's sequences show.</p>
       </div>
     </section>
 """
     return page(f"U+{cp:04X} {name}", body, kind="character", code=f"U+{cp:04X}",
-                description=f"U+{cp:04X} {name}: encodings, and which of the indexed font "
-                            f"families cover it.")
+                description=f"U+{cp:04X} {name}: encodings, and how each of the indexed font "
+                            f"families draws it.",
+                extra_head=faces)
 
 
 # -------------------------------------------------------------------- blocks
