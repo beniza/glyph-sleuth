@@ -425,8 +425,8 @@ def measure(blob):
             tags.add(record.ScriptTag.strip())
         for record in getattr(table.FeatureList, "FeatureRecord", []) or []:
             features.add(record.FeatureTag.strip())
-        lookups = getattr(table.LookupList, "Lookup", []) or []
-        facts["gsub" if table_tag == "GSUB" else "gpos"] = len(lookups)
+        found = getattr(table.LookupList, "Lookup", []) or []
+        facts["gsub" if table_tag == "GSUB" else "gpos"] = len(found)
     facts["tags"] = sorted(tags)
     facts["features"] = sorted(features)
 
@@ -434,6 +434,9 @@ def measure(blob):
         facts["axes"] = [{"tag": axis.axisTag, "min": axis.minValue,
                           "default": axis.defaultValue, "max": axis.maxValue}
                          for axis in font["fvar"].axes]
+
+    # The working behind the counts, for the shaping tables page.
+    facts["tables"] = lookups(blob)
 
     name = font["name"]
     facts["family"] = str(name.getBestFamilyName() or "")
@@ -560,6 +563,123 @@ def foundry_family(source, project, token=None):
             facts.setdefault("results", {})[script] = shape_all(blob, label, script)
     return foundry_record(facts.get("family") or fallback_name, source["id"], page,
                           css=css, facts=facts)
+
+
+# --------------------------------------------------------- lookup tables
+
+# What the OpenType spec calls each lookup type, so the page can say
+# "Ligature" rather than "type 4".
+GSUB_TYPES = {1: "Single", 2: "Multiple", 3: "Alternate", 4: "Ligature",
+              5: "Context", 6: "Chaining context", 7: "Extension",
+              8: "Reverse chaining single"}
+GPOS_TYPES = {1: "Single", 2: "Pair", 3: "Cursive", 4: "Mark to base",
+              5: "Mark to ligature", 6: "Mark to mark", 7: "Context",
+              8: "Chaining context", 9: "Extension"}
+
+# A real family carries thousands of rules. Enough to see the shape of the
+# lookup, and the count says how many more there are.
+RULE_SAMPLES = 6
+
+
+def resolve(lookup):
+    """Extension lookups wrap the real one; unwrap to what actually runs."""
+    subtables = []
+    for subtable in lookup.SubTable or []:
+        if getattr(subtable, "ExtSubTable", None) is not None:
+            subtables.append(subtable.ExtSubTable)
+        else:
+            subtables.append(subtable)
+    return subtables
+
+
+def gsub_rules(subtables):
+    """[{in, out}] — a rule reads as what it does: these glyphs become that."""
+    rules, total = [], 0
+    for subtable in subtables:
+        mapping = getattr(subtable, "mapping", None)
+        if mapping:                                    # single, alternate
+            total += len(mapping)
+            for source, target in list(mapping.items())[:RULE_SAMPLES]:
+                out = target if isinstance(target, str) else " ".join(target)
+                rules.append({"in": source, "out": out})
+            continue
+        alternates = getattr(subtable, "alternates", None)
+        if alternates:                                 # aalt: one glyph, several choices
+            total += len(alternates)
+            for source, targets in list(alternates.items())[:RULE_SAMPLES]:
+                rules.append({"in": source, "out": " / ".join(targets)})
+            continue
+        ligatures = getattr(subtable, "ligatures", None)
+        if ligatures:
+            for first, entries in ligatures.items():
+                total += len(entries)
+                for entry in entries[:RULE_SAMPLES]:
+                    rules.append({"in": " ".join([first] + list(entry.Component)),
+                                  "out": entry.LigGlyph})
+            continue
+        # Contextual lookups chain other lookups rather than mapping glyphs;
+        # counting their rules is honest, listing them is not readable.
+        for attribute in ("SubRuleSet", "ChainSubRuleSet", "SubClassSet",
+                          "ChainSubClassSet", "SubstLookupRecord"):
+            found = getattr(subtable, attribute, None)
+            if found:
+                total += len(found)
+    return rules[:RULE_SAMPLES], total
+
+
+def gpos_rules(subtables):
+    """Positioning does not rewrite glyphs, so the interesting number is how
+    many marks and bases the lookup attaches — a mark-to-base with no marks is
+    a lookup that will never fire."""
+    total = 0
+    for subtable in subtables:
+        for attribute in ("MarkArray", "BaseArray", "Mark1Array", "LigatureArray",
+                          "PairSet", "Coverage"):
+            found = getattr(subtable, attribute, None)
+            count = getattr(found, "MarkCount", None) or getattr(found, "BaseCount", None)
+            if count:
+                total += count
+            elif isinstance(found, list):
+                total += len(found)
+            elif getattr(found, "glyphs", None):
+                total += len(found.glyphs)
+    return total
+
+
+def lookups(blob):
+    """Every feature's lookups, with the rules behind them.
+
+    This is the working behind the font page's "48 GSUB lookups": which
+    lookups a feature runs, of what type, carrying how many rules.
+    """
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(io.BytesIO(as_sfnt(blob)), fontNumber=0, lazy=True)
+    out = {"gsub": [], "gpos": []}
+    for table_tag, key, names in (("GSUB", "gsub", GSUB_TYPES), ("GPOS", "gpos", GPOS_TYPES)):
+        if table_tag not in font:
+            continue
+        table = font[table_tag].table
+        all_lookups = getattr(table.LookupList, "Lookup", []) or []
+        for record in getattr(table.FeatureList, "FeatureRecord", []) or []:
+            tag = record.FeatureTag.strip()
+            for index in record.Feature.LookupListIndex:
+                if index >= len(all_lookups):
+                    continue
+                lookup = all_lookups[index]
+                subtables = resolve(lookup)
+                kind = names.get(lookup.LookupType, f"type {lookup.LookupType}")
+                if getattr(lookup.SubTable[0] if lookup.SubTable else None,
+                           "ExtSubTable", None) is not None and subtables:
+                    kind = names.get(subtables[0].LookupType, kind)
+                if key == "gsub":
+                    rules, total = gsub_rules(subtables)
+                else:
+                    rules, total = [], gpos_rules(subtables)
+                out[key].append({"feature": tag, "type": kind, "index": index,
+                                 "flag": lookup.LookupFlag, "n": total, "rules": rules})
+    font.close()
+    return out
 
 
 # ----------------------------------------------------------------- shaping

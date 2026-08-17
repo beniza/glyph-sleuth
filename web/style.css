@@ -205,6 +205,17 @@ tbody th { font-weight: 400; }
 tr.detail td { padding-top: 0; border-bottom: 1px solid var(--rule); }
 tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
 
+/* Lookups, grouped under the feature that runs them. */
+.lookups tr.feature th {
+  font-family: var(--mono);
+  font-size: 13px;
+  padding-top: 22px;
+  border-bottom-color: var(--ink);
+}
+.lookups td { vertical-align: top; }
+.rule { font-size: 13px; }
+.rule .mono { font-size: 12.5px; }
+
 .snippet {
   background: var(--panel);
   border: 1px solid var(--rule);

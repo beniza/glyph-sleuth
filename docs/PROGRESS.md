@@ -72,7 +72,10 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
       matrix with its legend, the "Use it" fallback chain, provenance
 - [ ] Licence for foundry families: the release carries OFL.txt but we do not
       read it yet, so those pages show an em dash
-- [ ] Font shaping tables page (`/font/<id>/shaping/`) — GSUB/GPOS lookups
+- [x] Font shaping tables page (`/font/<id>/shaping/`) — every lookup a
+      feature runs, its type, its rule count and sample rules
+- [ ] GPOS anchor diagrams on the shaping page — the prototype draws mark
+      attachment; we currently report attachment counts only
 - [ ] Font shaping tables
 - [ ] Character page
 - [ ] Block page

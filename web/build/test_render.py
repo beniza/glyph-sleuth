@@ -208,6 +208,44 @@ def test_use_it_never_invents_an_import():
         assert not ours.search(state), "we are linking a font file of our own"
 
 
+def test_shaping_page_shows_the_working():
+    font = dict(MANJARI, tables={
+        "gsub": [{"feature": "akhn", "type": "Ligature", "index": 0, "flag": 0, "n": 60,
+                  "rules": [{"in": "k1 xx k1", "out": "k1k1"}]},
+                 {"feature": "akhn", "type": "Chaining context", "index": 1, "flag": 0,
+                  "n": 25, "rules": []}],
+        "gpos": [{"feature": "abvm", "type": "Mark to base", "index": 0, "flag": 0,
+                  "n": 464, "rules": []}],
+    })
+    html = render.shaping_page(font)
+
+    # Grouped by feature, because that is how a reader thinks about it: what
+    # does akhn actually do in this font?
+    assert "akhn" in html and "abvm" in html
+    assert "Ligature" in html and "Mark to base" in html
+    # A rule reads as what it does.
+    assert "k1 xx k1" in html and "k1k1" in html
+    # The counts are the full counts, even where only a few rules are shown.
+    assert "60" in html and "464" in html
+    # A contextual lookup lists no rules, and says why rather than looking empty.
+    assert "chains other lookups" in html
+
+    # It is a page about one family, and says whose working this is.
+    assert "Manjari" in html
+    assert render.font_href(font) in html
+
+
+def test_shaping_page_needs_the_tables():
+    # Nothing to show for a family whose file we never opened, and the page
+    # says that instead of rendering an empty table.
+    stub = {"name": "RIT Panmana", "source": "rit", "tier": "stub", "ranges": [],
+            "licence": "", "url": "x", "css": None, "tags": [], "features": [],
+            "axes": [], "faces": []}
+    html = render.shaping_page(stub)
+    assert "not measured yet" in html
+    assert "<table" not in html
+
+
 def test_coverage_measured_but_tables_unread():
     """Google's metadata gives coverage and nothing else.
 

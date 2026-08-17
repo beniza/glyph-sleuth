@@ -239,6 +239,52 @@ def test_extract_fonts():
     assert found["release/Manjari-Regular.ttf"] == b"font bytes"
 
 
+def test_lookup_tables():
+    """What the shaping page shows: which lookups a feature actually runs.
+
+    "48 GSUB lookups" is a number; this is the working behind it — the type of
+    each lookup, how many rules it carries, and a few of the rules themselves.
+    """
+    fea = """
+    languagesystem mlm2 dflt;
+    feature akhn {
+        sub g0D15 g0D4D g0D15 by g0D7B;   # a ligature: three in, one out
+    } akhn;
+    feature pres {
+        sub g0D15 by g0D16;               # a single substitution
+    } pres;
+    """
+    tables = gen_index.lookups(sample_font(codepoints=(0x0D15, 0x0D16, 0x0D4D, 0x0D7B), fea=fea))
+
+    by_feature = {row["feature"]: row for row in tables["gsub"]}
+    assert set(by_feature) == {"akhn", "pres"}
+
+    # The type is named, not left as the raw integer the table stores.
+    assert by_feature["akhn"]["type"] == "Ligature"
+    assert by_feature["pres"]["type"] == "Single"
+
+    # And a rule reads as what it does: these glyphs become that one.
+    rule = by_feature["akhn"]["rules"][0]
+    assert rule["in"] == "g0D15 g0D4D g0D15"
+    assert rule["out"] == "g0D7B"
+    assert by_feature["pres"]["rules"][0] == {"in": "g0D15", "out": "g0D16"}
+
+    # A font with no positioning has no GPOS rows — not a row saying zero.
+    assert tables["gpos"] == []
+
+
+def test_lookup_rules_are_capped():
+    # A real family carries thousands of rules. The page shows enough to see
+    # the shape of the lookup and says how many more there are.
+    fea = "feature pres {\n" + "\n".join(
+        f"    sub g{cp:04X} by g0D7B;" for cp in range(0x0D15, 0x0D25)) + "\n} pres;"
+    codepoints = tuple(range(0x0D15, 0x0D25)) + (0x0D7B,)
+    tables = gen_index.lookups(sample_font(codepoints=codepoints, fea=fea))
+    row = tables["gsub"][0]
+    assert row["n"] == 16                       # every rule counted
+    assert len(row["rules"]) == gen_index.RULE_SAMPLES  # only a few shown
+
+
 def test_google_face_url():
     # Google's css2 serves woff2 to a modern UA and ttf to an old one. Either
     # is readable; what matters is getting a real file URL out of the sheet,

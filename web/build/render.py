@@ -434,6 +434,78 @@ def font_page(font, blocks):
                 extra_head=head)
 
 
+def lookup_rows(rows):
+    """One row per lookup, grouped under its feature.
+
+    A feature is not one lookup: akhn in a Malayalam face is a ligature lookup
+    for the chillus, another for the conjuncts, and a chaining context that
+    decides when they apply. Collapsing that to a count is how "48 lookups"
+    ends up meaning nothing.
+    """
+    out, seen = [], None
+    for row in rows:
+        feature = row["feature"]
+        head = ""
+        if feature != seen:
+            head = (f'      <tr class="feature"><th colspan="3" scope="rowgroup">'
+                    f'<a href="{link("/feature/" + feature + "/")}">{esc(feature)}</a>'
+                    "</th></tr>\n")
+            seen = feature
+        rules = "".join(
+            f'<div class="rule"><span class="mono">{esc(rule["in"])}</span>'
+            f' → <span class="mono">{esc(rule["out"])}</span></div>'
+            for rule in row["rules"])
+        if not rules:
+            rules = ('<div class="quiet">This lookup chains other lookups rather than '
+                     'mapping glyphs, so there is nothing to list — only when it fires.</div>'
+                     if "ontext" in row["type"] else "")
+        shown = len(row["rules"])
+        more = (f'<div class="quiet">{row["n"] - shown:,} more</div>'
+                if row["n"] > shown and shown else "")
+        out.append(head +
+                   f'      <tr><th scope="row" class="mono">{row["index"]}</th>'
+                   f'<td>{esc(row["type"])}<div class="quiet mono">{row["n"]:,} rules</div></td>'
+                   f"<td>{rules}{more}</td></tr>")
+    return out
+
+
+def shaping_page(font):
+    name = font["name"]
+    tables = font.get("tables") or {}
+    body = [f'    <section class="claim">\n      <h1>{esc(name)}: shaping tables</h1>\n'
+            f'      <p class="quiet">The working behind the verdicts on '
+            f'<a href="{font_href(font)}">the family page</a>: which lookups each feature '
+            f'runs, of what type, and the rules they carry.</p>\n    </section>']
+
+    if not (tables.get("gsub") or tables.get("gpos")):
+        body.append('    <section>\n      <p class="quiet">This family is '
+                    '<strong>not measured yet</strong> — its font file has not been read, so '
+                    'there are no lookups to show.</p>\n    </section>')
+        return page(f"{name} shaping tables", "\n".join(body), kind="shaping tables",
+                    code=slug(name))
+
+    for key, title, note in (
+            ("gsub", "GSUB — substitution",
+             "What the font swaps: conjuncts, chillus, below-base forms."),
+            ("gpos", "GPOS — positioning",
+             "What the font moves: mark attachment, kerning. Positioning rewrites no "
+             "glyphs, so the count is how many attachments the lookup carries — a "
+             "mark-to-base with no marks never fires.")):
+        rows = lookup_rows(tables.get(key) or [])
+        if not rows:
+            continue
+        body.append(f'    <section>\n      <h2 class="eyebrow">{esc(title)}</h2>\n'
+                    '      <table class="lookups">\n'
+                    '        <thead><tr><th>Lookup</th><th>Type</th><th>Rules</th></tr></thead>\n'
+                    "      <tbody>\n" + "\n".join(rows) + "\n      </tbody>\n      </table>\n"
+                    f'      <p class="quiet">{note}</p>\n    </section>')
+
+    return page(f"{name} shaping tables", "\n".join(body), kind="shaping tables",
+                code=slug(name),
+                description=f"Every GSUB and GPOS lookup {name} runs, by feature, with the "
+                            f"rules behind them.")
+
+
 def write(path, markup):
     """One directory per route, so URLs end in a slash and carry no extension."""
     full = os.path.join(OUT_SITE, path.strip("/"), "index.html") if path != "/" \
@@ -472,11 +544,15 @@ def main():
     write("/", home(fonts["fonts"], scripts, languages))
     print("  wrote home")
 
+    shaping = 0
     for font in fonts["fonts"]:
         write(f"/font/{slug(font['name'])}/", font_page(font, blocks))
+        if font.get("tables"):
+            write(f"/font/{slug(font['name'])}/shaping/", shaping_page(font))
+            shaping += 1
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
     print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
-          f"{len(fonts['fonts']) - measured} not yet")
+          f"{len(fonts['fonts']) - measured} not yet; {shaping} with shaping tables")
 
 
 if __name__ == "__main__":
