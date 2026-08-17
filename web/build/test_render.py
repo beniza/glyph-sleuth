@@ -119,6 +119,23 @@ def test_home_links_are_real_paths():
     assert f'href="{render.link("/lang/mal/")}"' in html
 
 
+def test_specimen_suits_the_font():
+    """Setting Malayalam words in a Latin face shows a row of tofu.
+
+    The prototype could hardcode Malayalam because it was a Malayalam app. An
+    index of 1,885 families cannot: the specimen has to be text the face can
+    actually draw, or the page is demonstrating the wrong thing.
+    """
+    malayalam = {"name": "Manjari", "ranges": [[0x0D00, 0x0D7F]]}
+    latin = {"name": "ABeeZee", "ranges": [[0x0020, 0x007E]]}
+    assert "മ" in render.specimen_text(malayalam)[0]
+    assert "മ" not in render.specimen_text(latin)[0]
+    assert render.specimen_text(latin)[0].strip()
+    # A Latin face that happens to carry a handful of Malayalam codepoints is
+    # still a Latin face; the threshold is coverage, not presence.
+    assert "മ" not in render.specimen_text({"ranges": [[0x0020, 0x007E], [0x0D00, 0x0D05]]})[0]
+
+
 def test_fonts_index_lists_every_family_in_the_html():
     """The nav promises this page, so it has to exist — and it has to carry the
     families in the markup, not fetch them.

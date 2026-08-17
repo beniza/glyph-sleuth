@@ -113,6 +113,7 @@ def page(title, body, kind=None, code=None, description=None, extra_head=""):
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="{WEBFONTS}">
   <link rel="stylesheet" href="{link("/style.css")}">
+  <script src="{link("/app.js")}" type="module" defer></script>
 {extra_head}
 </head>
 <body>
@@ -341,6 +342,68 @@ def evidence_rows(font, script="Mlym"):
     return rows
 
 
+FOUNDRIES = {"google": "Google Fonts", "smc": "Swathanthra Malayalam Computing",
+             "sil": "SIL", "rit": "Rachana Institute of Typography", "libre": "Libre"}
+
+# What a script tag means, so "mlm2" is a fact a reader can act on rather than
+# four characters. Authored, and only for tags we can say something true about;
+# anything else shows the tag alone.
+TAG_NOTES = {
+    "mlym": "the original Malayalam tag; older shapers look for this one",
+    "mlm2": "the v2 Malayalam tag every current shaper prefers",
+    "deva": "the original Devanagari tag",
+    "dev2": "the v2 Devanagari tag",
+    "taml": "the original Tamil tag",
+    "tml2": "the v2 Tamil tag",
+    "latn": "Latin",
+    "DFLT": "the fallback a shaper uses when no script matches",
+}
+
+
+# What to set a specimen in, per script we index deeply. Real words, never
+# lorem: മലയാളം is the language's own name, സ്ത്രീ a four-consonant cluster,
+# ക്ക a geminate, ൻ a chillu.
+SPECIMENS = {
+    "Mlym": ((0x0D00, 0x0D7F), "മലയാളം സ്ത്രീ ക്ക ൻ",
+             "ൻ്റെ വാക്കുകൾ — Malayalam and Latin."),
+}
+LATIN_SPECIMEN = ("Handgloves & Quartz", "The quick brown fox jumps over the lazy dog.")
+
+
+def specimen_text(font):
+    """Text this face can actually draw.
+
+    A Malayalam line set in a Latin face is a row of tofu demonstrating
+    nothing. The prototype could hardcode Malayalam because it was a Malayalam
+    app; an index of 1,885 families cannot.
+    """
+    for (first, last), line, second in SPECIMENS.values():
+        if count_in_range(font.get("ranges") or [], first, last) > 40:
+            return line, second
+    return LATIN_SPECIMEN
+
+
+def fact(value, label, href=None):
+    """One cell of the facts strip: a mono value over a small caps label.
+
+    Linked when the fact leads somewhere, and the value carries the link
+    because that is what the reader is reaching for.
+    """
+    inner = f'<span class="value">{esc(value)}</span><span class="label">{esc(label)}</span>'
+    return (f'        <a class="fact" href="{href}">{inner}</a>' if href
+            else f'        <div class="fact">{inner}</div>')
+
+
+def byline(font):
+    """Foundry · designers · licence — the line under the family name."""
+    parts = [FOUNDRIES.get(font.get("source"), (font.get("source") or "").upper())]
+    if font.get("designers"):
+        parts.append(", ".join(font["designers"]))
+    if font.get("licence"):
+        parts.append(font["licence"])
+    return " · ".join(p for p in parts if p)
+
+
 def font_page(font, blocks):
     name = font["name"]
     measured = font.get("tier") == "measured"
@@ -350,111 +413,152 @@ def font_page(font, blocks):
     # would be the site inventing an answer nobody looked for.
     parsed = bool(font.get("checksum"))
     note, snippet = use_it(font)
-
-    facts = [("Foundry", font.get("source", "").upper() or "—"),
-             ("Licence", font.get("licence") or "—")]
-    if measured:
-        facts.append(("Codepoints", f"{count_in_range(font['ranges'], 0, 0x10FFFF):,}"))
-    # Lookup counts and a release version only exist if we opened the file.
-    if parsed:
-        facts += [("Release", font.get("version") or "—"),
-                  ("GSUB lookups", font.get("gsub", 0)),
-                  ("GPOS lookups", font.get("gpos", 0))]
-    facts_html = "\n".join(
-        f'        <div><dt>{esc(label)}</dt><dd class="mono">{esc(value)}</dd></div>'
-        for label, value in facts)
+    results = (font.get("results") or {}).get("Mlym") or {}
 
     # The face itself, from wherever it is actually distributed. We serve none.
     face_css = ""
     if font.get("source") == "google":
         face_css = ("https://fonts.googleapis.com/css2?family="
-                    + font["name"].replace(" ", "+") + "&display=swap")
+                    + name.replace(" ", "+") + "&display=swap")
     elif font.get("css"):
         face_css = font["css"]
 
-    body = [f'    <section class="claim">\n      <h1>{esc(name)}</h1>']
-    if not measured:
-        body.append('      <p class="quiet">This family is indexed but '
-                    '<strong>not measured yet</strong> — we have not read its released font '
-                    'file, so it carries no coverage, no declared tags and no shaping '
-                    'verdict. What is below is what the foundry publishes about it.</p>')
-    body.append("    </section>")
-
-    body.append('    <section>\n      <h2 class="eyebrow">Facts</h2>\n'
-                f'      <dl class="facts">\n{facts_html}\n      </dl>\n    </section>')
-
-    if face_css:
-        body.append('    <section>\n      <h2 class="eyebrow">Specimen</h2>\n'
-                    '      <p class="specimen">മലയാളം സ്ത്രീ ൻ്റ</p>\n'
-                    '      <p class="quiet">Drawn by your browser from the family\'s own '
-                    'distribution, not from us.</p>\n    </section>')
-
+    # The facts strip. Only facts we have — no zeros standing in for things
+    # nobody measured.
+    facts = []
     if measured:
-        rows = coverage_rows(font, blocks)
-        if rows:
-            body.append('    <section>\n      <h2 class="eyebrow">Coverage, by block</h2>\n'
-                        '      <table>\n        <thead><tr><th>Block</th><th>Range</th>'
-                        '<th>Covered</th></tr></thead>\n      <tbody>\n'
-                        + "\n".join(rows) + "\n      </tbody>\n      </table>\n"
-                        '      <p class="quiet">A script is rarely one block, which is where '
-                        'support quietly dies.</p>\n    </section>')
+        mlym = count_in_range(font.get("ranges") or [], 0x0D00, 0x0D7F)
+        if mlym:
+            facts.append(fact(f"{mlym}/118", "Malayalam codepoints",
+                              link("/block/malayalam/")))
+        facts.append(fact(f"{count_in_range(font['ranges'], 0, 0x10FFFF):,}",
+                          "codepoints in all"))
+    if parsed:
+        facts.append(fact(len(font.get("tags") or []), "script tags"))
+        facts.append(fact(f"{font.get('gsub', 0)} · {font.get('gpos', 0)}",
+                          "GSUB · GPOS lookups", font_href(font) + "shaping/"))
+    if font.get("faces"):
+        facts.append(fact(len(font["faces"]), "weights"))
+    if results:
+        clean = sum(1 for r in results.values()
+                    if (r.get("hb") or {}).get("verdict") == "clean")
+        facts.append(fact(f"{clean} of {len(results)}", "sequences clean"))
 
-        tags = font.get("tags") or []
-        if parsed:
-            told = ('      <p class="mono">' + esc(" · ".join(tags)) + "</p>\n"
-                    '      <p class="quiet">From the <span class="mono">GSUB</span> and '
-                    '<span class="mono">GPOS</span> script lists. A face can cover every '
-                    'codepoint of a script and still declare only the tag an older shaper '
-                    'will not look for.</p>\n')
-        else:
-            # "none" here would be the site asserting the font declares no tags,
-            # when nobody opened the file to look. Measured coverage and unread
-            # tables are two facts, and blurring them is the exact move this
-            # site exists to argue against.
-            told = ('      <p class="untested">not read</p>\n'
-                    '      <p class="quiet">This family\'s coverage comes from the metadata '
-                    'its distributor publishes, which does not include the '
-                    '<span class="mono">GSUB</span> and <span class="mono">GPOS</span> '
-                    'tables. Which tags it declares is unknown here — not absent.</p>\n')
-        body.append('    <section>\n      <h2 class="eyebrow">Script tags declared</h2>\n'
-                    + told + "    </section>")
+    head_row = [f'        <h1>{esc(name)}</h1>']
+    if face_css:
+        # The slider is enhancement: with JS off the specimen still sets at 64px.
+        head_row.append('        <label class="size"><span>size</span>'
+                        '<input type="range" min="24" max="132" step="4" value="64" '
+                        'aria-label="Specimen size">'
+                        '<span class="size-value mono">64px</span></label>')
+    header = ['    <section class="entity-head">', '      <div class="head-row">'] \
+        + head_row + ['      </div>', f'      <p class="byline">{esc(byline(font))}</p>']
+    if face_css:
+        line, second = specimen_text(font)
+        header += [f'      <p class="specimen">{esc(line)}</p>',
+                   f'      <p class="specimen-small">{esc(second)}</p>']
+    if facts:
+        header += ['      <div class="facts">'] + facts + ['      </div>']
+    if not measured:
+        header.append('      <p class="quiet">This family is <strong>not measured yet</strong>'
+                      ' — we have not read its released font file, so it carries no coverage,'
+                      ' no declared tags and no shaping verdict.</p>')
+    header.append('    </section>')
+    body = ["\n".join(header)]
 
+    # Left column: what it covers, and what it declares.
+    left = []
+    rows = coverage_rows(font, blocks) if measured else []
+    if rows:
+        left.append('      <h2 class="eyebrow">Coverage, by block</h2>\n'
+                    '      <table>\n      <tbody>\n' + "\n".join(rows) + '\n      </tbody>\n'
+                    '      </table>\n'
+                    '      <p class="quiet rule-top">A script is rarely one block, which is'
+                    ' where support quietly dies.</p>')
+    if parsed:
+        tags = "\n".join(
+            f'        <div class="pair"><span class="mono">{esc(tag)}</span>'
+            f'<span class="quiet">{esc(TAG_NOTES.get(tag, ""))}</span></div>'
+            for tag in font.get("tags") or [])
+        left.append('      <h2 class="eyebrow">Declares</h2>\n' + tags +
+                    '\n      <p class="quiet rule-top">From the GSUB and GPOS script lists. A'
+                    ' face can cover every codepoint of a script and still declare only the'
+                    ' tag an older shaper will not look for.</p>')
+    elif measured:
+        left.append('      <h2 class="eyebrow">Declares</h2>\n'
+                    '      <p class="untested">not read</p>\n'
+                    '      <p class="quiet">This family\'s coverage comes from the metadata'
+                    ' its distributor publishes, which does not include the'
+                    ' <span class="mono">GSUB</span> and <span class="mono">GPOS</span>'
+                    ' tables. Which tags it declares is unknown here — not absent.</p>')
+
+    # Middle column: the evidence.
+    middle = []
+    if results:
         evidence = evidence_rows(font)
-        if evidence:
-            heads = "".join(f"<th>{label}</th>" for _key, label in ENGINES)
-            body.append('    <section>\n      <h2 class="eyebrow">Evidence</h2>\n'
-                        f'      <table class="matrix">\n        <thead><tr><th>Sequence</th>'
-                        f"{heads}</tr></thead>\n      <tbody>\n"
-                        + "\n".join(evidence) + "\n      </tbody>\n      </table>\n"
-                        f'      <p class="quiet">{MATRIX_LEGEND}</p>\n    </section>')
+        heads = "".join(f"<th>{label}</th>" for _key, label in ENGINES)
+        shaper = next(iter(results.values())).get("hb") or {}
+        middle.append('      <h2 class="eyebrow">Shapes</h2>\n'
+                      '      <table class="matrix">\n        <thead><tr><th>Sequence</th>'
+                      + heads + '</tr></thead>\n      <tbody>\n' + "\n".join(evidence)
+                      + '\n      </tbody>\n      </table>\n'
+                      f'      <p class="quiet">HarfBuzz {esc(shaper.get("version", ""))} ·'
+                      f' read {esc((font.get("provenance") or {}).get("read", ""))}.'
+                      ' Each line above reruns that row against your own copy of the'
+                      ' font.</p>\n'
+                      f'      <p class="quiet rule-top">{MATRIX_LEGEND}</p>')
 
-    body.append('    <section>\n      <h2 class="eyebrow">Use it</h2>\n'
-                f'      <p class="quiet">{esc(note)}</p>\n'
-                f'      <pre class="snippet mono">{snippet}</pre>\n    </section>')
-
-    provenance = font.get("provenance")
-    if provenance:
-        body.append('    <section>\n      <h2 class="eyebrow">Provenance</h2>\n'
-                    f'      <p class="quiet">Read from <span class="mono">'
-                    f'{esc(provenance.get("file"))}</span> on {esc(provenance.get("read"))}, '
-                    f'via <a href="{esc(provenance.get("release"))}">the release the foundry '
-                    f'publishes ↗ — external</a>. Checksum '
-                    f'<span class="mono">{esc(font.get("checksum"))}</span>.</p>\n'
-                    "    </section>")
-
+    # Right column: taking it away.
+    right = ['      <h2 class="eyebrow">Use it</h2>\n'
+             f'      <pre class="snippet mono">{snippet}</pre>\n'
+             f'      <p class="quiet">{esc(note)}</p>']
+    links = []
+    if font.get("tables"):
+        links.append(f'<a href="{font_href(font)}shaping/">Shaping tables</a>')
     if font.get("url"):
-        body.append('    <section>\n      <h2 class="eyebrow">Where it comes from</h2>\n'
-                    f'      <p><a href="{esc(font["url"])}">{esc(name)} at its source ↗ '
-                    "— external</a></p>\n    </section>")
+        links.append(f'<a href="{esc(font["url"])}">Download {esc(name)} ↗</a>')
+    links.append(f'<a href="{link("/compare/")}">Compare with another family</a>')
+    right.append('      <div class="links">' + " ".join(links) + '</div>')
 
-    # The specimen is set in the family itself, loaded from its own
-    # distribution. A page-scoped rule rather than an inline style, so the
-    # markup stays free of presentation attributes.
+    if parsed and font.get("features"):
+        chips = " ".join(f'<a class="chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
+                         for tag in font["features"])
+        right.append('      <h2 class="eyebrow">Implements</h2>\n      <div class="chips">'
+                     + chips + '</div>')
+
+    if font.get("axes"):
+        axes = "\n".join(
+            f'        <div class="pair"><span class="mono">{esc(axis["tag"])}'
+            f' {axis["min"]:g}–{axis["max"]:g}</span>'
+            f'<span class="quiet">axis, continuous</span></div>'
+            for axis in font["axes"])
+        right.append('      <h2 class="eyebrow">Variable</h2>\n' + axes)
+    elif font.get("faces"):
+        right.append('      <h2 class="eyebrow">Weights</h2>\n      <div class="chips">'
+                     + " ".join(f'<span class="chip">{esc(face)}</span>'
+                                for face in font["faces"]) + '</div>')
+
+    if font.get("provenance"):
+        source = font["provenance"]
+        right.append('      <h2 class="eyebrow">Provenance</h2>\n'
+                     '      <p class="quiet">Read from <span class="mono">'
+                     f'{esc(source.get("file"))}</span> on {esc(source.get("read"))}, via '
+                     f'<a href="{esc(source.get("release"))}">the release the foundry'
+                     ' publishes ↗ — external</a>.<br>'
+                     f'<span class="mono break">{esc(font.get("checksum"))}</span></p>')
+
+    columns = [c for c in ("\n".join(left), "\n".join(middle), "\n".join(right)) if c.strip()]
+    body.append('    <section class="columns">\n'
+                + "\n".join(f'      <div>\n{column}\n      </div>' for column in columns)
+                + '\n    </section>')
+
     head = ""
     if face_css:
         head = (f'  <link rel="stylesheet" href="{esc(face_css)}">\n'
-                f'  <style>.specimen {{ font-family: "{esc(name)}", serif; }}</style>')
-    return page(name, "\n".join(body), kind="font family", code=slug(name),
+                f'  <style>.specimen, .specimen-small {{ font-family: "{esc(name)}", serif; }}'
+                '</style>')
+    return page(name, "\n".join(body), kind="font family",
+                code=font.get("slug") or slug(name),
                 description=f"{name}: what it covers, the OpenType script tags it declares, "
                             f"and how it shapes the sequences the script turns on.",
                 extra_head=head)
@@ -609,8 +713,8 @@ def main():
 
     blocks = (load("blocks") or {}).get("blocks", [])
 
-    shutil.copyfile(os.path.join(ROOT, "web", "style.css"),
-                    os.path.join(OUT_SITE, "style.css"))
+    for asset in ("style.css", "app.js"):
+        shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
     write("/", home(fonts["fonts"], scripts, languages))
     print("  wrote home")
 

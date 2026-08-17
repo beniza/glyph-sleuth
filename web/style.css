@@ -152,7 +152,7 @@ h1 {
 /* ------------------------------------------------------------ components */
 
 /* The facts strip: a mono value over a small uppercase label. */
-.facts { display: flex; flex-wrap: wrap; gap: 22px 44px; margin: 0 0 18px; }
+.facts { display: flex; flex-wrap: wrap; gap: 18px 44px; margin: 0 0 18px; }
 .facts dt {
   font-family: var(--cond);
   font-size: 10.5px;
@@ -179,16 +179,93 @@ h1 {
 .paths .q { display: block; font-size: 17px; margin-bottom: 8px; }
 .paths .links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 8px; }
 
-/* The specimen: the one large voice on the page. */
+/* An entity page opens with its name, a byline, the specimen and the facts. */
+.entity-head { padding-top: 40px; }
+.head-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  align-items: center;
+  justify-content: space-between;
+}
+.byline { font-size: 14px; color: var(--muted); margin: 4px 0 0; }
+
+.size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.size input { width: 130px; accent-color: var(--proof); }
+
+/* The specimen: the one large voice on the page. No well, no panel — the
+   prototype sets it straight onto the page so the face is the only thing
+   asking for attention. */
 .specimen {
   font-size: 64px;
-  line-height: 1.35;
-  margin: 0 0 10px;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  padding: 22px 20px;
+  line-height: 1.25;
+  margin: 26px 0 0;
+}
+.specimen-small {
+  font-size: 26px;
+  line-height: 1.5;
+  max-width: 44ch;
+  margin: 10px 0 26px;
 }
 .specimen-inline { font-size: 22px; margin-right: 10px; }
+
+/* The facts strip: mono value over a small-caps label, the value carrying the
+   link when the fact leads somewhere. */
+.facts { border-top: 1px solid var(--rule); padding-top: 14px; }
+.fact { display: flex; flex-direction: column; gap: 3px; border: none; }
+a.fact .value { color: var(--proof); }
+a.fact:hover .value { color: var(--ink); }
+.fact .value { font-family: var(--mono); font-size: 15px; color: var(--ink); }
+.fact .label {
+  font-family: var(--cond);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+  max-width: 12ch;
+  line-height: 1.25;
+}
+
+/* Three columns of working, side by side, as the prototype lays them out. */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 30px 44px;
+}
+.columns h2 { margin-top: 30px; }
+.columns > div > h2:first-child { margin-top: 0; }
+
+.pair {
+  border-top: 1px solid var(--rule);
+  padding: 9px 0;
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+.pair .quiet { font-size: 13px; }
+.rule-top { border-top: 1px solid var(--rule); padding-top: 10px; margin-top: 10px; }
+.break { word-break: break-all; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 3px 8px;
+  background: var(--panel);
+}
+a.chip { color: var(--proof); }
+a.chip:hover { color: var(--ink); border-color: var(--ink); }
 
 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
 th, td { text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); }

@@ -68,8 +68,11 @@ permanently unmeasured and tiers 2–3 unevidenced for every family. Corrected t
       questions, index links. Still to add once their pages exist: the worked
       verdict, and the query examples that fill the search field
 - [ ] Script page — engine strip in the filter-chips row, no collapse bar
-- [x] Font family page — facts, coverage by block, declared tags, the evidence
-      matrix with its legend, the "Use it" fallback chain, provenance
+- [x] Font family page — laid out as the prototype does it: name and size
+      control, byline, specimen, linked facts strip, then three columns —
+      coverage and Declares, the evidence matrix, Use it / Implements / weights
+- [ ] "The face" prose section — the prototype carries an authored paragraph
+      per family; we have none, so the section is omitted rather than faked
 - [ ] Licence for foundry families: the release carries OFL.txt but we do not
       read it yet, so those pages show an em dash
 - [x] Font shaping tables page (`/font/<id>/shaping/`) — every lookup a
