@@ -557,3 +557,49 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
   text-align: center;
 }
 .draws:hover .draws-name { color: var(--ink); }
+
+/* Family cards on a language page: the specimen is the card, the name is the
+   caption. A reader is choosing between drawings, not reading a table. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 18px 16px;
+  background: var(--panel);
+  border: none;
+}
+.card:hover { background: var(--bone); }
+.card-specimen {
+  font-size: 30px;
+  line-height: 1.35;
+  color: var(--ink);
+  min-height: 2.4em;
+  overflow-wrap: anywhere;
+}
+.card-name { font-size: 14.5px; color: var(--proof); }
+.card:hover .card-name { color: var(--ink); }
+.card-note {
+  font-family: var(--cond);
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* A script's own characters, grouped. */
+.group {
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 22px 0 8px;
+}
+.alphabet .tile { min-width: 46px; min-height: 46px; font-size: 26px; }

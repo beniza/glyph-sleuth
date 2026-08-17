@@ -1159,6 +1159,9 @@ def lookups_page(font):
 # hundred webfonts is not a page; what is dropped is stated, as everywhere else.
 DRAWN_LIMIT = 24
 
+# How many family cards a language page sets. Each loads a face.
+CARDS_LIMIT = 36
+
 
 def face_styles(fonts):
     """Load these families, and give each a class that sets it.
@@ -1556,6 +1559,70 @@ def script_coverage(font, script):
             "covered": sum(r["covered"] for r in rows), "blocks": rows}
 
 
+# What the characters of a script divide into, for a reader who wants to see the
+# alphabet rather than a codepoint range. Unicode's own general categories, not
+# a grouping of ours — a linguistic one would be ours to defend and could not be
+# checked against anything.
+CHAR_GROUPS = [
+    ("Letters", ("Lo", "Lu", "Ll", "Lt", "Lm")),
+    ("Marks", ("Mn", "Mc", "Me")),
+    ("Digits", ("Nd", "Nl", "No")),
+    ("Signs and punctuation", ("Po", "Pd", "Ps", "Pe", "Pi", "Pf", "Pc", "Sk", "So", "Sm")),
+]
+
+
+def script_alphabet(script, chars_built, faces=""):
+    """The script's own characters, grouped, on the script's own page.
+
+    Reaching these used to mean language, then script, then a font, then that
+    font's glyph list — four clicks to see an alphabet, ending in one long list
+    of a single family's glyphs. They belong here.
+    """
+    import unicodedata
+
+    found = {label: [] for label, _cats in CHAR_GROUPS}
+    for block in script["blocks"]:
+        for first, last in block["ranges"]:
+            for cp in range(first, last + 1):
+                try:
+                    unicodedata.name(chr(cp))
+                except ValueError:
+                    continue
+                category = unicodedata.category(chr(cp))
+                for label, categories in CHAR_GROUPS:
+                    if category in categories:
+                        found[label].append(cp)
+                        break
+
+    sections = []
+    for label, _categories in CHAR_GROUPS:
+        cps = found[label]
+        if not cps:
+            continue
+        # A mark drawn on its own is a mark floating in space, so it is shown on
+        # a dotted circle — which is what the shaper does with it anyway.
+        base = "◌" if label == "Marks" else ""
+        tiles = "".join(
+            '<span class="tile">'
+            + (f'<a href="{link(f"/char/{cp:04X}/")}">{esc(base + chr(cp))}</a>'
+               if cp in chars_built else esc(base + chr(cp)))
+            + "</span>"
+            for cp in cps)
+        sections.append(f'      <h3 class="group">{esc(label)} '
+                        f'<span class="quiet mono">{len(cps)}</span></h3>\n'
+                        f'      <div class="tiles alphabet">{tiles}</div>')
+
+    if not sections:
+        return ""
+    return ('    <section>\n      <h2 class="eyebrow">The characters</h2>\n'
+            + "\n".join(sections)
+            + '\n      <p class="quiet">Every assigned character of the script, in Unicode\'s '
+              'own categories rather than a grouping of ours — ours could not be checked '
+              'against anything. Combining marks are shown on a dotted circle, which is what '
+              'a shaper does with a mark that has no base. Each links to the character, where '
+              'every indexed family draws it.</p>\n    </section>')
+
+
 def script_page(script, fonts, languages, chars_built):
     """One script: the blocks it spans, who writes it, what can set it."""
     ranked = []
@@ -1610,6 +1677,8 @@ def script_page(script, fonts, languages, chars_built):
          a family can cover the main block completely and have nothing at all in a
          supplement, while calling itself a font for the script.</p>
     </section>
+
+{script_alphabet(script, chars_built)}
 
     <section>
       <h2 class="eyebrow">Written by</h2>
@@ -1694,24 +1763,89 @@ def language_fit(needs, covered):
     return gaps
 
 
-def lang_page(language, fonts, scripts, chars_built, coverage=None):
+def made_for(font, script, blocks):
+    """Is this face built for this script, or does it merely also cover it?
+
+    A family whose own dominant block belongs to the script was drawn for it. A
+    pan-Unicode workhorse that happens to include the block is a different
+    answer to "what should I set this in", and ranking them together is what
+    made the old list useless.
+    """
+    if not script:
+        return False
+    dominant = dominant_block(font, blocks)
+    return bool(dominant and dominant[0] in {b["name"] for b in script["blocks"]})
+
+
+def specimen_for(language, exemplars):
+    """A few real words of the language, for a card to be set in.
+
+    The UDHR sample is actual prose in the language, which is what a reader
+    wants to judge — better than the alphabet, and far better than lorem.
+    """
+    sample = (language.get("sample") or "").replace("\n", " ").strip()
+    words = [word for word in sample.split(" ") if word][:3]
+    if words:
+        return " ".join(words)
+    letters = [ch for ch in exemplars if not ch.isspace()][:8]
+    return "".join(letters)
+
+
+def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     """One language: what it needs written down, and what can write it."""
     exemplars = language.get("exemplars") or ""
     sample = (language.get("sample") or "").strip()
 
+    # The scripts in the language's own order. SIL marks the default by giving
+    # the bare tag its script, so the first is the one the language is normally
+    # written in — sorting these alphabetically is how Hindi ended up "written
+    # in Braille, Devanagari, Latin".
+    by_code = {script["code"]: script for script in scripts}
+    used = [by_code[code] for code in (language.get("scripts") or []) if code in by_code]
+    main = used[0] if used else None
+
     fits, partial = [], []
     if exemplars:
         needs = exemplar_needs(exemplars)
+        wanted = {cp for cp, _pieces in needs}
         for font in fonts:
             if not font.get("ranges"):
                 continue
             covered = (coverage or {}).get(id(font))
             if covered is None:
-                covered = covered_subset(font, {cp for cp, _ in needs})
+                covered = covered_subset(font, wanted)
             gaps = language_fit(needs, covered)
             (fits if not gaps else partial).append((font, gaps))
-        fits.sort(key=lambda row: row[0]["name"].lower())
-        partial.sort(key=lambda row: (len(row[1]), row[0]["name"].lower()))
+
+    # Faces drawn for the script first, then by name. "Which font should I use"
+    # is answered by a family built for the writing system, not by whichever
+    # pan-Unicode face sorts earliest.
+    fits.sort(key=lambda row: (not made_for(row[0], main, blocks),
+                               row[0]["tier"] != "measured",
+                               row[0]["name"].lower()))
+
+    # Near misses only. A Latin face missing all 67 Devanagari exemplars is not
+    # a near miss, and listing it above the families that work — which is what
+    # sorting purely by gap count did — is worse than not listing it at all.
+    needed = len([ch for ch in exemplars if not ch.isspace()])
+    threshold = max(1, round(needed * 0.25))
+    near = sorted((row for row in partial if len(row[1]) <= threshold),
+                  key=lambda row: (len(row[1]), row[0]["name"].lower()))
+    unsuitable = len(partial) - len(near)
+
+    specimen = specimen_for(language, exemplars)
+    shown = fits[:CARDS_LIMIT]
+    cards = "\n".join(
+        f'        <a class="card" href="{font_href(font)}">'
+        f'<span class="card-specimen f-{esc(font.get("slug") or slug(font["name"]))}">'
+        f'{esc(specimen)}</span>'
+        f'<span class="card-name">{esc(font["name"])}</span>'
+        f'<span class="card-note quiet">'
+        + ("built for " + esc(main["name"]) if made_for(font, main, blocks)
+           else esc(FOUNDRIES.get(font.get("source"), "")))
+        + "</span></a>"
+        for font, _gaps in shown)
+    faces = face_styles([font for font, _gaps in shown])
 
     tiles = "".join(
         f'<span class="tile">' +
@@ -1719,7 +1853,6 @@ def lang_page(language, fonts, scripts, chars_built, coverage=None):
          if ord(ch) in chars_built else esc(ch)) + "</span>"
         for ch in exemplars if not ch.isspace())
 
-    used = [script for script in scripts if script["code"] in (language.get("scripts") or [])]
     script_links = " ".join(
         f'<a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>' for s in used)
 
@@ -1727,20 +1860,36 @@ def lang_page(language, fonts, scripts, chars_built, coverage=None):
         f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
         f'<td class="mono">{len(gaps)}</td>'
         f'<td class="glyph-small">{esc("".join(gaps[:12]))}</td></tr>'
-        for font, gaps in partial[:40])
+        for font, gaps in near[:40])
 
     body = f"""    <section class="entity-head">
       <h1>{esc(language["name"])}</h1>
       <p class="byline">{esc(language.get("tag") or "")} ·
          ISO 639-3 <span class="mono">{esc(language.get("iso") or "")}</span></p>
       <div class="facts">
-{fact(len([c for c in exemplars if not c.isspace()]), "exemplar characters")}
+{fact(needed, "exemplar characters")}
 {fact(f"{len(fits):,}", "families that fit")}
+{fact(f"{sum(1 for font, _g in fits if made_for(font, main, blocks)):,}",
+      f"built for {main['name'] if main else 'the script'}")}
 {fact(len(used), "scripts it is written in")}
       </div>
-      <p class="quiet">Written in {script_links or "a script not in the index"}. A language
-         is not a script: several may write the same one, and one language may be written in
-         several.</p>
+      <p class="quiet">Written in {script_links or "a script not in the index"} — the first is
+         the one SIL records as the default, and the rest are real alternatives rather than
+         curiosities. A language is not a script: several may write the same one, and one
+         language may be written in several.</p>
+    </section>
+
+    <section>
+      <h2 class="eyebrow">Set in the families that fit</h2>
+      <div class="cards">
+{cards or '        <p class="quiet">No indexed family covers this exemplar set.</p>'}
+      </div>
+      <p class="quiet">{"Showing " + str(len(shown)) + " of " + f"{len(fits):,}"
+         if len(fits) > len(shown) else f"All {len(fits):,}"} families that cover every
+         exemplar character, the ones drawn for {esc(main["name"]) if main else "the script"}
+         first. Each is set in real words of the language, drawn by your browser from that
+         family's own distribution. Covering the characters is not the same as shaping them
+         correctly — the family's own page carries that.</p>
     </section>
 
     <section>
@@ -1752,26 +1901,30 @@ def lang_page(language, fonts, scripts, chars_built, coverage=None):
 
     {'<section><h2 class="eyebrow">A line of it</h2><p class="specimen-small">'
      + esc(sample.split(chr(10))[0][:200]) + '</p>'
-     '<p class="quiet">From the Universal Declaration of Human Rights, set in your '
-     'browser&rsquo;s own face for the script.</p></section>' if sample else ''}
+     '<p class="quiet">From the Universal Declaration of Human Rights.</p></section>'
+     if sample else ''}
 
     <section>
       <h2 class="eyebrow">Nearly fits</h2>
       <table class="index">
         <thead><tr><th>Family</th><th>Missing</th><th>Which characters</th></tr></thead>
       <tbody>
-{nearly}
+{nearly or '      <tr><td colspan="3" class="quiet">Nothing came close without fitting.</td></tr>'}
       </tbody>
       </table>
-      <p class="quiet">Families that cover most of the exemplar set and drop the rest to a
-         fallback face. Naming the missing characters is the useful part: one absent letter
-         is a different problem from twenty.</p>
+      <p class="quiet">Families missing no more than {threshold} of the {needed} exemplar
+         characters, and which ones they drop to a fallback face. Naming them is the useful
+         part: one absent letter is a different problem from twenty.
+         {f"{unsuitable:,} further families cover some of the set but not enough of it to be "
+          "a near miss — a Latin face missing every Devanagari letter is not a candidate."
+          if unsuitable else ""}</p>
     </section>
 """
     return page(language["name"], body, kind="language",
                 code=language.get("tag") or language.get("iso"),
-                description=f"{language['name']}: its exemplar characters, the scripts it is "
-                            f"written in, and which font families can set it.")
+                description=f"{language['name']}: the families that can set it, its exemplar "
+                            f"characters, and the scripts it is written in.",
+                extra_head=faces)
 
 
 def scripts_index(scripts, fonts):
@@ -1978,7 +2131,7 @@ def main():
 
     for language in languages:
         write(f"/lang/{language['id']}/",
-              lang_page(language, fonts["fonts"], scripts, chars_built, coverage))
+              lang_page(language, fonts["fonts"], scripts, chars_built, blocks, coverage))
     write("/languages/", languages_index(languages))
     print(f"  wrote {len(languages)} language pages")
     write("/compare/", compare_page(fonts["fonts"]))

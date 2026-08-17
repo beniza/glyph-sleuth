@@ -642,6 +642,72 @@ def test_feature_page_says_what_it_cannot():
     assert "None of the families" in bare
 
 
+DEVA_SCRIPT = {"code": "Deva", "name": "Devanagari", "chars": 128, "languages": ["hin"],
+               "blocks": [{"name": "Devanagari", "chars": 128,
+                           "ranges": [[0x0900, 0x097F]]}]}
+BRAI_SCRIPT = {"code": "Brai", "name": "Braille", "chars": 256, "languages": ["hin"],
+               "blocks": [{"name": "Braille Patterns", "chars": 256,
+                           "ranges": [[0x2800, 0x28FF]]}]}
+
+
+def test_language_ranks_the_families_that_fit_first():
+    """The page said "59 families that fit" and then listed near misses.
+
+    Which meant a Latin face missing all 67 Devanagari exemplars appeared above
+    every family that actually works. The families that fit are the answer to
+    "what do I set this in", so they come first, as cards, and a face drawn for
+    the script outranks a pan-Unicode one that merely includes the block.
+    """
+    dedicated = {"name": "Annapurna SIL", "slug": "annapurna-sil", "source": "sil",
+                 "tier": "measured", "ranges": [[0x0900, 0x097F]], "licence": "OFL",
+                 "css": None}
+    workhorse = {"name": "AAA Workhorse", "slug": "aaa", "source": "google",
+                 "tier": "measured", "licence": "OFL",
+                 "ranges": [[0x0020, 0x007E], [0x0900, 0x097F], [0x4E00, 0x4FFF]]}
+    latin = {"name": "ABeeZee", "slug": "abeezee", "source": "google", "tier": "measured",
+             "ranges": [[0x0020, 0x007E]], "licence": "OFL"}
+    language = {"id": "hin", "tag": "hi", "iso": "hin", "name": "Hindi",
+                "exemplars": "अआकखग", "scripts": ["Deva", "Brai"],
+                "sample": "सभी मनुष्यों को गौरव"}
+    blocks = [[0x0020, 0x007F, "Basic Latin"], [0x0900, 0x097F, "Devanagari"],
+              [0x2800, 0x28FF, "Braille Patterns"], [0x4E00, 0x4FFF, "CJK Unified Ideographs"]]
+
+    html = render.lang_page(language, [latin, workhorse, dedicated],
+                            [BRAI_SCRIPT, DEVA_SCRIPT], set(), blocks)
+
+    # Cards, and the one built for the script leads even though its name sorts last.
+    assert html.index("Annapurna SIL") < html.index("AAA Workhorse")
+    assert "built for Devanagari" in html
+    # A Latin face missing every exemplar is not offered as a near miss at all.
+    assert "ABeeZee" not in html
+    # Each card is set in real words of the language, in that family's own face.
+    assert "सभी मनुष्यों को" in html
+    assert ".f-annapurna-sil" in html
+
+
+def test_language_keeps_the_default_script_first():
+    # SIL marks the default by giving the bare tag its script. Sorting these
+    # alphabetically is how Hindi read "written in Braille, Devanagari, Latin".
+    language = {"id": "hin", "tag": "hi", "iso": "hin", "name": "Hindi",
+                "exemplars": "अ", "scripts": ["Deva", "Brai"], "sample": ""}
+    html = render.lang_page(language, [], [BRAI_SCRIPT, DEVA_SCRIPT], set(), [])
+    assert html.index("Devanagari") < html.index("Braille")
+
+
+def test_script_page_shows_the_alphabet():
+    """Seeing a script's characters used to take four clicks — language, script,
+    a font, that font's glyph list — and ended in one family's glyph dump."""
+    html = render.script_page(DEVA_SCRIPT, [], [], chars_built={0x0915, 0x093E})
+
+    assert "The characters" in html
+    # Grouped by Unicode's own categories, so the grouping is checkable.
+    assert "Letters" in html and "Marks" in html
+    # क is a letter and links to its character page.
+    assert f'href="{render.link("/char/0915/")}"' in html
+    # A combining mark is shown on a dotted circle rather than floating.
+    assert "◌" in html
+
+
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}
 if __name__ == "__main__":
     for name, test in tests.items():
