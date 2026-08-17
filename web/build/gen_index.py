@@ -1024,6 +1024,67 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
             "shaper": "hb", "version": hb.version_string()}
 
 
+LOOKUP_END = re.compile(r"^end lookup (\d+) feature '(\w+)'")
+
+
+def trace(blob, codes, features=None, language="ml"):
+    """Every step where the glyph run actually changed, and what changed it.
+
+    A verdict is a claim; this is the demonstration. HarfBuzz reports each
+    lookup it runs, so a reader can watch three glyphs become one and read off
+    which lookup of which feature did it.
+
+    Only steps that changed the run are kept. A real font skips dozens of
+    lookups per sequence because nothing matched, and listing those is noise
+    that hides the two lines that matter.
+    """
+    import uharfbuzz as hb
+
+    face = hb.Face(as_sfnt(blob))
+    font = hb.Font(face)
+    buffer = hb.Buffer()
+    buffer.add_codepoints(codepoints_of(codes))
+    buffer.guess_segment_properties()
+    if language:
+        buffer.language = language
+
+    def names():
+        out = []
+        for info in buffer.glyph_infos:
+            try:
+                out.append(font.glyph_to_string(info.codepoint))
+            except Exception:
+                out.append(f"gid{info.codepoint}")
+        return out
+
+    steps, previous = [], None
+
+    def message(text):
+        nonlocal previous
+        current = names()
+        if previous is None:
+            steps.append({"step": "after cmap", "glyphs": current})
+            previous = current
+            return True
+        found = LOOKUP_END.match(text)
+        if found and current != previous:
+            steps.append({"step": text, "feature": found.group(2),
+                          "lookup": int(found.group(1)),
+                          "before": previous, "glyphs": current})
+            previous = current
+        elif "dotted-circle" in text and "skipped" not in text:
+            steps.append({"step": "the shaper inserted a dotted circle — it could not "
+                                  "make sense of the cluster", "glyphs": current})
+            previous = current
+        return True
+
+    buffer.set_message_func(message)
+    hb.shape(font, buffer, {feature: True for feature in (features or [])})
+    if not steps:
+        steps.append({"step": "after cmap", "glyphs": names()})
+    return steps
+
+
 def shape_all(blob, filename, script="Mlym"):
     """Every authored sequence for a script, against one face.
 
@@ -1039,6 +1100,12 @@ def shape_all(blob, filename, script="Mlym"):
                               expected=entry.get("out"))
         except Exception as error:
             hb_result = {"verdict": "fail", "glyphs": [], "note": str(error), "shaper": "hb"}
+        try:
+            hb_result["trace"] = trace(
+                blob, entry["codes"], entry.get("needs"),
+                (entry.get("langs") or "ml").split(",")[0].strip())
+        except Exception:
+            hb_result["trace"] = []
         hb_result["command"] = hb_shape_command(
             filename, entry["codes"], entry.get("needs") or [],
             (entry.get("langs") or "ml").split(",")[0].strip(), script)

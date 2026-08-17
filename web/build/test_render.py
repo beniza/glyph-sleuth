@@ -175,6 +175,54 @@ def test_index_filters_on_what_engineers_ask():
     assert 'value="mlym"' not in html
 
 
+def test_compare_page_is_a_shell_with_real_pickers():
+    """Compare is the one page that cannot be generated per pair.
+
+    1,878 measured families are 1.7 million pairs, so the page ships as a shell
+    and fetches the two families a reader picks. What must still be in the
+    markup is the list of families and what the page is for — a crawler and a
+    reader with JS off both get that.
+    """
+    tables = {"gsub": [{"feature": "akhn", "type": "Ligature", "index": 0, "flag": 0,
+                        "n": 60, "rules": []}], "gpos": []}
+    fonts = [dict(MANJARI, slug="manjari", tables=tables),
+             dict(MANJARI, name="Gayathri", slug="gayathri", gsub=62, tables=tables),
+             {"name": "RIT Panmana", "slug": "rit-panmana", "tier": "stub", "ranges": []}]
+    html = render.compare_page(fonts)
+
+    # Both pickers, listing only families there is something to compare.
+    assert html.count('<option value="manjari"') == 2
+    assert html.count('<option value="gayathri"') == 2
+    assert "rit-panmana" not in html, "a family with no tables has nothing to diff"
+
+    # No guessed default pair — the prototype's manjari,gayathri default is
+    # exactly the kind of invented answer HANDOFF rules out.
+    assert 'selected' not in html
+    assert "Pick two families" in html
+
+    # It says what it compares, in the markup.
+    assert "lookup" in html.lower()
+
+
+def test_font_data_file_carries_what_compare_needs():
+    font = dict(MANJARI, slug="manjari", tables={"gsub": [
+        {"feature": "akhn", "type": "Ligature", "index": 0, "flag": 0, "n": 60, "rules": []}],
+        "gpos": []})
+    payload = render.font_data(font)
+
+    assert payload["name"] == "Manjari"
+    assert payload["tags"] == MANJARI["tags"]
+    # Per-feature rule counts, which is the comparison that matters: two
+    # families both declaring akhn can differ by fifty rules inside it.
+    assert payload["features"]["akhn"]["gsub"] == 60
+    assert payload["features"]["akhn"]["lookups"] == 1
+    # Verdicts travel too, so the diff can show where they disagree.
+    assert payload["verdicts"]["Mlym"]["nta"] == "clean"
+    # The glyph inventory does not: it is a thousand rows per family and the
+    # comparison never reads it.
+    assert "glyphs" not in payload
+
+
 def test_specimen_suits_the_font():
     """Setting Malayalam words in a Latin face shows a row of tofu.
 

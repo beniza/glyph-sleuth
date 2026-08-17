@@ -339,8 +339,39 @@ def evidence_rows(font, script="Mlym"):
             + "".join(cells) + "</tr>\n"
             f'      <tr class="detail"><td colspan="5"><code class="mono">{esc(command)}</code>'
             + (f'<div class="quiet">{esc(note)}</div>' if note else "")
+            + trace_block(result.get("hb", {}).get("trace") or [])
             + "</td></tr>")
     return rows
+
+
+def trace_block(steps):
+    """The pipeline, step by step: which lookup changed the run, and to what.
+
+    Folded shut by default — the verdict is the answer, this is the working
+    behind it. Only steps that changed something are here; a real font skips
+    dozens of lookups per sequence and listing those hides the two lines that
+    matter.
+    """
+    if len(steps) < 2:
+        return ""
+    lines = []
+    for step in steps:
+        label = step["step"]
+        if step.get("feature"):
+            label = (f'<a href="{link("/feature/" + step["feature"] + "/")}">'
+                     f'{esc(step["feature"])}</a> · lookup '
+                     f'<span class="mono">{step["lookup"]}</span>')
+        else:
+            label = f'<span class="quiet">{esc(label)}</span>'
+        lines.append(f'        <li><div class="step">{label}</div>'
+                     f'<div class="run mono">{esc(" ".join(step["glyphs"]))}</div></li>')
+    return ('\n      <details class="trace">\n'
+            '        <summary>Trace: what each lookup did</summary>\n'
+            '        <ol>\n' + "\n".join(lines) + "\n        </ol>\n"
+            '        <p class="quiet">Read top to bottom. Glyph names are the font\'s own; '
+            'a name changing means a substitution fired, and the order changing means the '
+            'shaper moved a glyph.</p>\n'
+            "      </details>")
 
 
 FOUNDRIES = {"google": "Google Fonts", "smc": "Swathanthra Malayalam Computing",
@@ -940,6 +971,96 @@ def glyphs_page(font):
                 extra_head=face_head(font, name) + "\n" + feature_styles(inventory))
 
 
+def font_data(font):
+    """What Compare needs about one family, as a small file the browser fetches.
+
+    Per-feature rule counts rather than a total, because that is the comparison
+    that matters: two families both declaring `akhn` can differ by fifty rules
+    inside it, and "48 lookups against 62" says nothing about which.
+
+    The glyph inventory is deliberately left out — a thousand rows per family,
+    and the diff never reads it.
+    """
+    features = {}
+    for table in ("gsub", "gpos"):
+        for row in (font.get("tables") or {}).get(table, []):
+            entry = features.setdefault(row["feature"], {"gsub": 0, "gpos": 0, "lookups": 0,
+                                                         "types": []})
+            entry[table] += row["n"]
+            entry["lookups"] += 1
+            if row["type"] not in entry["types"]:
+                entry["types"].append(row["type"])
+
+    verdicts = {}
+    for script, rows in (font.get("results") or {}).items():
+        verdicts[script] = {sid: (row.get("hb") or {}).get("verdict")
+                            for sid, row in rows.items()}
+
+    return {
+        "name": font["name"],
+        "slug": font.get("slug") or slug(font["name"]),
+        "source": font.get("source", ""),
+        "licence": font.get("licence", ""),
+        "version": font.get("version", ""),
+        "tags": font.get("tags") or [],
+        "gsub": font.get("gsub", 0),
+        "gpos": font.get("gpos", 0),
+        "features": features,
+        "verdicts": verdicts,
+        "ranges": font.get("ranges") or [],
+    }
+
+
+def compare_page(fonts):
+    """The one page that cannot be generated per pair.
+
+    1,878 measured families are 1.7 million pairs, so this ships as a shell and
+    fetches the two families a reader picks. Every family is in the markup; the
+    diff is the only part that needs JS.
+    """
+    comparable = sorted((f for f in fonts if f.get("tables")),
+                        key=lambda f: f["name"].lower())
+    options = "\n".join(
+        f'          <option value="{esc(f.get("slug") or slug(f["name"]))}">'
+        f'{esc(f["name"])}</option>' for f in comparable)
+
+    # No default pair. HANDOFF rules out guessing one, and a comparison nobody
+    # asked for is a claim that those two families are the interesting ones.
+    body = f"""    <section class="entity-head">
+      <h1>Compare</h1>
+      <p class="quiet">Two families, side by side, down to the lookup: which OpenType
+         features each declares, how many rules each feature carries, and where the two
+         disagree on a sequence. Differences are what is emphasised — there is no score,
+         because two families with identical verdicts still differ in ways this table
+         cannot see.</p>
+    </section>
+
+    <section>
+      <div class="controls">
+        <label class="pick"><span>first</span>
+          <select name="a" aria-label="First family">
+          <option value="">Pick two families</option>
+{options}
+          </select></label>
+        <label class="pick"><span>second</span>
+          <select name="b" aria-label="Second family">
+          <option value="">Pick two families</option>
+{options}
+          </select></label>
+        <button class="facet" id="swap" type="button"><span>swap</span></button>
+      </div>
+      <p class="quiet" id="compare-hint">Pick two families to see the difference.
+         {len(comparable):,} families have had their lookup tables read.</p>
+      <div id="compare-out"></div>
+    </section>
+"""
+    return page("Compare", body, kind="compare",
+                code=f"{len(comparable):,} comparable",
+                description="Two font families compared down to the OpenType lookup: "
+                            "features declared, rules per feature, and where their "
+                            "shaping verdicts disagree.")
+
+
 def lookup_rows(rows):
     """One row per lookup, grouped under its feature.
 
@@ -1062,6 +1183,20 @@ def main():
         if font.get("glyphs"):
             write(f"/font/{font['slug']}/glyphs/", glyphs_page(font))
     write("/fonts/", fonts_index(fonts["fonts"], blocks))
+    write("/compare/", compare_page(fonts["fonts"]))
+
+    # One small file per family with lookup tables, for Compare to fetch. Only
+    # the families there is something to compare — not all 1,885.
+    out = os.path.join(OUT_SITE, "data", "font")
+    os.makedirs(out, exist_ok=True)
+    written = 0
+    for font in fonts["fonts"]:
+        if not font.get("tables"):
+            continue
+        with io.open(os.path.join(out, f"{font['slug']}.json"), "w", encoding="utf-8") as handle:
+            json.dump(font_data(font), handle, ensure_ascii=False, separators=(",", ":"))
+        written += 1
+    print(f"  wrote compare data for {written} families")
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
     print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
           f"{len(fonts['fonts']) - measured} not yet; {shaping} with lookups")

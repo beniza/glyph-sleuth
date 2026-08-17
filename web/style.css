@@ -453,3 +453,16 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
 .glyph-table .chips { gap: 4px; }
 .quiet-chip { color: var(--muted); background: transparent; }
 .faint { color: var(--faint); }
+
+/* Compare: differences carry the contrast, agreements stay quiet. */
+.compare tr.agrees th, .compare tr.agrees td { color: var(--muted); }
+.compare tr.differs th { border-left: 2px solid var(--proof); padding-left: 10px; }
+.compare tr.differs td { background: var(--panel); }
+.compare th[scope="row"] { font-weight: 400; }
+
+/* A trace, folded shut until asked for. */
+.trace summary { cursor: pointer; font-size: 13px; color: var(--proof); padding: 6px 0; }
+.trace ol { margin: 4px 0 8px; padding-left: 22px; }
+.trace li { padding: 3px 0; }
+.trace .step { font-size: 13px; }
+.trace .run { color: var(--ink); font-size: 12px; }

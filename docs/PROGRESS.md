@@ -110,7 +110,13 @@ Known gaps to fix while building (`HANDOFF.md` §6), not new design work:
 
 ## Phase 2 — Compare, Identify, shaping matrix
 
-- [ ] Compare — 14 rows, agree/differ per row, no score, no guessed default pair
+- [x] Compare, at lookup level — features declared, rules and lookups per
+      feature, and per-sequence verdicts. A shell plus one small JSON per
+      family, because 1,878 measured families are 1.7 million pairs
+- [x] Trace — every step where a lookup changed the glyph run, folded into the
+      evidence row. A verdict is a claim; the trace is the demonstration
+- [ ] Compare — the remaining rows from the settled spec (coverage by block,
+      per-language fit, specimen at a shared size)
 - [ ] Identify — atlas after `document.fonts.ready`, 24×24 signatures,
       `IoU − 0.15 × centroidDistance`, honest weak-result state
 - [ ] Shaping matrix — `{hb, dw, ct, gr}`, three treatments, required legend

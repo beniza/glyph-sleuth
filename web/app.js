@@ -105,3 +105,115 @@ if (slider && specimens.length) {
 
   slider.addEventListener("input", () => apply(Number(slider.value), true));
 }
+
+// ------------------------------------------------------------------ compare
+//
+// The one page that cannot be generated per pair: 1,878 measured families are
+// 1.7 million pairs. The shell and the family list are served; only the diff
+// is fetched, one small file per family.
+
+const compareOut = document.getElementById("compare-out");
+if (compareOut) {
+  const pickA = document.querySelector('select[name="a"]');
+  const pickB = document.querySelector('select[name="b"]');
+  const hint = document.getElementById("compare-hint");
+  const base = document.querySelector('link[href$="style.css"]').href.replace("style.css", "");
+  const cache = new Map();
+
+  const load = async (slug) => {
+    if (!cache.has(slug)) {
+      const response = await fetch(`${base}data/font/${slug}.json`);
+      if (!response.ok) throw new Error(`no data for ${slug}`);
+      cache.set(slug, await response.json());
+    }
+    return cache.get(slug);
+  };
+
+  const cell = (value) => (value === undefined || value === null || value === ""
+    ? '<span class="untested">absent</span>' : String(value));
+
+  // Differences are what gets emphasised. Rows that agree stay muted, so the
+  // eye lands on the disagreement — and there is deliberately no total: two
+  // families with identical rows still differ in ways this cannot see.
+  const row = (label, a, b, href) => {
+    const differs = String(a) !== String(b);
+    const name = href ? `<a href="${href}">${label}</a>` : label;
+    return `<tr class="${differs ? "differs" : "agrees"}"><th scope="row">${name}</th>`
+      + `<td>${cell(a)}</td><td>${cell(b)}</td></tr>`;
+  };
+
+  const render = (a, b) => {
+    const rows = [];
+    rows.push(row("Source", a.source, b.source));
+    rows.push(row("Licence", a.licence, b.licence));
+    rows.push(row("Release", a.version, b.version));
+    rows.push(row("Script tags", a.tags.join(" "), b.tags.join(" ")));
+    rows.push(row("GSUB lookups", a.gsub, b.gsub));
+    rows.push(row("GPOS lookups", a.gpos, b.gpos));
+
+    // The comparison that matters: both may declare akhn and differ by fifty
+    // rules inside it. "48 against 62" never told you which feature moved.
+    const features = [...new Set([...Object.keys(a.features), ...Object.keys(b.features)])].sort();
+    const featureRows = features.map((tag) => {
+      const one = a.features[tag];
+      const two = b.features[tag];
+      const count = (f) => (f ? `${f.gsub + f.gpos} rules · ${f.lookups} lookups` : null);
+      return row(tag, count(one), count(two), `${base}feature/${tag}/`);
+    });
+
+    const scripts = [...new Set([...Object.keys(a.verdicts), ...Object.keys(b.verdicts)])].sort();
+    const verdictRows = scripts.flatMap((script) => {
+      const ids = [...new Set([...Object.keys(a.verdicts[script] || {}),
+        ...Object.keys(b.verdicts[script] || {})])].sort();
+      return ids.map((id) => row(`${script} · ${id}`,
+        (a.verdicts[script] || {})[id], (b.verdicts[script] || {})[id]));
+    });
+
+    const differing = [...rows, ...featureRows, ...verdictRows]
+      .filter((html) => html.includes("differs")).length;
+    const table = (caption, body) => (body.length
+      ? `<h2 class="eyebrow">${caption}</h2><table class="compare"><thead><tr><th></th>`
+        + `<th>${a.name}</th><th>${b.name}</th></tr></thead><tbody>${body.join("")}</tbody></table>`
+      : "");
+
+    compareOut.innerHTML =
+      `<p class="quiet">${differing} of ${rows.length + featureRows.length
+        + verdictRows.length} rows differ. No score: two families with identical rows still
+        differ in ways this table cannot see.</p>`
+      + table("The families", rows)
+      + table("Features, by rule count", featureRows)
+      + table("Sequences", verdictRows);
+  };
+
+  const update = async () => {
+    const a = pickA.value;
+    const b = pickB.value;
+    const url = new URL(location.href);
+    a ? url.searchParams.set("a", a) : url.searchParams.delete("a");
+    b ? url.searchParams.set("b", b) : url.searchParams.delete("b");
+    history.replaceState(null, "", url);
+    if (!a || !b) {
+      compareOut.innerHTML = "";
+      if (hint) hint.hidden = false;
+      return;
+    }
+    if (hint) hint.hidden = true;
+    compareOut.innerHTML = '<p class="quiet">Reading both families…</p>';
+    try {
+      render(...await Promise.all([load(a), load(b)]));
+    } catch (error) {
+      compareOut.innerHTML = `<p class="fail">Could not read one of those families: ${error.message}</p>`;
+    }
+  };
+
+  const params = new URL(location.href).searchParams;
+  if (params.get("a")) pickA.value = params.get("a");
+  if (params.get("b")) pickB.value = params.get("b");
+  pickA.addEventListener("change", update);
+  pickB.addEventListener("change", update);
+  document.getElementById("swap")?.addEventListener("click", () => {
+    [pickA.value, pickB.value] = [pickB.value, pickA.value];
+    update();
+  });
+  if (params.get("a") && params.get("b")) update();
+}

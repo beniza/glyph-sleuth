@@ -502,6 +502,40 @@ def test_every_shaped_script_declares_its_blocks():
         assert script in gen_index.SHAPED_SCRIPTS, f"{script} has sequences but no blocks"
 
 
+def test_trace_shows_which_lookup_fired():
+    """A verdict is a claim; a trace is a demonstration.
+
+    HarfBuzz will report every lookup it runs, so a reader can see the run
+    change from three glyphs to one and read off which lookup of which feature
+    did it — rather than taking "clean" on trust.
+    """
+    fea = """
+    feature akhn { sub g0D15 g0D4D g0D15 by lig; } akhn;
+    """
+    blob = sample_font(codepoints=(0x0D15, 0x0D4D), fea=fea, extra_glyphs=("lig",))
+    steps = gen_index.trace(blob, "0D15 0D4D 0D15", ["akhn"])
+
+    # It starts from what the cmap gave, before any lookup ran.
+    assert steps[0]["step"] == "after cmap"
+    assert len(steps[0]["glyphs"]) == 3
+
+    # And there is a step, naming the feature, where the run actually changed.
+    fired = [s for s in steps if s.get("feature") == "akhn"]
+    assert fired, [s["step"] for s in steps]
+    assert fired[-1]["glyphs"] == ["lig"]
+    assert isinstance(fired[-1]["lookup"], int)
+
+    # Only steps that changed something are kept: a lookup that matched
+    # nothing is noise, and there are dozens of those in a real font.
+    assert all(step["glyphs"] != step.get("before") for step in steps[1:])
+
+    # A sequence nothing touches still traces, and says so rather than being
+    # an empty list the page has to guess at.
+    quiet = gen_index.trace(blob, "0D15", [])
+    assert quiet[0]["step"] == "after cmap"
+    assert len(quiet) == 1
+
+
 def test_hb_shape_command():
     # The command a reader can paste to reproduce the verdict themselves. A
     # verdict nobody can re-run is an assertion, not evidence.
