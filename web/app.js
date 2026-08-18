@@ -217,3 +217,143 @@ if (compareOut) {
   });
   if (params.get("a") && params.get("b")) update();
 }
+
+// ------------------------------------------------------------------ inspect
+//
+// The one page whose content is genuinely computed in the browser: it answers a
+// question the reader brings. It reads the same Unicode tables the build reads —
+// block ranges and the name table, served as data — so a codepoint's facts here
+// and on its own page come from one source.
+//
+// Nothing is sent anywhere. There is no server to send it to.
+
+const inspectField = document.getElementById("inspect-input");
+if (inspectField) {
+  const out = document.getElementById("inspect-out");
+  const reading = document.getElementById("inspect-reading");
+  const base = document.querySelector('link[href$="style.css"]').href.replace("style.css", "");
+
+  // core.js is 25 KB and only this page needs it, so it arrives on demand.
+  const ready = (async () => {
+    const core = await import(`${base}core.js`);
+    const [blocks, formulaic] = await Promise.all([
+      fetch(`${base}data/blocks.json`).then((r) => r.json()),
+      fetch(`${base}data/names-formulaic.json`).then((r) => r.json()),
+    ]);
+    core.data.blocks = blocks.blocks;
+    core.data.formulaic = formulaic;
+    // The name table is 1.4 MB, so it is fetched once, when a name is first
+    // wanted — not on page load.
+    await core.loadNames(`${base}data/`);
+    return core;
+  })();
+
+  const escape = (value) => String(value).replace(/[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // Grapheme clusters from the platform's own segmenter: what a reader calls a
+  // character is not what Unicode calls a codepoint, and the gap between them is
+  // most of what this page exists to show.
+  const clusters = (text) => (Intl.Segmenter
+    ? [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)]
+      .map((part) => part.segment)
+    : [...text]);
+
+  const charRow = (core, ch) => {
+    const cp = ch.codePointAt(0);
+    const name = core.charName(cp);
+    const block = core.blockOf(cp);
+    const stand = core.standin(cp);
+    const hex = cp.toString(16).toUpperCase().padStart(4, "0");
+    return `<tr>
+      <td class="glyph">${stand ? `<span class="faint mono">${escape(stand)}</span>`
+        : escape(ch)}</td>
+      <th scope="row" class="mono"><a href="${base}char/${hex}/">U+${hex}</a></th>
+      <td>${escape(name)}</td>
+      <td class="quiet">${block
+        ? `<a href="${base}block/${block.toLowerCase().replace(/[^\w]+/g, "-")}/">${escape(block)}</a>`
+        : ""}</td>
+      <td class="mono quiet">${escape(core.encodings(cp)["UTF-8"])}</td>
+    </tr>`;
+  };
+
+  const show = async (text) => {
+    if (!text) {
+      out.innerHTML = "";
+      reading.textContent = "";
+      return;
+    }
+    const core = await ready;
+    const query = core.parse(text);
+
+    // What it was read as, and what readings were rejected — the same honesty
+    // the archive's search box had: never silently pick one meaning.
+    const others = (query.alternates || []).map((a) => a.label).filter(Boolean);
+    reading.innerHTML = `Read as <strong>${escape(query.label)}</strong>`
+      + (others.length ? ` · also reads as ${others.map(escape).join(", ")}` : "");
+
+    // A codepoint notation resolves to the character it denotes; anything else
+    // is inspected as the text it is.
+    let subject = text;
+    if (query.kind === "char") subject = String.fromCodePoint(query.value);
+    else if (query.kind === "codepoints") {
+      subject = query.value.map((cp) => String.fromCodePoint(cp)).join("");
+    } else if (query.kind === "range") {
+      const [first, last] = query.value;
+      subject = Array.from({ length: Math.min(last - first + 1, 256) },
+        (_, i) => String.fromCodePoint(first + i)).join("");
+    }
+
+    const parts = clusters(subject);
+    const codepoints = [...subject];
+    const forms = core.normalizationVariants(subject)
+      .filter(([, value]) => value !== subject);
+
+    out.innerHTML = `
+      <div class="facts">
+        <div class="fact"><span class="value mono">${parts.length}</span>
+          <span class="label">clusters</span></div>
+        <div class="fact"><span class="value mono">${codepoints.length}</span>
+          <span class="label">codepoints</span></div>
+        <div class="fact"><span class="value mono">${new Set(codepoints).size}</span>
+          <span class="label">distinct</span></div>
+      </div>
+      ${parts.length !== codepoints.length ? `<p class="quiet">${parts.length} clusters from
+        ${codepoints.length} codepoints: what reads as one character is more than one
+        codepoint here, which is where a font's shaping decides what you see.</p>` : ""}
+      <h2 class="eyebrow">Codepoints</h2>
+      <div class="scroll"><table class="index">
+        <thead><tr><th>Glyph</th><th>Codepoint</th><th>Name</th><th>Block</th>
+          <th>UTF-8</th></tr></thead>
+        <tbody>${codepoints.map((ch) => charRow(core, ch)).join("")}</tbody>
+      </table></div>
+      ${forms.length ? `<h2 class="eyebrow">Normalisation</h2>
+        <div class="pairs">${forms.map(([form, value]) => `<div class="pair">
+          <span class="mono">${form}</span>
+          <span><span class="glyph-small">${escape(value)}</span>
+            <span class="quiet mono">${[...value].length} codepoints</span></span>
+        </div>`).join("")}</div>
+        <p class="quiet">Forms that differ from what you typed. Text that looks identical
+          and normalises differently is the usual reason a search misses it.</p>`
+        : ""}`;
+  };
+
+  // The text is in the URL, so an inspection is a thing you can send someone.
+  const url = new URL(location.href);
+  if (url.searchParams.get("t")) {
+    inspectField.value = url.searchParams.get("t");
+    show(inspectField.value);
+  }
+
+  let pending;
+  inspectField.addEventListener("input", () => {
+    clearTimeout(pending);
+    pending = setTimeout(() => {
+      const next = new URL(location.href);
+      inspectField.value ? next.searchParams.set("t", inspectField.value)
+        : next.searchParams.delete("t");
+      history.replaceState(null, "", next);
+      show(inspectField.value);
+    }, 150);
+  });
+}

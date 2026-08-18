@@ -111,7 +111,7 @@ def test_home_says_what_it_measured():
     for href in re.findall(r'href="([^"]+)"', html):
         if href.startswith(("http://", "https://")):
             continue
-        assert not href.endswith(("/identify/", "/inspect/", "/regex/")),             f"{href} is not built yet"
+        assert not href.endswith(("/identify/", "/regex/")), f"{href} is not built yet"
 
 
 def test_home_links_are_real_paths():
@@ -737,6 +737,41 @@ def test_script_page_shows_the_alphabet():
     assert f'href="{render.link("/char/0915/")}"' in html
     # A combining mark is shown on a dotted circle rather than floating.
     assert "◌" in html
+
+
+def test_nav_groups_the_tools():
+    """Four browsable sections and a Tools group, not a flat pile of nine.
+
+    A tool answers a question you bring; an index answers one it already holds.
+    The group is a disclosure so it opens by click and by keyboard with no
+    JavaScript — the nav has to work on a page whose JS never ran.
+    """
+    html = render.page("X", "<p>y</p>")
+
+    assert '<details class="tools"><summary>Tools</summary>' in html
+    for label, href in render.TOOLS:
+        assert f'href="{render.link(href)}"' in html, href
+        assert f">{label}</a>" in html, label
+    # Still no link to a tool that does not exist.
+    for missing in ("/regex/", "/identify/"):
+        assert f'href="{render.link(missing)}"' not in html, missing
+    # And Compare moved into the group rather than being listed twice.
+    assert html.count(f'href="{render.link("/compare/")}"') == 1
+
+
+def test_inspect_is_a_shell_that_admits_what_it_needs():
+    html = render.inspect_page()
+
+    # The field, and the notations worth advertising.
+    assert 'id="inspect-input"' in html
+    assert "U+0D15" in html
+    # The promise, stated where it is made.
+    assert "Nothing you type leaves the page" in html
+    # It is the one page whose content genuinely needs JS, so it says so and
+    # points at a route that does not — rather than rendering an empty shell.
+    assert "<noscript>" in html
+    assert "needs" in html and "JavaScript" in html
+    assert render.link("/block/basic-latin/") in html
 
 
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}

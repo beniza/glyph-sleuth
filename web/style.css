@@ -603,3 +603,46 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
   margin: 22px 0 8px;
 }
 .alphabet .tile { min-width: 46px; min-height: 46px; font-size: 26px; }
+
+/* Tools sit behind one nav item: a disclosure, so it opens by click and by
+   keyboard without any JavaScript. */
+.tools { position: relative; }
+.tools summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 13.5px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.tools summary::-webkit-details-marker { display: none; }
+.tools summary::after { content: " ⌄"; }
+.tools[open] summary, .tools summary:hover { color: var(--ink); }
+.tools-menu {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: -10px;
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 150px;
+  padding: 12px 14px;
+  background: var(--bone);
+  border: 1px solid var(--rule);
+}
+.tools-menu a { font-size: 14px; }
+
+/* The Inspect field: the one input the site leads with. */
+.field { display: block; margin-bottom: 12px; }
+.field .eyebrow-inline { display: block; margin-bottom: 6px; }
+.field input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 12px 14px;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+.pairs { max-width: 62ch; }

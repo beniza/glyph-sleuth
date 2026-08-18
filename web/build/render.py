@@ -43,7 +43,16 @@ WEBFONTS = ("https://fonts.googleapis.com/css2"
 # built — a nav item that 404s is the site promising something it does not have,
 # on every page.
 NAV = [("Home", "/"), ("Scripts", "/scripts/"), ("Languages", "/languages/"),
-       ("Fonts", "/fonts/"), ("Compare", "/compare/")]
+       ("Fonts", "/fonts/")]
+
+# The tools, grouped behind one nav item: they answer a question you bring
+# rather than one the index answers, and listing five of them beside four
+# browsable sections made the masthead read as a flat pile.
+#
+# Only what exists is listed. Regex and Identify go in when they are built —
+# a nav item that 404s is the site promising something it does not have, on
+# every page.
+TOOLS = [("Inspect", "/inspect/"), ("Compare", "/compare/")]
 
 
 def esc(value):
@@ -100,6 +109,14 @@ def page(title, body, kind=None, code=None, description=None, extra_head=""):
     """The shell every page shares: masthead, nav, content, colophon."""
     nav = "\n".join(
         f'        <a href="{link(href)}">{esc(label)}</a>' for label, href in NAV)
+    # A disclosure rather than a hover menu: it opens on click and on the
+    # keyboard, and it needs no JavaScript to do either.
+    tools = "\n".join(
+        f'          <a href="{link(href)}">{esc(label)}</a>' for label, href in TOOLS)
+    nav += ('        <details class="tools">'
+            '<summary>Tools</summary>'
+            f'<div class="tools-menu">{tools}</div>'
+            '</details>')
     where = ""
     if kind:
         where = (f'<div class="where">{esc(kind)}'
@@ -207,10 +224,11 @@ def home(fonts, scripts, languages):
         <div>
           <span class="q">What is this character?</span>
           <div class="links">
+            <a href="{link("/inspect/")}">Paste or type anything</a>
             <a href="{link("/block/basic-latin/")}">Browse a block</a>
-            <a href="{link("/scripts/")}">Start from a script</a>
           </div>
-          <p class="quiet">A field that reads any notation you paste is not built yet.</p>
+          <p class="quiet">Read in your browser, against the same Unicode tables
+             the rest of the site is built from.</p>
         </div>
         <div>
           <span class="q">How does a font build this shape?</span>
@@ -1145,6 +1163,45 @@ def compare_page(fonts):
                 description="Two font families compared down to the OpenType lookup: "
                             "features declared, rules per feature, and where their "
                             "shaping verdicts disagree.")
+
+
+def inspect_page():
+    """Paste anything and read what it is.
+
+    A tool page: it answers a question the reader brings, so the shell is served
+    and the answer is computed in the browser from the same Unicode tables the
+    build uses. Nothing is sent anywhere — there is no server to send it to, and
+    that is the point rather than a policy.
+    """
+    body = """    <section class="entity-head">
+      <h1>Inspect</h1>
+      <p class="quiet">Paste or type anything — text, a codepoint in any notation,
+         a range. It is read in your browser, against the same Unicode tables the
+         rest of the site is built from. Nothing you type leaves the page.</p>
+    </section>
+
+    <section>
+      <label class="field">
+        <span class="eyebrow-inline">text or codepoints</span>
+        <input type="search" id="inspect-input" autocomplete="off" autofocus
+               placeholder="paste anything, or try 0D15, U+0D15, \u0D15, &amp;#x0D15;"
+               aria-label="Text or codepoints to inspect">
+      </label>
+      <p class="quiet" id="inspect-reading"></p>
+      <noscript>
+        <p class="quiet">This page reads what you type in the browser, so it needs
+           JavaScript. Everything else on the site is plain HTML and does not —
+           and a character's own page carries the same facts without it:
+           <a href="{chars}">browse a block</a> to reach one.</p>
+      </noscript>
+      <div id="inspect-out"></div>
+    </section>
+"""
+    return page("Inspect", body.replace("{chars}", link("/block/basic-latin/")),
+                kind="tool", code="inspect",
+                description="Paste text or a codepoint in any notation and read what it is: "
+                            "clusters, codepoints, names, blocks, normalisation and "
+                            "encodings — computed in your browser.")
 
 
 def lookup_rows(rows):
@@ -2141,7 +2198,10 @@ def main():
     blocks = (load("blocks") or {}).get("blocks", [])
     prepare_fonts(fonts["fonts"], blocks)
 
-    for asset in ("style.css", "app.js"):
+    # core.js goes out too: Inspect imports it at runtime to read the same
+    # Unicode tables the build reads, so a codepoint's facts there and on its
+    # own page come from one place.
+    for asset in ("style.css", "app.js", "core.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
 
     # Which codepoints get a page of their own. Not all 1.1 million: the blocks
@@ -2230,6 +2290,17 @@ def main():
                 for language in languages), "language pages")
     write("/languages/", languages_index(languages))
     write("/compare/", compare_page(fonts["fonts"]))
+    write("/inspect/", inspect_page())
+
+    # Inspect reads the same Unicode tables the build does, so they are
+    # served: the block ranges, the formulaic name ranges, and the name
+    # table itself, which is 1.4 MB and fetched only when a name is asked
+    # for.
+    for table in ("blocks.json", "names.txt", "names-formulaic.json"):
+        source = os.path.join(ROOT, "web", "data", table)
+        if os.path.exists(source):
+            os.makedirs(os.path.join(OUT_SITE, "data"), exist_ok=True)
+            shutil.copyfile(source, os.path.join(OUT_SITE, "data", table))
 
     # One small file per family with lookup tables, for Compare to fetch. Only
     # the families there is something to compare — not all 1,885.

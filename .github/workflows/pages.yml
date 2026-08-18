@@ -64,6 +64,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: python web/build/render.py
 
+      # Checks the served tables against the code that reads them: a rename in
+      # the generator would leave Inspect reading nothing while every unit test
+      # still passed, so this runs after the build rather than before it.
+      - run: node web/tests/test-inspect.mjs
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

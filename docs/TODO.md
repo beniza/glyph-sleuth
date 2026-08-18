@@ -18,15 +18,18 @@ Three remain, and rather than link them from the nav they have been *removed*
 from it until they exist — a nav item that 404s is the site promising something
 it does not have, on every page.
 
-- [ ] `/inspect/<text>` — paste or type any notation and get the reading. Needs
-      `core.js` plus `blocks.json` and `names.txt` served into `site/data/`
+- [x] `/inspect/` — paste or type any notation and get the reading: clusters
+      against codepoints, names, blocks, normalisation, UTF-8. Reads `core.js`
+      and the served Unicode tables in the browser, with the text in the URL so
+      an inspection can be sent to someone. `test-inspect.mjs` runs after the
+      build and checks the served tables against the code that reads them
 - [ ] `/regex/` — the property reference and live tester. `core.js` already
       answers `\p{…}` from the engine itself
 - [ ] `/identify/` — draw or drop; Phase 2, and the largest of the three
 
-Home's "What is this character?" question currently points at a block and the
-scripts index, and says plainly that a paste-anything field is not built yet.
-Restore the nav entries and home's links as each lands.
+The nav now carries a **Tools** group — a disclosure that opens by click and by
+keyboard with no JavaScript — holding Inspect and Compare. Regex and Identify go
+in as they land. Home's "What is this character?" points at Inspect again.
 
 - [x] Character pages now cover every block small enough to be about a writing
       system rather than a repertoire — 32,808 pages, up from 590. The bound is
