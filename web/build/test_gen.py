@@ -96,6 +96,44 @@ def test_foundry_record():
     assert font["css"] == "https://smc.org.in/fonts/manjari.css"
 
 
+def test_cache_holds_facts_not_fonts():
+    """A warm cache skips the download, the parse and the shaping.
+
+    What it stores is the derived facts, keyed on the URL of the exact file they
+    came from — gstatic and foundry URLs carry a version, so a new release is a
+    new key rather than a stale hit. It never stores the font: that would put a
+    binary on disk, which is the one thing the policy rules out.
+    """
+    import shutil
+    import tempfile
+
+    original = gen_index.CACHE
+    gen_index.CACHE = tempfile.mkdtemp()
+    try:
+        url = "https://fonts.gstatic.com/s/x/v9/abc.woff2"
+        assert gen_index.cached(url) is None
+        blob = sample_font(codepoints=(0x0D15,))
+        first = gen_index.measure_and_shape(blob, url, "abc.woff2")
+        assert first["ranges"] == [[0x0D15, 0x0D15]]
+
+        # Second time round the bytes are never touched — passing nonsense as
+        # the blob proves the answer came from the cache.
+        again = gen_index.measure_and_shape(b"not a font", url, "abc.woff2")
+        assert again == first
+
+        # A different version of the same family is a different key.
+        assert gen_index.cached("https://fonts.gstatic.com/s/x/v10/abc.woff2") is None
+
+        # Nothing in the cache is a font file.
+        for name in os.listdir(gen_index.CACHE):
+            assert name.endswith(".json"), name
+            with open(os.path.join(gen_index.CACHE, name), encoding="utf-8") as handle:
+                json.load(handle)
+    finally:
+        shutil.rmtree(gen_index.CACHE, ignore_errors=True)
+        gen_index.CACHE = original
+
+
 def test_no_font_is_ever_served():
     """The constraint that shaped the design, asserted rather than trusted.
 

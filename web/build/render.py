@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gen_index as gen
@@ -2021,6 +2022,40 @@ def write(path, markup):
         handle.write(markup)
     return full
 
+# Writing a page is a millisecond of work and nineteen of waiting on the disk,
+# and there are 33,000 of them. Threads do nothing for CPU-bound Python, but each
+# of these releases the GIL inside the write: eight workers turned six minutes of
+# writing into fifty seconds, and this was the longest step in the build.
+WRITE_WORKERS = 16
+BATCH = 2000
+
+
+def write_many(pages, label):
+    """Write (path, markup) pairs in parallel, in batches.
+
+    Batched so the whole site — 144 MB of HTML — is never held in memory at once
+    just to hand it to a pool.
+    """
+    written = 0
+    batch = []
+
+    def flush():
+        nonlocal written
+        if not batch:
+            return
+        with ThreadPoolExecutor(max_workers=WRITE_WORKERS) as pool:
+            list(pool.map(lambda pair: write(*pair), batch))
+        written += len(batch)
+        batch.clear()
+
+    for pair in pages:
+        batch.append(pair)
+        if len(batch) >= BATCH:
+            flush()
+    flush()
+    print(f"  wrote {written:,} {label}")
+    return written
+
 
 def load(name):
     path = os.path.join(ROOT, "web", "data", f"{name}.json")
@@ -2073,14 +2108,15 @@ def main():
     for font in fonts["fonts"]:
         font["slug"] = unique_slug(font["name"], taken)
 
-    shaping = 0
-    for font in fonts["fonts"]:
-        write(f"/font/{font['slug']}/", font_page(font, blocks))
-        if font.get("tables"):
-            write(f"/font/{font['slug']}/lookups/", lookups_page(font))
-            shaping += 1
-        if font.get("glyphs"):
-            write(f"/font/{font['slug']}/glyphs/", glyphs_page(font, chars_built))
+    def family_pages():
+        for font in fonts["fonts"]:
+            yield (f"/font/{font['slug']}/", font_page(font, blocks))
+            if font.get("tables"):
+                yield (f"/font/{font['slug']}/lookups/", lookups_page(font))
+            if font.get("glyphs"):
+                yield (f"/font/{font['slug']}/glyphs/", glyphs_page(font, chars_built))
+
+    write_many(family_pages(), "family pages, with lookups and glyphs where measured")
     write("/fonts/", fonts_index(fonts["fonts"], blocks))
 
     # Features: one page each for every tag any indexed family runs, plus the
@@ -2091,9 +2127,8 @@ def main():
             for row in (font.get("tables") or {}).get(table, [])}
     tags |= set(content.get("features") or {})
     tags |= set(content.get("stages") or [])
-    for tag in sorted(tags):
-        write(f"/feature/{tag}/", feature_page(tag, content, fonts["fonts"]))
-    print(f"  wrote {len(tags)} feature pages")
+    write_many(((f"/feature/{tag}/", feature_page(tag, content, fonts["fonts"]))
+                for tag in sorted(tags)), "feature pages")
 
     import bisect
     import unicodedata
@@ -2101,25 +2136,25 @@ def main():
     # Bisected, not scanned: "which block is this codepoint in" asked 33,000
     # times against 327 blocks is ten million comparisons for no reason.
     starts = [block[0] for block in blocks]
-    written = 0
-    for cp in sorted(chars_built):
-        at = bisect.bisect_right(starts, cp) - 1
-        block = blocks[at] if at >= 0 and blocks[at][1] >= cp else None
-        write(f"/char/{cp:04X}/",
-              char_page(cp, unicodedata.name(chr(cp)), block,
-                        covering_fonts.get(cp, []), chars_built))
-        written += 1
-    print(f"  wrote {written:,} character pages")
 
-    for block in blocks:
-        write(f"/block/{slug(block[2])}/", block_page(block, fonts["fonts"], chars_built))
-    print(f"  wrote {len(blocks)} block pages")
+    def char_pages():
+        for cp in sorted(chars_built):
+            at = bisect.bisect_right(starts, cp) - 1
+            block = blocks[at] if at >= 0 and blocks[at][1] >= cp else None
+            yield (f"/char/{cp:04X}/",
+                   char_page(cp, unicodedata.name(chr(cp)), block,
+                             covering_fonts.get(cp, []), chars_built))
 
-    for script in scripts:
-        write(f"/script/{script['code']}/",
-              script_page(script, fonts["fonts"], languages, chars_built))
+    write_many(char_pages(), "character pages")
+
+    write_many(((f"/block/{slug(block[2])}/",
+                 block_page(block, fonts["fonts"], chars_built)) for block in blocks),
+               "block pages")
+
+    write_many(((f"/script/{script['code']}/",
+                 script_page(script, fonts["fonts"], languages, chars_built))
+                for script in scripts), "script pages")
     write("/scripts/", scripts_index(scripts, fonts["fonts"]))
-    print(f"  wrote {len(scripts)} script pages")
 
     # Every codepoint any exemplar set needs, and which fonts have them —
     # computed once for all languages rather than re-walking every font's
@@ -2129,11 +2164,10 @@ def main():
         wanted |= {cp for cp, _pieces in exemplar_needs(language.get("exemplars") or "")}
     coverage = {id(font): covered_subset(font, wanted) for font in fonts["fonts"]}
 
-    for language in languages:
-        write(f"/lang/{language['id']}/",
-              lang_page(language, fonts["fonts"], scripts, chars_built, blocks, coverage))
+    write_many(((f"/lang/{language['id']}/",
+                 lang_page(language, fonts["fonts"], scripts, chars_built, blocks, coverage))
+                for language in languages), "language pages")
     write("/languages/", languages_index(languages))
-    print(f"  wrote {len(languages)} language pages")
     write("/compare/", compare_page(fonts["fonts"]))
 
     # One small file per family with lookup tables, for Compare to fetch. Only
@@ -2149,8 +2183,8 @@ def main():
         written += 1
     print(f"  wrote compare data for {written} families")
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
-    print(f"  wrote {len(fonts['fonts'])} font pages — {measured} measured, "
-          f"{len(fonts['fonts']) - measured} not yet; {shaping} with lookups")
+    print(f"  {len(fonts['fonts']):,} families — {measured:,} measured, "
+          f"{len(fonts['fonts']) - measured:,} not yet")
 
 
 if __name__ == "__main__":

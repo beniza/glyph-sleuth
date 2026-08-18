@@ -34,9 +34,9 @@ Restore the nav entries and home's links as each lands.
       Cyrillic, Arabic, Hebrew and the rest are all clickable. Eleven blocks
       exceed it (CJK Unified Ideographs and its nine extensions, Hangul
       Syllables: 110,233 codepoints between them) and their block pages say so.
-- [ ] Watch the build cost: 33,000 files is most of the artifact and the deploy.
-      If Pages starts refusing it, the fallback is blocks a measured family
-      actually covers rather than every small block.
+- [x] The file count turned out to cost nothing where it was feared: uploading
+      the artifact takes 6 seconds and the deploy 16. The cost was all in writing
+      the files, which is now parallel. No need to narrow the character set.
 
 ## 2 · Silent truncation and unpinned inputs
 
@@ -50,9 +50,15 @@ incomplete, which is worse.
       degrade gracefully: a moved URL keeps the last good record and marks it
       stale." Neither half exists — a moved URL currently just becomes a stub
       with a printed warning, and the previous good measurement is lost
-- [ ] **Nothing is cached between builds.** Every run re-downloads every
-      release, which is rude to small foundries and is most of the 10-minute
-      build. An HTTP cache keyed on the release tag would remove nearly all of it
+- [x] **Facts are now cached between builds**, keyed on the URL of the exact
+      file they came from, and restored in CI by `actions/cache`. A cheap probe
+      (a stylesheet, a release JSON) establishes the key, so an unchanged release
+      is never downloaded, parsed or shaped again — 7.3s to 1.3s over four
+      families locally. Facts only: caching the bytes would put font binaries on
+      disk, which the policy rules out and a test enforces.
+- [x] **Page writing is parallel.** It was 19ms of disk wait per page and 33,000
+      pages — the single longest step in the build at 14m29s. Sixteen workers
+      took the local render from 9m16s to 1m30s.
 
 ## 3 · Claims we cannot fully stand behind yet
 

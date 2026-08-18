@@ -91,6 +91,56 @@ TODAY = datetime.date.today().isoformat()
 HEADERS = {"User-Agent": "glyph-sleuth-index/1.0 (+https://github.com/beniza/glyph-sleuth)"}
 
 
+# Derived facts from a previous run, keyed on the exact font file we read them
+# from. A warm cache skips the download, the parse and the shaping — most of the
+# build — and re-reads nothing that has not changed.
+#
+# Facts, never bytes: gstatic and foundry URLs carry a version, so a new release
+# is a new key rather than a stale hit. No font file is written to disk here, in
+# a cache or anywhere else.
+CACHE = os.path.join(OUT_DATA, "cache")
+
+
+def cache_key(url):
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()
+
+
+def cached(url):
+    path = os.path.join(CACHE, cache_key(url) + ".json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with io.open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
+
+
+def remember(url, facts):
+    # The day the file was actually read, kept with the facts. A cached
+    # measurement re-stamped with today's date would claim we looked at a
+    # release we have not opened since — provenance has to survive the cache.
+    facts["read"] = TODAY
+    os.makedirs(CACHE, exist_ok=True)
+    path = os.path.join(CACHE, cache_key(url) + ".json")
+    with io.open(path, "w", encoding="utf-8") as handle:
+        json.dump(facts, handle, ensure_ascii=False, separators=(",", ":"))
+    return facts
+
+
+def measure_and_shape(blob, url, label, ranges=None):
+    """Everything we read from one font file, cached against that file's URL."""
+    hit = cached(url)
+    if hit is not None:
+        return hit
+    facts = measure(blob)
+    for script, script_blocks in SHAPED_SCRIPTS.items():
+        against = ranges if ranges is not None else facts["ranges"]
+        if any(countInRange(against, first, last) for first, last in script_blocks):
+            facts.setdefault("results", {})[script] = shape_all(blob, label, script)
+    return remember(url, facts)
+
+
 def fetch(url, token=None):
     request = urllib.request.Request(url, headers=dict(HEADERS))
     if token:
@@ -228,20 +278,22 @@ def measure_google_face(font):
         url = face_url_from_stylesheet(sheet)
         if not url:
             return font
-        blob = fetch(url)
-        facts = measure(blob)
+        label = os.path.basename(urllib.parse.urlsplit(url).path)
+        # Ask the cache before the network: the stylesheet is a few hundred bytes
+        # and names the exact file, so a cache hit costs one cheap fetch.
+        facts = cached(url)
+        if facts is None:
+            facts = measure_and_shape(fetch(url), url, label, font["ranges"])
     except Exception as error:
         print(f"  !! {font['name']}: {error}")
         return font
 
-    label = os.path.basename(urllib.parse.urlsplit(url).path)
+    facts = dict(facts)
     facts.pop("ranges", None)          # Google's published coverage is the fuller one.
     facts.pop("family", None)
     font.update(facts)
-    font["provenance"] = {"file": label, "release": url, "read": TODAY}
-    for script, blocks in SHAPED_SCRIPTS.items():
-        if any(countInRange(font["ranges"], first, last) for first, last in blocks):
-            font.setdefault("results", {})[script] = shape_all(blob, label, script)
+    font["provenance"] = {"file": label, "release": url,
+                          "read": facts.get("read", TODAY)}
     return font
 
 
@@ -480,11 +532,14 @@ GITHUB_RELEASE_FULL = "https://api.github.com/repos/{project}/releases/latest"
 GITLAB_RELEASES = "https://gitlab.com/api/v4/projects/{project}/releases"
 
 
-def release_faces(source, project, token=None):
-    """[(label, bytes)] for the faces to measure in a project's latest release.
+def release_probe(source, project, token=None):
+    """What identifies this project's current release, without downloading it.
 
-    A foundry that publishes its own stylesheet is read straight from it; the
-    rest ship a release archive. Either way the bytes stay in memory.
+    Returns (key, extra, faces) where `faces` is a callable that does the
+    expensive part. The key comes from something cheap that changes when the
+    font changes — a foundry's cache-busted stylesheet URL, or a release tag —
+    so a cached measurement can be reused without fetching megabytes to discover
+    that nothing moved.
     """
     if source["host"] == "css":
         sheet = fetch_text(f"{source['base']}/fonts/{project}.css")
@@ -493,8 +548,8 @@ def release_faces(source, project, token=None):
             if is_font_url(url):
                 full = url if url.startswith("http") else source["base"] + url
                 label = os.path.basename(urllib.parse.urlsplit(url).path)
-                return [(label, fetch(full))], sheet
-        return [], sheet
+                return url, sheet, lambda: [(label, fetch(full))]
+        return None, sheet, lambda: []
 
     if source["host"] in ("github", "github-repos"):
         url = (GITHUB_RELEASE_FULL.format(project=project) if source["host"] == "github-repos"
@@ -503,25 +558,28 @@ def release_faces(source, project, token=None):
         assets = [a for a in release.get("assets", [])
                   if a["name"].endswith((".zip", ".tar.xz"))]
         if not assets:
-            return [], None
-        blob = fetch(assets[0]["browser_download_url"], token)
+            return None, None, lambda: []
+        download = assets[0]["browser_download_url"]
         tag = release.get("tag_name")
     else:
         group = urllib.parse.quote(f"{source['group']}/{project}", safe="")
         releases = fetch_json(GITLAB_RELEASES.format(project=group))
         if not releases:
-            return [], None
+            return None, None, lambda: []
         # GitLab serves built fonts from a job artifact whose URL ends
         # ".../download?job=build-tag" — no extension to filter on, so take the
         # link and let extract_fonts sniff what it actually is.
         links = [l["url"] for l in releases[0].get("assets", {}).get("links", [])]
         if not links:
-            return [], None
-        blob = fetch(links[0])
+            return None, None, lambda: []
+        download = links[0]
         tag = releases[0].get("tag_name")
 
-    members = extract_fonts(blob)
-    return [(name, members[name]) for name in pick_faces(members)], tag
+    def faces():
+        members = extract_fonts(fetch(download, token))
+        return [(name, members[name]) for name in pick_faces(members)]
+
+    return f"{download}#{tag}", tag, faces
 
 
 def foundry_family(source, project, token=None):
@@ -537,33 +595,36 @@ def foundry_family(source, project, token=None):
     fallback_name = project.split("/")[-1].replace("font-", "").replace("-", " ").title()
 
     try:
-        faces, extra = release_faces(source, project, token)
+        key, extra, faces = release_probe(source, project, token)
     except Exception as error:
         print(f"  !! {project}: {error}")
         return foundry_record(fallback_name, source["id"], page, css=css)
 
     if source["host"] == "css" and extra:
         fallback_name = family_from_stylesheet(extra) or fallback_name
-
-    if not faces:
+    if not key:
         return foundry_record(fallback_name, source["id"], page, css=css)
 
-    label, blob = faces[0]
+    key = f"{source['id']}:{project}:{key}"
+    label = os.path.basename(urllib.parse.urlsplit(key).path) or project
     try:
-        facts = measure(blob)
+        # The probe was cheap; the download only happens on a cache miss.
+        facts = cached(key)
+        if facts is None:
+            found = faces()
+            if not found:
+                return foundry_record(fallback_name, source["id"], page, css=css)
+            label, blob = found[0]
+            facts = measure_and_shape(blob, key, label)
     except Exception as error:
-        print(f"  !! {project} ({label}): {error}")
+        print(f"  !! {project}: {error}")
         return foundry_record(fallback_name, source["id"], page, css=css)
 
-    facts["provenance"] = {"file": label, "release": extra if source["host"] != "css" else css,
-                           "read": TODAY}
+    facts = dict(facts)
+    facts["provenance"] = {"file": label,
+                           "release": extra if source["host"] != "css" else css,
+                           "read": facts.get("read", TODAY)}
 
-    # Tier 3, for the scripts we have authored sequences for. Only a face that
-    # covers the script is worth shaping: a Latin workhorse "failing" Malayalam
-    # is not a finding, it is a category error.
-    for script, blocks in SHAPED_SCRIPTS.items():
-        if any(countInRange(facts["ranges"], first, last) for first, last in blocks):
-            facts.setdefault("results", {})[script] = shape_all(blob, label, script)
     return foundry_record(facts.get("family") or fallback_name, source["id"], page,
                           css=css, facts=facts)
 

@@ -41,6 +41,16 @@ jobs:
           node-version: '22'
       - run: pip install -r requirements.txt
 
+      # Facts read from font files last time, keyed on the URL of the exact file
+      # they came from. A warm cache skips the download, the parse and the
+      # shaping for every family whose release has not moved — most of the
+      # generator's work. Facts only: no font binary is ever cached.
+      - uses: actions/cache@v4
+        with:
+          path: web/data/cache
+          key: font-facts-${{ github.run_id }}
+          restore-keys: font-facts-
+
       # The tests are the gate: a red suite must not reach the site.
       - run: node web/tests/test-core.mjs
       - run: python shared/test_core.py
