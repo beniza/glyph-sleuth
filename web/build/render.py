@@ -659,8 +659,9 @@ def font_page(font, blocks):
         + head_row + ['      </div>', f'      <p class="byline">{esc(byline(font))}</p>']
     if face_css:
         line, second = specimen_text(font, blocks)
-        header += [f'      <p class="specimen">{esc(line)}</p>',
-                   f'      <p class="specimen-small">{esc(second)}</p>']
+        header += [f'      <p class="specimen" data-face="{esc(name)}">{esc(line)}</p>',
+                   f'      <p class="specimen-small" data-face="{esc(name)}">'
+                   f'{esc(second)}</p>']
     if facts:
         header += ['      <div class="facts">'] + facts + ['      </div>']
     if not measured:
@@ -1546,8 +1547,8 @@ def char_page(cp, name, block, covering, chars_built):
     drawn = ordered[:DRAWN_LIMIT]
     tiles = "\n".join(
         f'        <a class="draws" href="{font_href(font)}">'
-        f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}">'
-        f'{esc(ch)}</span>'
+        f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
+        f' data-face="{esc(font["name"])}">{esc(ch)}</span>'
         f'<span class="draws-name">{esc(font["name"])}</span></a>'
         for font in drawn)
     faces = face_styles(drawn)
@@ -1991,8 +1992,8 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     shown = fits[:CARDS_LIMIT]
     cards = "\n".join(
         f'        <a class="card" href="{font_href(font)}">'
-        f'<span class="card-specimen f-{esc(font.get("slug") or slug(font["name"]))}">'
-        f'{esc(specimen)}</span>'
+        f'<span class="card-specimen f-{esc(font.get("slug") or slug(font["name"]))}"'
+        f' data-face="{esc(font["name"])}">{esc(specimen)}</span>'
         f'<span class="card-name">{esc(font["name"])}</span>'
         f'<span class="card-note quiet">'
         + ("built for " + esc(main["name"]) if made_for(font, main, blocks)

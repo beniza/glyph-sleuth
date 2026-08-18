@@ -225,7 +225,7 @@ export async function start(field, reading, out, faceStyles) {
     const tiles = list.map((face) =>
       `<a class="draws${long ? " draws-row" : ""}" href="${BASE}font/${face.slug}/">`
       + `<span class="draws-name">${esc(face.name)}${face.for ? " ·" : ""}</span>`
-      + `<span class="tile-glyph f-${face.slug}">${esc(subject)}</span>`
+      + `<span class="tile-glyph f-${face.slug}" data-face="${esc(face.name)}">${esc(subject)}</span>`
       + "</a>").join("");
 
     return `<h2 class="eyebrow">Drawn by families that cover ${esc(block)}</h2>

@@ -234,3 +234,61 @@ if (inspectField) {
     document.getElementById("inspect-faces"),
   ));
 }
+
+// -------------------------------------------------------- did the face load?
+//
+// Every panel that draws text in a named family is making a claim about that
+// family. If its stylesheet 404s, or it loaded without the characters asked for,
+// the browser quietly draws with something else and the page looks like it is
+// showing the font. That is the one failure this site cannot afford to hide, so
+// it is measured rather than assumed.
+
+const faced = document.querySelectorAll("[data-face]");
+if (faced.length) {
+  import(`${document.querySelector('link[href$="style.css"]').href
+    .replace("style.css", "")}core.js`).then(async (core) => {
+    await document.fonts.ready;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const width = (font, text) => { ctx.font = font; return ctx.measureText(text).width; };
+
+    const checked = new Map();
+    let missing = 0;
+
+    for (const node of faced) {
+      const family = node.dataset.face;
+      const text = (node.textContent || "").trim().slice(0, 40);
+      if (!family || !text) continue;
+      const key = `${family}\u0000${text}`;
+      if (!checked.has(key)) {
+        checked.set(key, core.usedFallback({
+          withFamily: {
+            monospace: width(`32px "${family}", monospace`, text),
+            serif: width(`32px "${family}", serif`, text),
+          },
+          monospace: width("32px monospace", text),
+          serif: width("32px serif", text),
+        }));
+      }
+      if (checked.get(key)) {
+        node.classList.add("fallback");
+        node.title = `${family} is not drawing this — your browser fell back to another face`;
+        missing += 1;
+      }
+    }
+
+    // Said once, where the drawing is, rather than as a badge on every tile.
+    if (missing) {
+      for (const panel of document.querySelectorAll(".drawn, .drawn-rows, .cards")) {
+        if (!panel.querySelector(".fallback")) continue;
+        const note = document.createElement("p");
+        note.className = "quiet fallback-note";
+        note.textContent = `Marked faces are not drawing this text — the family did not load, `
+          + `or loaded without these characters. What you see there is your browser's `
+          + `fallback, not the font.`;
+        panel.after(note);
+      }
+    }
+  });
+}

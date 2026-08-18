@@ -632,3 +632,22 @@ export function encodings(cp) {
     "URL": encodeURIComponent(ch),
   };
 }
+
+// ------------------------------------------------------- did the face load?
+
+/** Did the browser draw this text in the family we asked for, or in a fallback?
+ *
+ *  Asked by measuring rather than by trusting: `document.fonts.check()` reports
+ *  whether a face is *available*, which is not the same question. A stylesheet
+ *  that 404s, a family that loaded but lacks these characters, and a name
+ *  spelled wrongly in CSS all end the same way — the browser quietly draws with
+ *  something else and the reader believes they are looking at the font.
+ *
+ *  Two fallbacks, because one family's metrics can coincide with one fallback's
+ *  by accident; both matching means nothing of ours applied. The tolerance is
+ *  for subpixel measurement, not for near-misses.
+ */
+export function usedFallback({ withFamily, monospace, serif }, tolerance = 0.5) {
+  const same = (a, b) => Math.abs(a - b) < tolerance;
+  return same(withFamily.monospace, monospace) && same(withFamily.serif, serif);
+}

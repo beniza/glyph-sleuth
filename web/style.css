@@ -746,3 +746,12 @@ table.tight .quiet { font-size: 12.5px; }
   .draws-row { grid-template-columns: 1fr; gap: 2px; }
   .draws-row .tile-glyph { font-size: 28px; }
 }
+
+/* A face that is not drawing what it claims to. Marked rather than hidden: the
+   reader needs to know they are looking at a fallback, not at the font. */
+.fallback {
+  color: var(--faint);
+  text-decoration: underline dashed var(--alarm) 1px;
+  text-underline-offset: 5px;
+}
+.fallback-note { border-top: 1px solid var(--rule); padding-top: 8px; margin-top: 10px; }

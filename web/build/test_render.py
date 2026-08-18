@@ -774,6 +774,40 @@ def test_inspect_is_a_shell_that_admits_what_it_needs():
     assert render.link("/block/basic-latin/") in html
 
 
+def test_every_drawn_face_names_itself():
+    """A panel that draws text in a named family is claiming that family drew it.
+
+    If the stylesheet 404s, or the family loads without these characters, the
+    browser silently substitutes another face and the page looks like it is
+    showing the font. The client can only measure that if the markup says which
+    family each drawing is supposed to be — so it does, everywhere the claim is
+    made, and a page that drops the attribute fails here rather than misleading
+    someone quietly.
+    """
+    font = {"name": "Manjari", "slug": "manjari", "source": "smc", "tier": "measured",
+            "ranges": [[0x0D00, 0x0D7F]], "licence": "OFL",
+            "css": "https://smc.org.in/fonts/manjari.css", "checksum": "x",
+            "tags": ["mlym"], "features": [], "axes": [], "faces": [], "url": "x"}
+    blocks = [[0x0020, 0x007F, "Basic Latin"], [0x0D00, 0x0D7F, "Malayalam"]]
+
+    # The font page's own specimen: the drawing most likely to be trusted.
+    page = render.font_page(font, blocks)
+    assert 'data-face="Manjari"' in page
+
+    # The character page's grid of families.
+    chars = render.char_page(0x0D15, "MALAYALAM LETTER KA", blocks[1],
+                             [font], {0x0D15})
+    assert 'data-face="Manjari"' in chars
+
+    # The language page's cards.
+    language = {"id": "mal", "tag": "ml", "iso": "mal", "name": "Malayalam",
+                "exemplars": "ക", "scripts": ["Mlym"], "sample": "മലയാളം"}
+    script = {"code": "Mlym", "name": "Malayalam", "chars": 118, "languages": ["mal"],
+              "blocks": [{"name": "Malayalam", "chars": 118, "ranges": [[0x0D00, 0x0D7F]]}]}
+    cards = render.lang_page(language, [font], [script], set(), blocks)
+    assert 'data-face="Manjari"' in cards
+
+
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}
 if __name__ == "__main__":
     for name, test in tests.items():
