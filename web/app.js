@@ -237,56 +237,74 @@ if (inspectField) {
 
 // -------------------------------------------------------- did the face load?
 //
-// Every panel that draws text in a named family is making a claim about that
-// family. If its stylesheet 404s, or it loaded without the characters asked for,
-// the browser quietly draws with something else and the page looks like it is
-// showing the font. That is the one failure this site cannot afford to hide, so
-// it is measured rather than assumed.
+// Every panel that draws text in a named family claims that family drew it. If
+// the stylesheet 404s, or the family loads without the characters asked for, the
+// browser quietly substitutes something else and the page still looks like it is
+// showing the font. On a site arguing that coverage is not correctness, that is
+// the one failure that would undermine everything else on the page.
+//
+// The first attempt measured advance widths against a fallback and called a
+// match "did not apply". It marked Dyuthi, which was drawing perfectly well, for
+// two reasons worth remembering:
+//
+//   * a single glyph is one advance width, and two fonts for the same script
+//     collide on a round number more often than not;
+//   * a family installed locally is indistinguishable from a fallback by
+//     measurement — and in that case it *is* drawing the text, so marking it is
+//     simply wrong.
+//
+// So the browser is asked instead. load() forces the face (and, for a subsetted
+// webfont, the subset covering these characters) to fetch; check() then answers
+// whether this text can be rendered in that family — true for a locally
+// installed copy too, which is the correct answer.
 
 const faced = document.querySelectorAll("[data-face]");
 if (faced.length) {
   import(`${document.querySelector('link[href$="style.css"]').href
     .replace("style.css", "")}core.js`).then(async (core) => {
-    await document.fonts.ready;
+    const asked = new Map();
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const width = (font, text) => { ctx.font = font; return ctx.measureText(text).width; };
+    const canRender = async (family, text) => {
+      const key = `${family} ${text}`;
+      if (!asked.has(key)) {
+        const shorthand = core.fontShorthand(32, family);
+        asked.set(key, (async () => {
+          try {
+            // Ask for it before asking about it: check() on an unloaded webfont
+            // is false, which would mark every face on a slow connection.
+            await document.fonts.load(shorthand, text);
+          } catch {
+            // A malformed shorthand or a family the set rejects: fall through to
+            // check(), which will answer honestly.
+          }
+          return document.fonts.check(shorthand, text);
+        })());
+      }
+      return asked.get(key);
+    };
 
-    const checked = new Map();
     let missing = 0;
-
     for (const node of faced) {
       const family = node.dataset.face;
       const text = (node.textContent || "").trim().slice(0, 40);
       if (!family || !text) continue;
-      const key = `${family}\u0000${text}`;
-      if (!checked.has(key)) {
-        checked.set(key, core.usedFallback({
-          withFamily: {
-            monospace: width(`32px "${family}", monospace`, text),
-            serif: width(`32px "${family}", serif`, text),
-          },
-          monospace: width("32px monospace", text),
-          serif: width("32px serif", text),
-        }));
-      }
-      if (checked.get(key)) {
-        node.classList.add("fallback");
-        node.title = `${family} is not drawing this — your browser fell back to another face`;
-        missing += 1;
-      }
+      if (await canRender(family, text)) continue;
+      node.classList.add("fallback");
+      node.title = `${family} cannot render this text — your browser is drawing it `
+        + "in another face";
+      missing += 1;
     }
 
-    // Said once, where the drawing is, rather than as a badge on every tile.
+    // Said once per panel, where the drawing is, rather than as a badge on every
+    // tile.
     if (missing) {
       for (const panel of document.querySelectorAll(".drawn, .drawn-rows, .cards")) {
         if (!panel.querySelector(".fallback")) continue;
         const note = document.createElement("p");
         note.className = "quiet fallback-note";
-        note.textContent = `Marked faces are not drawing this text — the family did not load, `
-          + `or loaded without these characters. What you see there is your browser's `
-          + `fallback, not the font.`;
+        note.textContent = "Marked faces cannot render this text: the family did not load, "
+          + "or loaded without these characters. What you see there is your browser's "
+          + "fallback, not the font.";
         panel.after(note);
       }
     }

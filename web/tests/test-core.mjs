@@ -338,33 +338,15 @@ function test_standin() {
   assert.ok(core.standin(0x0009));
 }
 
-function test_fallback_detection() {
-  // The question is not "did the stylesheet load" but "is this face drawing this
-  // text". A 404, a family that loaded without these characters, and a
-  // misspelled name in CSS all look the same to the reader: the browser draws
-  // with something else and the page appears to be showing the font.
-  //
-  // Measured against two fallbacks, because one family's metrics can coincide
-  // with one fallback's by chance; matching both means nothing of ours applied.
-  assert.equal(core.usedFallback({
-    withFamily: { monospace: 120, serif: 96 }, monospace: 120, serif: 96,
-  }), true);
-
-  // The face applied: at least one measurement moved.
-  assert.equal(core.usedFallback({
-    withFamily: { monospace: 133.4, serif: 96 }, monospace: 120, serif: 96,
-  }), false);
-  assert.equal(core.usedFallback({
-    withFamily: { monospace: 120, serif: 111.2 }, monospace: 120, serif: 96,
-  }), false);
-
-  // Subpixel wobble is not a difference; a near-miss is.
-  assert.equal(core.usedFallback({
-    withFamily: { monospace: 120.2, serif: 96.1 }, monospace: 120, serif: 96,
-  }), true);
-  assert.equal(core.usedFallback({
-    withFamily: { monospace: 122, serif: 98 }, monospace: 120, serif: 96,
-  }), false);
+function test_font_shorthand() {
+  // Asking the browser "can you render this in that family" means building a CSS
+  // font shorthand, and an unquoted family name is parsed as keywords — so the
+  // question quietly becomes a different question and the answer is worthless.
+  assert.equal(core.fontShorthand(32, "Manjari"), '32px "Manjari"');
+  assert.equal(core.fontShorthand(32, "Baloo Chettan 2"), '32px "Baloo Chettan 2"');
+  assert.equal(core.fontShorthand(32, "Manjari", "serif"), '32px "Manjari", serif');
+  // A quote in a name would otherwise close the string early.
+  assert.equal(core.fontShorthand(32, 'Odd"Name'), '32px "Odd\\"Name"');
 }
 
 
