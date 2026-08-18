@@ -1,8 +1,10 @@
 # Build the site and publish it to GitHub Pages.
 #
-# The generator reads font releases to measure them and writes only JSON; the
-# renderer turns that into static HTML. No font file is ever written into the
-# published site — see test_gen.test_no_font_is_ever_served, which gates this.
+# The generator reads font releases to measure them, writes JSON, and writes one
+# other thing: a foundry's own woff2 build, where the licence in the same release
+# permits us to re-serve it. The renderer turns that into static HTML and copies
+# the webfonts alongside. What may be published is gated by
+# test_gen.test_only_a_licensed_font_is_ever_served.
 name: Pages
 
 on:
