@@ -295,6 +295,17 @@ Carried from the archive, all of them deliberate:
 - Derived data is gitignored and rebuilt by CI. Without the generator the site
   shows an error — correct behaviour, not a bug.
 
+## Serving: static, and why it stays that way
+
+The site is generated to static files and served from GitHub Pages, and a
+database with dynamic pages was reconsidered once the project reached ~34,000
+pages. Declined: the page count costs 6 seconds to upload and 11 to deploy,
+while every minute of the build is spent deriving facts from font files — work a
+server would still have to do. Losing Pages would also turn "nothing you type
+leaves the browser" from a structural fact into a policy claim. Full reasoning,
+and the trigger for revisiting (per-user state, not richer queries), in
+`TODO.md`.
+
 ## Verification
 
 - `node web/tests/test-core.mjs` — the deploy gate. Asserts the salvaged

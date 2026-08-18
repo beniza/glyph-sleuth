@@ -161,6 +161,35 @@ more:
 
 ---
 
+## Build cost, measured
+
+Kept here so nobody re-derives it. Numbers from the CI run of 2026-08-18,
+1,885 families and ~34,000 pages:
+
+| step | before | after |
+| --- | --- | --- |
+| `gen_index.py` | 7m54s | **0m20s** warm, 7m cold |
+| `render.py` | 14m29s | **2m48s** |
+| upload artifact | 6s | 5s |
+| deploy | 16s | 11s |
+| **total** | **25m** | **3m46s** |
+
+Three causes, and only the first was the one I expected:
+
+1. **Writing pages** — 19ms of disk wait each, 33,000 of them. Sixteen threads.
+2. **Block coverage recomputed per call** — the real render cost, and invisible
+   in a seven-font local set. `made_for` asked `dominant_block`, which walked all
+   327 blocks, once per fitting family per language, from three separate places:
+   **18 seconds per language page**, 526 pages, 157 minutes projected. Computed
+   once per family by bisection it is 0.10s a page.
+3. **527 UDHR and SLDR fetches** — five and a half minutes of the generator, now
+   cached per language, with the script scan and the name table keyed on the
+   Unicode version.
+
+The lesson worth keeping: profile against a realistic corpus. Every local
+measurement said the build was I/O-bound, because seven fonts never exercised
+the O(families × blocks × languages) path that dominated it.
+
 ## Not doing, and why
 
 - **Hosting font files.** Settled: fetch and parse, never host.
@@ -170,3 +199,28 @@ more:
   the input — shows the same glyph and hosts nothing.
 - **A score, or a ranking, in Compare.** Two families with identical rows still
   differ in ways the table cannot see.
+- **A database with dynamic page generation.** Reconsidered on 2026-08-18, when
+  the project had grown to ~34,000 pages, and declined on the numbers.
+
+  The fear is the page count; the measurements say the page count is free.
+  Uploading the 33,000-file artifact takes 6 seconds and the deploy 11. Every
+  minute of the build was spent *deriving* facts from font files — which a server
+  would still have to do, either per request or into a cache that then needs
+  invalidating. A database moves that work; it does not remove it.
+
+  What it would cost is specific: GitHub Pages, and with it the brief's "no
+  backend, no accounts, no uploads". A server means logs, addresses, uptime, and
+  somewhere visitor input could be collected. "Nothing you type leaves the
+  browser" is currently structural — there is no server to send it to — and it
+  would become a policy claim instead.
+
+  What it would buy is narrower than it looks, and available without a server:
+  incremental builds (regenerate only what changed) can use SQLite as a
+  build-time store while still emitting static files, and genuine client-side
+  querying over the whole corpus can serve a SQLite file over range requests
+  (`sql.js` / `sqlite-httpvfs`, the Datasette-Lite pattern) from the same static
+  hosting.
+
+  **Revisit when there is per-user state** — accounts, saved comparisons, a
+  contribution review queue. Wanting richer queries is not the trigger; wanting
+  to remember who is asking is.
