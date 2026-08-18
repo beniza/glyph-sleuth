@@ -124,6 +124,14 @@ def page(title, body, kind=None, code=None, description=None, extra_head=""):
                  + "</div>")
     meta = f'\n  <meta name="description" content="{esc(description)}">' if description else ""
 
+    # Wide content scrolls inside its own box; the page itself never scrolls
+    # sideways. A seven-column index at 380px pushed 300px of table past the
+    # viewport, which the brief rules out and a browser test now catches. Done
+    # here rather than at each of the nine places a table is built, so a table
+    # added later is contained by default.
+    body = re.sub(r"(<table\b[\s\S]*?</table>)",
+                  r'<div class="scroll">\1</div>', body)
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1542,9 +1550,16 @@ def char_page(cp, name, block, covering, chars_built):
 
     # Drawn, not just named. Two faces can both cover a codepoint and draw it
     # quite differently, and that difference is what a reader came to see.
-    ordered = sorted(covering, key=lambda f: (f.get("tier") != "measured",
+    # Only families the browser can actually fetch. RIT publishes its fonts as
+    # GitLab releases and no webfont stylesheet, so eleven RIT families were being
+    # drawn here in whatever the browser fell back to, under their own names — the
+    # page asserting a drawing it could not make. A browser test caught it.
+    drawable = [font for font in covering
+                if font.get("source") == "google" or font.get("css")]
+    ordered = sorted(drawable, key=lambda f: (f.get("tier") != "measured",
                                               f["name"].lower()))
     drawn = ordered[:DRAWN_LIMIT]
+    undrawable = len(covering) - len(drawable)
     tiles = "\n".join(
         f'        <a class="draws" href="{font_href(font)}">'
         f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
@@ -1554,10 +1569,16 @@ def char_page(cp, name, block, covering, chars_built):
     faces = face_styles(drawn)
     # What the grid dropped, said out loud: twenty-four tiles where nine hundred
     # families have the character would otherwise read as "twenty-four have it".
-    drawn_note = (f"Showing {len(drawn)} of {len(covering):,} families that cover it, "
-                  "measured ones first — a page cannot load nine hundred webfonts."
-                  if len(covering) > len(drawn) else
-                  f"All {len(covering):,} indexed families that cover this codepoint.")
+    drawn_note = (f"Showing {len(drawn)} of {len(drawable):,} families that cover it and "
+                  "publish a webfont, measured ones first — a page cannot load nine hundred "
+                  "of them."
+                  if len(drawable) > len(drawn) else
+                  f"All {len(drawable):,} indexed families that cover this codepoint and "
+                  "publish a webfont.")
+    if undrawable:
+        drawn_note += (f" A further {undrawable:,} cover it but publish no webfont stylesheet, "
+                       "so they cannot be drawn here — their coverage still comes from their "
+                       "own font tables.")
 
     body = f"""    <section class="entity-head">
       <div class="head-row">

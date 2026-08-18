@@ -632,6 +632,10 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
 .tools summary::-webkit-details-marker { display: none; }
 .tools summary::after { content: " ⌄"; }
 .tools[open] summary, .tools summary:hover { color: var(--ink); }
+/* Closed means no layout, not just invisible: with a box it was 150px of
+   absolutely positioned menu hanging off the right edge of every page at
+   380px. */
+.tools:not([open]) .tools-menu { display: none; }
 .tools-menu {
   position: absolute;
   z-index: 30;
@@ -755,3 +759,29 @@ table.tight .quiet { font-size: 12.5px; }
   text-underline-offset: 5px;
 }
 .fallback-note { border-top: 1px solid var(--rule); padding-top: 8px; margin-top: 10px; }
+
+/* 380px, which the brief requires and nothing had ever checked. A browser test
+   now measures it: no page may scroll sideways, at any width.
+
+   Everything here is the same fault in different clothing — a grid track sized to
+   its content, in a viewport narrower than that content. Stacked, they all fit. */
+@media (max-width: 620px) {
+  .specimen { font-size: 44px; }
+  .specimen-line { font-size: 30px; }
+  .specimen, .specimen-small, .specimen-line { overflow-wrap: anywhere; }
+
+  .inspect-grid, .split, .columns, .paths { grid-template-columns: 1fr; }
+  .pair, .alt { grid-template-columns: 1fr; gap: 2px; }
+  .pairs, .alts, .row-copy, .scroll { min-width: 0; max-width: 100%; }
+  .facts { gap: 14px 24px; }
+  .head-row { gap: 8px; }
+  .drawn { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+
+  /* A grid child's minimum size is its content unless told otherwise, and a
+     snippet of unbreakable CSS was enough to widen the whole page by 4px. */
+  .split > div, .columns > div, .inspect-grid > div { min-width: 0; }
+  .snippet, pre, code { min-width: 0; max-width: 100%; }
+
+  /* Anchored to the right edge, or the menu itself hangs off the page. */
+  .tools-menu { left: auto; right: 0; }
+}

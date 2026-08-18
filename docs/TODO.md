@@ -132,11 +132,17 @@ more:
 
 ## 8 · Presentation and platform
 
-- [ ] **No mobile verification.** The brief requires 380px to work. Nothing has
-      been checked at that width, and the evidence matrix is the obvious risk
-- [ ] **No accessibility pass.** Focus styles and one h1 per page are in;
-      unaudited are table captions, the facet buttons' pressed state, the size
-      slider's announced value, and colour contrast on `--faint` text
+- [x] **380px is now measured, not hoped for.** Playwright asserts that no page
+      scrolls sideways at that width, and it found four real faults: the wide
+      tables, the Tools menu hanging 29px off the right edge of *every* page while
+      closed, a grid child sized by an unbreakable code snippet, and the
+      "Take it away" rows. Wide content now scrolls inside its own box
+- [ ] Extend the 380px check to the remaining page types — script, language,
+      block, feature, lookups, glyphs, compare — rather than the five it covers
+- [ ] **No accessibility pass.** Focus styles and one h1 per page are in, and
+      the Tools disclosure is now tested for keyboard opening; unaudited are
+      table captions, the facet buttons' pressed state, the size slider's
+      announced value, and colour contrast on `--faint` text
 - [ ] **1,885 rows ship in one page** on `/fonts/`. No show-more, no
       pagination. Fine on a desktop, unmeasured on a phone
 - [ ] **Print stylesheet is three rules.** The archive TODO wanted a real
@@ -163,6 +169,30 @@ more:
       what this phase exists to explain
 
 ---
+
+## Live testing
+
+`npx playwright test` runs Chromium against the built site, served under
+`/glyph-sleuth/` the way Pages serves it — from the root instead, every absolute
+URL would resolve by accident and hide the class of bug that shipped once.
+
+It exists because every bug in this project that reached a deploy was the same
+kind: a page that passed every unit test and was wrong when a person looked at
+it. A nav item that 404s. A long word painting over its neighbour. A face
+reported as not drawing a character it draws. `document.fonts.check()` answering
+true for a family that does not exist.
+
+Deliberately not a screenshot suite — those flake and nobody trusts them. It
+asserts the things that actually went wrong: every nav link resolves, the Tools
+disclosure opens by click *and* by keyboard, nothing overflows at 380px, no
+drawing spills out of its own box, the fallback marking neither cries wolf nor
+stays silent, and the pages still work with JavaScript switched off.
+
+CI runs it after the build and before the deploy, and uploads the report on
+failure.
+
+- [ ] It covers five pages at 380px and one flow through Inspect. Worth widening
+      as pages change, but keep it cheap: it is a gate, not a suite.
 
 ## Build cost, measured
 

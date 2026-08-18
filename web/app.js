@@ -238,59 +238,61 @@ if (inspectField) {
 // -------------------------------------------------------- did the face load?
 //
 // Every panel that draws text in a named family claims that family drew it. If
-// the stylesheet 404s, or the family loads without the characters asked for, the
-// browser quietly substitutes something else and the page still looks like it is
-// showing the font. On a site arguing that coverage is not correctness, that is
-// the one failure that would undermine everything else on the page.
+// its stylesheet 404s the browser quietly substitutes something else and the page
+// still looks like it is showing the font — the one failure that would undermine
+// everything else on a site arguing that coverage is not correctness.
 //
-// The first attempt measured advance widths against a fallback and called a
-// match "did not apply". It marked Dyuthi, which was drawing perfectly well, for
-// two reasons worth remembering:
+// Two earlier attempts got this wrong, both worth remembering:
 //
-//   * a single glyph is one advance width, and two fonts for the same script
-//     collide on a round number more often than not;
-//   * a family installed locally is indistinguishable from a fallback by
-//     measurement — and in that case it *is* drawing the text, so marking it is
-//     simply wrong.
+//   * Measuring advance widths against a fallback marked Dyuthi, which draws the
+//     character perfectly. A single glyph is one advance width and two fonts for
+//     a script collide on round numbers; worse, a family installed locally is
+//     indistinguishable from a fallback by measurement, and in that case it *is*
+//     drawing the text.
+//   * document.fonts.check() cannot say no. In Chrome it answers true for a
+//     family that does not exist, and true for a loaded family asked about a
+//     character it does not have, because system fallback counts as available.
+//     A check that can only agree is decoration.
 //
-// So the browser is asked instead. load() forces the face (and, for a subsetted
-// webfont, the subset covering these characters) to fetch; check() then answers
-// whether this text can be rendered in that family — true for a locally
-// installed copy too, which is the correct answer.
+// What is provable is whether *our* @font-face arrived: the stylesheet either
+// produced a FontFace for that family or it did not, and the face either loaded
+// or errored. That is the failure we can honestly report — and it is the one that
+// actually happens, since coverage was already measured from the font's own cmap
+// at build time.
 
 const faced = document.querySelectorAll("[data-face]");
 if (faced.length) {
-  import(`${document.querySelector('link[href$="style.css"]').href
-    .replace("style.css", "")}core.js`).then(async (core) => {
+  (async () => {
+    const unquote = (name) => name.replace(/^["']|["']$/g, "");
     const asked = new Map();
 
-    const canRender = async (family, text) => {
-      const key = `${family} ${text}`;
-      if (!asked.has(key)) {
-        const shorthand = core.fontShorthand(32, family);
-        asked.set(key, (async () => {
-          try {
-            // Ask for it before asking about it: check() on an unloaded webfont
-            // is false, which would mark every face on a slow connection.
-            await document.fonts.load(shorthand, text);
-          } catch {
-            // A malformed shorthand or a family the set rejects: fall through to
-            // check(), which will answer honestly.
-          }
-          return document.fonts.check(shorthand, text);
+    const webfontFailed = async (family) => {
+      if (!asked.has(family)) {
+        asked.set(family, (async () => {
+          const faces = [...document.fonts].filter(
+            (face) => unquote(face.family) === family);
+          // No @font-face at all: the stylesheet did not arrive, or the family
+          // is spelled differently there than we think. Either way our face is
+          // not drawing this.
+          if (!faces.length) return "no stylesheet";
+          await Promise.all(faces.map((face) => face.load().catch(() => {})));
+          if (faces.some((face) => face.status === "loaded")) return "";
+          return "the file failed";
         })());
       }
-      return asked.get(key);
+      return asked.get(family);
     };
+
+    await document.fonts.ready;
 
     let missing = 0;
     for (const node of faced) {
       const family = node.dataset.face;
-      const text = (node.textContent || "").trim().slice(0, 40);
-      if (!family || !text) continue;
-      if (await canRender(family, text)) continue;
+      if (!family) continue;
+      const failure = await webfontFailed(family);
+      if (!failure) continue;
       node.classList.add("fallback");
-      node.title = `${family} cannot render this text — your browser is drawing it `
+      node.title = `${family} did not load (${failure}) — your browser is drawing this `
         + "in another face";
       missing += 1;
     }
@@ -302,11 +304,11 @@ if (faced.length) {
         if (!panel.querySelector(".fallback")) continue;
         const note = document.createElement("p");
         note.className = "quiet fallback-note";
-        note.textContent = "Marked faces cannot render this text: the family did not load, "
-          + "or loaded without these characters. What you see there is your browser's "
-          + "fallback, not the font.";
+        note.textContent = "Marked families did not load, so what you see there is your "
+          + "browser's fallback rather than the font. Their coverage figures still come "
+          + "from the font's own tables.";
         panel.after(note);
       }
     }
-  });
+  })();
 }
