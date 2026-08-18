@@ -218,11 +218,18 @@ export async function start(field, reading, out, faceStyles) {
       + `<style>${list.map((face) =>
         `.f-${face.slug}{font-family:"${face.name}",serif}`).join("")}</style>`;
 
+    // A phrase is not a glyph. Eight tiles of a long word are eight columns of
+    // clipped text, so past a few characters the same families become rows and
+    // the text gets the full width to be read in.
+    const long = clusters(subject).length > 3 || subject.length > 8;
+    const tiles = list.map((face) =>
+      `<a class="draws${long ? " draws-row" : ""}" href="${BASE}font/${face.slug}/">`
+      + `<span class="draws-name">${esc(face.name)}${face.for ? " ·" : ""}</span>`
+      + `<span class="tile-glyph f-${face.slug}">${esc(subject)}</span>`
+      + "</a>").join("");
+
     return `<h2 class="eyebrow">Drawn by families that cover ${esc(block)}</h2>
-      <div class="drawn">${list.map((face) => `<a class="draws" href="${BASE}font/${face.slug}/">
-        <span class="tile-glyph f-${face.slug}">${esc(subject)}</span>
-        <span class="draws-name">${esc(face.name)}${face.for ? " ·" : ""}</span>
-      </a>`).join("")}</div>
+      <div class="${long ? "drawn-rows" : "drawn"}">${tiles}</div>
       <p class="quiet">The same codepoints, drawn by each family's own face. Where they differ,
         the difference is the font's: which lookups it carries, and which sequences it was
         built to handle. A dot marks a family drawn for this script rather than one that
@@ -273,10 +280,14 @@ export async function start(field, reading, out, faceStyles) {
       ["UTF-8", codepoints.map((ch) => core.encodings(ch.codePointAt(0))["UTF-8"]).join(" ")],
       ["hb-shape", command],
     ];
+    // Forty bytes of hex is a wall, not information. Show the beginning and
+    // say what was left out; copy still takes the whole thing.
+    const shorten = (value) => (value.length <= 96 ? esc(value)
+      : `${esc(value.slice(0, 96))}<span class="quiet"> … ${value.length} characters</span>`);
     return `<h2 class="eyebrow">Take it away</h2>
       <div class="pairs">${rows.map(([label, value]) => `<div class="pair">
         <span class="quiet">${esc(label)}</span>
-        <span class="row-copy"><span class="mono break">${esc(value)}</span>
+        <span class="row-copy"><span class="mono break">${shorten(value)}</span>
           ${copy(value)}</span>
       </div>`).join("")}</div>
       <p class="quiet">Or check it against other people's tools:

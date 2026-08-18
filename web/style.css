@@ -535,6 +535,10 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 1px;
+  /* A grid item's default min-width is its content, so a long unbreakable word
+     pushes out of its cell and paints over its neighbours. This is the fix; the
+     overflow rules below are the belt to its braces. */
+  grid-auto-rows: 1fr;
   background: var(--rule);
   border: 1px solid var(--rule);
 }
@@ -546,9 +550,20 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
   padding: 12px 6px 8px;
   background: var(--panel);
   border: none;
+  min-width: 0;          /* without this a grid item is as wide as its content */
+  overflow: hidden;
 }
 .draws:hover { background: var(--bone); }
-.tile-glyph { font-size: 44px; line-height: 1.1; color: var(--ink); }
+.tile-glyph {
+  font-size: 44px;
+  line-height: 1.15;
+  color: var(--ink);
+  max-width: 100%;
+  /* Malayalam and Devanagari words offer few break opportunities, so a long one
+     has to be allowed to break anywhere rather than run over the next tile. */
+  overflow-wrap: anywhere;
+  text-align: center;
+}
 .draws-name {
   font-family: var(--cond);
   font-size: 10.5px;
@@ -705,3 +720,29 @@ table.tight .quiet { font-size: 12.5px; }
 .notes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
 .notes li { padding: 2px 0; max-width: 60ch; }
 .row-copy { display: inline-flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+
+/* A phrase is not a glyph. Past a few characters the tile grid stops being a
+   comparison and becomes eight columns of clipped text, so the same families
+   become rows and the text gets the full width. */
+.drawn-rows { border-top: 1px solid var(--rule); }
+.draws-row {
+  display: grid;
+  grid-template-columns: minmax(9ch, 14ch) 1fr;
+  gap: 10px 18px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+  border-top: none;
+}
+.draws-row:hover { background: var(--panel); }
+.draws-row .draws-name { text-align: left; padding-top: 6px; }
+.draws-row .tile-glyph {
+  font-size: 34px;
+  text-align: left;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .draws-row { grid-template-columns: 1fr; gap: 2px; }
+  .draws-row .tile-glyph { font-size: 28px; }
+}
