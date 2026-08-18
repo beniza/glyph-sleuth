@@ -106,7 +106,7 @@ comes from parsing the release, per the policy below.
 
 ## The font-file policy
 
-**Fetch and parse. Never host.**
+**Fetch and parse. Serve only what the licence allows.**
 
 `HANDOFF.md` §4 said no font binary may be *fetched* "even transiently in a
 build pipeline". That is stricter than the brief it consolidates: `chat1.md` §10
@@ -126,8 +126,28 @@ distinction is redistribution, not reading. So:
 - CI may download a publicly released OFL/GPL+FE font, parse `cmap`, `GSUB`,
   `GPOS`, `fvar` and `silf` in memory, run HarfBuzz against it, and discard the
   binary. Redistribution carries the legal weight, and none happens.
-- **Never host, mirror or serve a font file.** Specimens render from Google's
-  CDN or the foundry's own stylesheet. Absolute, and the tests assert it.
+- **Serve only what its own licence permits, and only the foundry's own build.**
+  Revisited on 2026-08-18, and this is the second correction in this section.
+  "Never serve a font file" was, again, stricter than any brief required, and it
+  cost exactly the families the site is for: RIT publishes its Malayalam faces as
+  a GitLab job artifact and SIL as a tarball, neither behind a stylesheet, so no
+  browser could reach them. Every page that named one — the specimen, the
+  evidence matrix, the glyph grid, the lookup rules — drew it in whatever the
+  browser fell back to, under a verdict of its own. The page was asserting a
+  drawing it had not made, which is the one thing this site may never do.
+
+  Both foundries ship a `woff2` build and their licence in the same archive. So
+  `gen_index` reads the licence out of the release, and where it is one that
+  permits redistribution (`REDISTRIBUTABLE`) it writes that foundry's own file,
+  byte for byte, to `web/webfonts/`. We convert nothing and rename nothing: a
+  release with no `woff2` gets no webfont, because a file we generated is not
+  the file the foundry released. The gate denies by default — an unreadable
+  licence means no webfont — and `test_gen.py` asserts there is exactly one
+  writer and one directory.
+
+  Specimens otherwise render from Google's CDN or the foundry's own stylesheet.
+  Where none of the three applies, **the page says so and draws nothing** — see
+  `can_draw()` and `why_not_drawn()` in `render.py`.
 - **Never commit a binary.** Downloads are CI-only, cached, gitignored.
 - **Provenance on every computed fact** — source URL, release tag, checksum,
   date.

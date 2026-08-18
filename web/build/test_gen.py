@@ -134,26 +134,63 @@ def test_cache_holds_facts_not_fonts():
         gen_index.CACHE = original
 
 
-def test_no_font_is_ever_served():
-    """The constraint that shaped the design, asserted rather than trusted.
+def test_only_a_licensed_font_is_ever_served():
+    """The constraint that shaped the design, restated after it was revisited.
 
-    Reading a font is fine — that is what every font QA tool does, and the
-    licences permit it plainly. Redistributing one is not. So the generator may
-    download and parse a release in memory, but must never write a font file
-    into what we publish, and must never keep one.
+    It began as "never write a font file". That was stricter than the licences
+    require and it cost the families it mattered most for: RIT and SIL host no
+    stylesheet, so every page that named one drew it in a fallback under a
+    verdict of its own. What the licences actually govern is redistribution, and
+    the OFL permits it outright.
+
+    So the rule now is narrower and still a rule: we publish the foundry's own
+    build, unmodified, only when we have read a licence out of the same release
+    that permits it, and only into one directory.
     """
     source = open(gen_index.__file__, encoding="utf-8").read()
-    # No output directory for fonts, and no woff2 conversion: the two things
-    # the archive did that made us a font host.
-    assert not hasattr(gen_index, "OUT_FONTS")
-    # `flavor` is how fontTools re-emits a face as a webfont. Reading a .woff2 a
-    # foundry already serves is fine; writing one of our own is what made the
-    # archive a font host.
+    # `flavor` is how fontTools re-emits a face as a webfont. We re-serve the
+    # woff2 the foundry built and shipped; a file we generated is not the file
+    # they signed off, and converting is how a font host starts.
     assert "flavor" not in source, "we are re-emitting webfonts again"
-    # Nothing is opened for binary writing, so no font can reach the disk.
-    assert '"wb"' not in source and "'wb'" not in source, "something writes binary files"
-    # Everything written goes to the data directory, never a font directory.
+    # One writer, one directory. Anything else opening a font for writing is a
+    # second path to publication that this test does not govern.
+    assert source.count('"wb"') + source.count("'wb'") == 1, "something else writes binary"
+    assert gen_index.OUT_WEBFONTS.endswith(os.path.join("web", "webfonts"))
     assert gen_index.OUT_DATA.endswith(os.path.join("web", "data"))
+
+
+def test_an_unrecognised_licence_publishes_nothing():
+    # Default deny: we are serving someone else's copyrighted file from our own
+    # domain, and a licence we cannot read is a no rather than a guess.
+    ofl = {"OFL.txt": b"SIL OPEN FONT LICENSE Version 1.1"}
+    assert gen_index.find_licence(ofl) == ("OFL-1.1", "SIL OPEN FONT LICENSE Version 1.1")
+    assert gen_index.find_licence({"LICENSE.txt": b"All rights reserved."}) == ("", "")
+    assert gen_index.find_licence({}) == ("", "")
+    # A release with no licence file at all is the common case for the ones we
+    # must not touch, and it must not fall through to some default.
+    assert gen_index.find_licence({"web/X-Regular.woff2": b"wOF2"}) == ("", "")
+
+
+def test_the_webfont_matches_the_face_we_measured():
+    # A specimen set in the release's Bold while the coverage came from Regular
+    # is two different fonts wearing one name.
+    members = {"Andika-7.000/Andika-Regular.ttf": b"",
+               "Andika-7.000/web/Andika-Regular.woff2": b"",
+               "Andika-7.000/web/Andika-Bold.woff2": b""}
+    assert (gen_index.webfont_for("Andika-7.000/Andika-Regular.ttf", members)
+            == "Andika-7.000/web/Andika-Regular.woff2")
+    # A release that ships no woff2 publishes nothing: we do not convert.
+    assert gen_index.webfont_for("X-Regular.ttf", {"X-Regular.ttf": b""}) is None
+
+
+def test_a_cached_measurement_cannot_promise_a_file_that_is_gone():
+    # The cache holds facts, not bytes, and web/webfonts is build output. A warm
+    # cache on a fresh checkout would otherwise skip the download and leave the
+    # page pointing at a woff2 nobody wrote.
+    assert gen_index.webfont_present({"webfont": None, "ranges": []})
+    assert not gen_index.webfont_present({"webfont": "webfonts/rit/Nope/Nope.woff2"})
+    # Measured before any of this existed: the cache cannot answer, so it is a miss.
+    assert not gen_index.webfont_present({"ranges": []})
 
 
 def test_parsed_fonts_are_not_kept():

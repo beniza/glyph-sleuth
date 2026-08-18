@@ -86,6 +86,10 @@ SOURCES = [
 
 NEWLINE = chr(10)   # written explicitly, so a build on Windows still emits LF
 OUT_DATA = os.path.join(ROOT, "web", "data")
+# The only place a font file is ever written. Build output, like site/: render
+# copies it, git ignores it, and nothing lands here whose licence was not read
+# out of the same release — see `find_licence`.
+OUT_WEBFONTS = os.path.join(ROOT, "web", "webfonts")
 # Stamped onto every measurement: a verdict is about the release it was read
 # from, on the day it was read, not a permanent property of the family.
 TODAY = datetime.date.today().isoformat()
@@ -370,32 +374,153 @@ def foundry_record(name, source, page, css=None, licence="", facts=None):
 
 # --------------------------------------------------------------- measuring
 
-# We may read a font; we may never redistribute one. A release is downloaded,
-# parsed in memory and dropped — no file is written, cached to the site, or
-# committed, and nothing we publish ever points at a font URL of ours.
+# We may read any font; we re-serve only what its own licence permits.
+#
+# This started stricter — nothing written, ever — and that was wrong for the
+# families it mattered most for. RIT publishes its Malayalam faces as a GitLab
+# job artifact and SIL as a tarball; neither hosts a stylesheet, so no browser
+# could reach them and every page that named one drew it in a fallback while
+# printing a verdict beside it. Both ship a `woff2` build and their licence in
+# the same archive, so what we publish is the foundry's own file, byte for byte,
+# with its licence next to it. We convert nothing and rename nothing.
+#
+# The gate is `find_licence`, and it denies by default: a release whose licence
+# we cannot recognise is measured and never re-served.
 
 FONT_SUFFIXES = (".ttf", ".otf")
+WEB_SUFFIXES = (".woff2",)
+
+# Licences under which a foundry's own build may be re-served from our site.
+# Each is matched against the licence text the release itself ships, not against
+# a claim in metadata.
+REDISTRIBUTABLE = (
+    ("SIL OPEN FONT LICENSE", "OFL-1.1"),
+    ("BITSTREAM VERA FONTS COPYRIGHT", "Bitstream Vera"),
+    ("UBUNTU FONT LICENCE", "UFL-1.0"),
+    ("APACHE LICENSE", "Apache-2.0"),
+)
+
+# Where a release keeps that text. Matched on the basename, lowercased.
+LICENCE_MEMBERS = ("ofl.txt", "ofl", "license.txt", "licence.txt", "license",
+                   "licence", "license.md", "copying")
 
 
-def extract_fonts(blob):
-    """{member name: bytes} for the font files in a release archive.
+def archive_members(blob, wanted):
+    """{member name: bytes} for the members of a release archive `wanted` picks.
 
-    Kept in memory deliberately: the archive is read and discarded, so there is
-    never a font file on disk to accidentally publish.
+    One reader for zip and tar, because RIT ships one and SIL the other.
     """
     found = {}
     if blob[:2] == b"PK":
         with zipfile.ZipFile(io.BytesIO(blob)) as archive:
-            members = archive.namelist()
-            for name in members:
-                if is_font_member(name):
+            for name in archive.namelist():
+                if wanted(name):
                     found[name] = archive.read(name)
         return found
     with tarfile.open(fileobj=io.BytesIO(blob)) as archive:
         for member in archive.getmembers():
-            if member.isfile() and is_font_member(member.name):
+            if member.isfile() and wanted(member.name):
                 found[member.name] = archive.extractfile(member).read()
     return found
+
+
+def extract_fonts(blob):
+    """{member name: bytes} for the font files in a release archive."""
+    return archive_members(blob, is_font_member)
+
+
+def extract_release(blob):
+    """Everything we take from a release: the faces, the webfonts, the licence.
+
+    Read in one pass. The archive is large — Andika's tarball is 11 MB — and
+    opening it three times to answer three questions is three downloads' worth
+    of decompression for no reason.
+    """
+    return archive_members(
+        blob,
+        lambda name: is_font_member(name) or is_web_member(name)
+        or is_licence_member(name))
+
+
+def is_licence_member(name):
+    return os.path.basename(name).lower() in LICENCE_MEMBERS
+
+
+def find_licence(members):
+    """(spdx, text) for a licence that permits re-serving, else ("", "").
+
+    Default deny. We are publishing someone else's copyrighted file from our own
+    domain; an unrecognised licence is a no, not a guess. `licence` on the record
+    still says what we found, so a family we cannot host says why.
+    """
+    for name, blob in sorted(members.items()):
+        if not is_licence_member(name):
+            continue
+        text = blob.decode("utf-8", "replace")
+        upper = text.upper()
+        for needle, spdx in REDISTRIBUTABLE:
+            if needle in upper:
+                return spdx, text
+    return "", ""
+
+
+def is_web_member(name):
+    base = os.path.basename(name)
+    if base.startswith("._") or "__MACOSX" in name:
+        return False
+    return name.lower().endswith(WEB_SUFFIXES)
+
+
+def webfont_for(face, members):
+    """The foundry's own woff2 build of the face we measured, or None.
+
+    Matched on the filename stem, so Andika-Regular.ttf finds
+    web/Andika-Regular.woff2 and not Andika-Bold.woff2. If the release ships no
+    woff2 there is nothing to publish — we do not convert, because a file we
+    generated is no longer the file the foundry signed off.
+    """
+    stem = os.path.basename(face).rsplit(".", 1)[0].lower()
+    for name in sorted(members):
+        if is_web_member(name) and os.path.basename(name).rsplit(".", 1)[0].lower() == stem:
+            return name
+    return None
+
+
+def publish_webfont(source_id, project, member, blob, licence_text):
+    """Write the foundry's file where the site can serve it, licence beside it.
+
+    Returns the site-relative path, which is what the font record carries and
+    what render.py turns into an @font-face src. Keyed on foundry and project
+    rather than on the family slug: those are unique by construction, and the
+    page slug is not decided until render resolves collisions.
+    """
+    slug_ = f"{source_id}/{project.replace('/', '-')}"
+    folder = os.path.join(OUT_WEBFONTS, *slug_.split("/"))
+    os.makedirs(folder, exist_ok=True)
+    file = os.path.basename(member)
+    with open(os.path.join(folder, file), "wb") as handle:
+        handle.write(blob)
+    with io.open(os.path.join(folder, "LICENCE.txt"), "w", encoding="utf-8") as handle:
+        handle.write(licence_text)
+    return f"webfonts/{slug_}/{file}"
+
+
+def webfont_present(facts):
+    """Is the file a cached measurement claims we published still on disk?
+
+    The cache holds facts, not bytes, and the webfonts are built output. A warm
+    cache on a fresh checkout would otherwise skip the download and leave every
+    page pointing at a woff2 that was never written.
+    """
+    facts = facts or {}
+    # Measured before this ran at all: we have never looked for a webfont in
+    # that release, so the cache cannot answer for it.
+    if "webfont" not in facts:
+        return False
+    web = facts["webfont"]
+    if not web:
+        return True
+    return os.path.exists(os.path.join(ROOT, "web", *web.split("/")))
 
 
 def is_font_url(url):
@@ -550,8 +675,10 @@ def release_probe(source, project, token=None):
             if is_font_url(url):
                 full = url if url.startswith("http") else source["base"] + url
                 label = os.path.basename(urllib.parse.urlsplit(url).path)
-                return url, sheet, lambda: [(label, fetch(full))]
-        return None, sheet, lambda: []
+                # A foundry that already hosts a stylesheet needs nothing
+                # published, so there is no archive to hand back.
+                return url, sheet, lambda: ([(label, fetch(full))], {})
+        return None, sheet, lambda: ([], {})
 
     if source["host"] in ("github", "github-repos"):
         url = (GITHUB_RELEASE_FULL.format(project=project) if source["host"] == "github-repos"
@@ -560,26 +687,26 @@ def release_probe(source, project, token=None):
         assets = [a for a in release.get("assets", [])
                   if a["name"].endswith((".zip", ".tar.xz"))]
         if not assets:
-            return None, None, lambda: []
+            return None, None, lambda: ([], {})
         download = assets[0]["browser_download_url"]
         tag = release.get("tag_name")
     else:
         group = urllib.parse.quote(f"{source['group']}/{project}", safe="")
         releases = fetch_json(GITLAB_RELEASES.format(project=group))
         if not releases:
-            return None, None, lambda: []
+            return None, None, lambda: ([], {})
         # GitLab serves built fonts from a job artifact whose URL ends
         # ".../download?job=build-tag" — no extension to filter on, so take the
         # link and let extract_fonts sniff what it actually is.
         links = [l["url"] for l in releases[0].get("assets", {}).get("links", [])]
         if not links:
-            return None, None, lambda: []
+            return None, None, lambda: ([], {})
         download = links[0]
         tag = releases[0].get("tag_name")
 
     def faces():
-        members = extract_fonts(fetch(download, token))
-        return [(name, members[name]) for name in pick_faces(members)]
+        members = extract_release(fetch(download, token))
+        return [(name, members[name]) for name in pick_faces(members)], members
 
     return f"{download}#{tag}", tag, faces
 
@@ -609,15 +736,28 @@ def foundry_family(source, project, token=None):
 
     key = f"{source['id']}:{project}:{key}"
     label = os.path.basename(urllib.parse.urlsplit(key).path) or project
+    licence = ""
     try:
-        # The probe was cheap; the download only happens on a cache miss.
+        # The probe was cheap; the download only happens on a cache miss — or
+        # when the cache remembers a webfont that is no longer on disk.
         facts = cached(key)
-        if facts is None:
-            found = faces()
+        if facts is not None and webfont_present(facts):
+            licence = facts.get("licence", "")
+        else:
+            found, members = faces()
             if not found:
                 return foundry_record(fallback_name, source["id"], page, css=css)
             label, blob = found[0]
-            facts = measure_and_shape(blob, key, label)
+            facts = dict(measure_and_shape(blob, key, label))
+            licence, text = find_licence(members)
+            web = webfont_for(label, members) if licence else None
+            facts["licence"] = licence
+            # Recorded even when it is None, so a warm cache can tell "we looked
+            # and there was nothing to serve" from "we never looked".
+            facts["webfont"] = (publish_webfont(source["id"], project, web,
+                                                members[web], text)
+                                if web else None)
+            remember(key, facts)
     except Exception as error:
         print(f"  !! {project}: {error}")
         return foundry_record(fallback_name, source["id"], page, css=css)
@@ -628,7 +768,7 @@ def foundry_family(source, project, token=None):
                            "read": facts.get("read", TODAY)}
 
     return foundry_record(facts.get("family") or fallback_name, source["id"], page,
-                          css=css, facts=facts)
+                          css=css, licence=licence, facts=facts)
 
 
 # --------------------------------------------------------- lookup tables

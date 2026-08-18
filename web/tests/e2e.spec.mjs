@@ -171,3 +171,32 @@ test.describe("at 380px, which the brief requires", () => {
     });
   }
 });
+
+test.describe("a page that draws a family has that family", () => {
+  // The /char/ grid learned this lesson and nothing else did. A family page
+  // sets its specimen and every row of the evidence matrix in the family's own
+  // name; a glyphs page sets nine hundred cells in it. Where the family has no
+  // webfont those are drawn in whatever the browser falls back to, under a
+  // verdict of "clean" — the page asserting a drawing it never made.
+  //
+  // RIT publishes woff2 inside a GitLab release artifact and no stylesheet, so
+  // it is the case that fails; asserting it here rather than on a Google family
+  // is the whole point.
+  for (const path of ["/font/rit-rachana/", "/font/rit-rachana/glyphs/", "/font/rit-rachana/lookups/"]) {
+    test(`${path} loads the face it sets text in`, async ({ page }) => {
+      await page.goto(`${BASE}${path}`);
+      await page.evaluate(() => document.fonts.ready);
+
+      const loaded = await page.evaluate(async (family) => {
+        const unquote = (name) => name.replace(/^["']|["']$/g, "");
+        const faces = [...document.fonts].filter(
+          (face) => unquote(face.family) === family);
+        if (!faces.length) return "no @font-face for it at all";
+        await Promise.all(faces.map((face) => face.load().catch(() => {})));
+        return faces.some((face) => face.status === "loaded") ? "" : "the file failed";
+      }, "RIT Rachana");
+
+      expect(loaded, `the page sets text in RIT Rachana but ${loaded}`).toBe("");
+    });
+  }
+});

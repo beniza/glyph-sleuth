@@ -353,6 +353,13 @@ def coverage_rows(font, blocks):
 
 
 def evidence_rows(font, script="Mlym"):
+    # The verdict in each row is HarfBuzz's, read from the font's own tables at
+    # build time — it stands whether or not a browser here can load the face.
+    # The drawing beside it does not: with no face to set it in, the browser
+    # substitutes one, and a shaped sequence rendered by a different font under
+    # this font's name is the exact claim this site exists to disprove. So where
+    # we cannot load it, the row is its codepoints and nothing more.
+    drawn = can_draw(font)
     rows = []
     for entry in gen.sequences(script):
         result = ((font.get("results") or {}).get(script) or {}).get(entry["id"])
@@ -365,8 +372,9 @@ def evidence_rows(font, script="Mlym"):
         note = result.get("hb", {}).get("note") or entry.get("note") or ""
         command = result.get("hb", {}).get("command", "")
         rows.append(
-            f'      <tr><th scope="row"><span class="specimen-inline">{esc(entry["out"])}</span>'
-            f'<span class="mono"> {esc(entry["codes"])}</span></th>'
+            '      <tr><th scope="row">'
+            + (f'<span class="specimen-inline">{esc(entry["out"])}</span>' if drawn else "")
+            + f'<span class="mono">{esc(entry["codes"])}</span></th>'
             + "".join(cells) + "</tr>\n"
             f'      <tr class="detail"><td colspan="5"><code class="mono">{esc(command)}</code>'
             + (f'<div class="quiet">{esc(note)}</div>' if note else "")
@@ -578,21 +586,67 @@ def specimen_text(font, blocks=()):
 
 def face_css_of(font):
     """Where the browser can get this face — Google's CDN, or the foundry's own
-    stylesheet. Never a URL of ours; we serve no font files."""
+    stylesheet. Empty where neither exists, including where we serve it
+    ourselves: that is an @font-face rule, not a stylesheet URL."""
     if font.get("source") == "google":
         return ("https://fonts.googleapis.com/css2?family="
                 + font["name"].replace(" ", "+") + "&display=swap")
     return font.get("css") or ""
 
 
+def face_rule(font):
+    """The @font-face for a family whose file we publish ourselves, or "".
+
+    RIT and SIL host no stylesheet, so for years these families were named on
+    pages that drew them in a fallback. Their releases ship a woff2 and an OFL,
+    and gen_index re-serves that file unmodified — so here it becomes a rule
+    pointing at our own copy.
+    """
+    web = font.get("webfont")
+    if not web:
+        return ""
+    return (f'@font-face {{ font-family: "{esc(font["name"])}"; '
+            f'src: url("{link("/" + web)}") format("woff2"); font-display: swap; }}')
+
+
+def can_draw(font):
+    """Can a browser actually set text in this family?
+
+    Every panel that names a family claims that family drew the text. Where the
+    answer here is no the page must say so rather than let the browser
+    substitute something and the verdict beside it read as a measurement of what
+    is on screen.
+    """
+    return bool(face_css_of(font) or font.get("webfont"))
+
+
+def why_not_drawn(font):
+    """Why a browser cannot set text in this family — the two reasons differ.
+
+    Junicode is OFL and we may re-serve it; its release simply ships no webfont
+    build, and we do not make one, because a file we generated is not the file
+    the foundry released. A family with no licence we can read is a different
+    answer entirely, and saying the wrong one about someone's licence is worse
+    than saying nothing.
+    """
+    if font.get("licence"):
+        return ("its release ships no webfont build, and we publish only files a "
+                "foundry built itself")
+    return ("we could not read a licence in its release that permits us to re-serve "
+            "its file")
+
+
 def face_head(font, name):
     """Load the family so the page can set specimens and glyphs in it."""
     css = face_css_of(font)
-    if not css:
+    rule = face_rule(font)
+    if not css and not rule:
         return ""
-    return (f'  <link rel="stylesheet" href="{esc(css)}">\n'
-            f'  <style>.specimen, .specimen-small, .glyph '
-            f'{{ font-family: "{esc(name)}", serif; }}</style>')
+    head = f'  <link rel="stylesheet" href="{esc(css)}">\n' if css else ""
+    return (head + "  <style>"
+            + (rule + " " if rule else "")
+            + f'.specimen, .specimen-small, .specimen-inline, .glyph '
+              f'{{ font-family: "{esc(name)}", serif; }}</style>')
 
 
 def fact(value, label, href=None):
@@ -629,8 +683,12 @@ def font_page(font, blocks):
     # no default script, so this follows the data rather than a constant.
     results = {script: rows for script, rows in (font.get("results") or {}).items() if rows}
 
-    # The face itself, from wherever it is actually distributed. We serve none.
-    face_css = face_css_of(font)
+    # Can the reader's browser get this face at all? Google's CDN, the foundry's
+    # own stylesheet, or our copy of their release build where they publish
+    # neither. Where the answer is no, nothing on this page is set in the family
+    # — a specimen the browser substituted is a picture of the wrong font under
+    # the right name, and the verdicts beside it would read as measurements of it.
+    face_css = can_draw(font)
 
     # The facts strip. Only facts we have — no zeros standing in for things
     # nobody measured.
@@ -672,6 +730,10 @@ def font_page(font, blocks):
                    f'{esc(second)}</p>']
     if facts:
         header += ['      <div class="facts">'] + facts + ['      </div>']
+    if measured and not face_css:
+        header.append('      <p class="quiet">No specimen here: ' + esc(why_not_drawn(font))
+                      + '. Everything below was read from the family’s own font file, '
+                        'and none of it depends on your browser drawing it.</p>')
     if not measured:
         header.append('      <p class="quiet">This family is <strong>not measured yet</strong>'
                       ' — we have not read its released font file, so it carries no coverage,'
@@ -924,7 +986,7 @@ def fonts_index(fonts, blocks=()):
                             f"OpenType script tag or by the Unicode block they cover.")
 
 
-def rule_row(rule):
+def rule_row(rule, drawn=True):
     """One rule, in the script first and the font's glyph names second.
 
     Glyph names are the font developer's private business: nobody should have to
@@ -933,6 +995,12 @@ def rule_row(rule):
     codepoint of its own, so the output is drawn by letting the browser shape
     the input — which is the same substitution, performed rather than described.
     """
+    # With no face to load, every one of these spans would be some other font
+    # drawing this font's rules. The glyph names beside them are the font's own
+    # and stand without it, so that is all the row becomes.
+    if not drawn:
+        return (f'<div class="rule"><span class="names mono">'
+                f'{esc(rule["in"])} → {esc(rule["out"])}</span></div>')
     into = (f'<span class="glyph">{esc(rule["outText"])}</span>' if rule.get("outText")
             else (f'<span class="glyph" data-shaped>{esc(rule["inText"])}</span>'
                   if rule.get("inText") else ""))
@@ -989,10 +1057,38 @@ def feature_styles(inventory):
     return f"  <style>\n{rules}\n  </style>" if rules else ""
 
 
+def unloadable_cell(glyph, why):
+    """What stands where the drawing would be for a family we cannot load.
+
+    Not a blank, and not the character set in the page font: an encoded glyph
+    still has a codepoint worth linking, and everything the layout builds has
+    nothing honest to show at all.
+    """
+    if glyph.get("cp"):
+        return (f'<a class="mono quiet" href="{link(f"/char/{glyph["cp"]:04X}/")}">'
+                f'U+{glyph["cp"]:04X}</a>')
+    return ('<span class="faint" title="nothing here can draw this: '
+            + esc(why) + '">not loadable</span>')
+
+
 def glyphs_page(font, chars_built=()):
     """Every glyph in the family, and what the layout does with each one."""
     inventory = font.get("glyphs") or []
     name = font["name"]
+    # Every cell here is the browser drawing this family. With no face to load,
+    # nine hundred cells would be nine hundred pictures of some other font,
+    # captioned with this font's glyph names — the whole page a fabrication.
+    drawn = can_draw(font)
+    why = why_not_drawn(font)
+    drawn_note = (
+        "Glyphs are drawn by your browser from the family's own distribution. An "
+        "unencoded glyph is shown by setting the input that produces it, so what you "
+        "see is the shaper doing the substitution rather than a picture of it."
+        if drawn else
+        "Nothing here is drawn: " + why_not_drawn(font) + ", so your browser has nothing "
+        "to set these glyphs in — and a cell filled by some other font would be a picture "
+        "of the wrong typeface under this one’s glyph names. Everything else on this "
+        "page was read from the family’s own tables and stands.")
 
     if not inventory:
         body = (f'    <section class="entity-head">\n      <h1>{esc(name)}: glyphs</h1>\n'
@@ -1027,8 +1123,8 @@ def glyphs_page(font, chars_built=()):
             for tag in glyph["consumed"])
         rows.append(
             f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}">'
-            f'<td>{glyph_cell(glyph, chars_built)}</td>'
-            f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
+            + f'<td>{glyph_cell(glyph, chars_built) if drawn else unloadable_cell(glyph, why)}</td>'
+            + f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
             f"<td>{reach}</td>"
             f'<td><div class="chips">{chips}</div></td>'
             f'<td><div class="chips">{used}</div></td></tr>')
@@ -1054,9 +1150,7 @@ def glyphs_page(font, chars_built=()):
          forms and positional variants the layout rules build — and
          {len(orphans):,} are reachable by nothing: no codepoint, and no rule that produces
          them. However well drawn, those cannot appear in text.</p>
-      <p class="quiet">Glyphs are drawn by your browser from the family's own
-         distribution. An unencoded glyph is shown by setting the input that produces it,
-         so what you see is the shaper doing the substitution rather than a picture of it.</p>
+      <p class="quiet">{drawn_note}</p>
     </section>
 
     <section>
@@ -1249,7 +1343,7 @@ def inspect_page():
                             "encodings — computed in your browser.")
 
 
-def lookup_rows(rows):
+def lookup_rows(rows, drawn=True):
     """One row per lookup, grouped under its feature.
 
     A feature is not one lookup: akhn in a Malayalam face is a ligature lookup
@@ -1266,7 +1360,7 @@ def lookup_rows(rows):
                     f'<a href="{link("/feature/" + feature + "/")}">{esc(feature)}</a>'
                     "</th></tr>\n")
             seen = feature
-        rules = "".join(rule_row(rule) for rule in row["rules"])
+        rules = "".join(rule_row(rule, drawn) for rule in row["rules"])
         if not rules:
             rules = ('<div class="quiet">This lookup chains other lookups rather than '
                      'mapping glyphs, so there is nothing to list — only when it fires.</div>'
@@ -1284,6 +1378,9 @@ def lookup_rows(rows):
 def lookups_page(font):
     name = font["name"]
     tables = font.get("tables") or {}
+    # This page draws every rule in the family's own face — and never loaded it,
+    # for any family, so even a Google face drew its rules in the page font.
+    drawn = can_draw(font)
     body = [f'    <section class="claim">\n      <h1>{esc(name)}: lookups</h1>\n'
             f'      <p class="quiet">The working behind the verdicts on '
             f'<a href="{font_href(font)}">the family page</a>: which lookups each feature '
@@ -1303,7 +1400,7 @@ def lookups_page(font):
              "What the font moves: mark attachment, kerning. Positioning rewrites no "
              "glyphs, so the count is how many attachments the lookup carries — a "
              "mark-to-base with no marks never fires.")):
-        rows = lookup_rows(tables.get(key) or [])
+        rows = lookup_rows(tables.get(key) or [], drawn)
         if not rows:
             continue
         body.append(f'    <section>\n      <h2 class="eyebrow">{esc(title)}</h2>\n'
@@ -1315,7 +1412,8 @@ def lookups_page(font):
     return page(f"{name} lookups", "\n".join(body), kind="lookups",
                 code=slug(name),
                 description=f"Every GSUB and GPOS lookup {name} runs, by feature, with the "
-                            f"rules behind them.")
+                            f"rules behind them.",
+                extra_head=face_head(font, name))
 
 
 # How many faces one page will load to draw a character in. A grid of nine
@@ -1331,7 +1429,8 @@ def face_styles(fonts):
 
     Google's CDN takes every family in one request, which is the difference
     between one stylesheet and twenty-four. Foundry families each bring their
-    own. We serve none of it.
+    own stylesheet, or — where they publish none — an @font-face pointing at the
+    copy we serve of their own release build.
     """
     google = [font["name"].replace(" ", "+") for font in fonts
               if font.get("source") == "google"]
@@ -1344,7 +1443,9 @@ def face_styles(fonts):
         if font.get("source") != "google" and font.get("css"):
             links.append(f'  <link rel="stylesheet" href="{esc(font["css"])}">')
 
-    rules = "\n".join(
+    ours = "\n".join(f"    {face_rule(font)}" for font in fonts
+                     if not face_css_of(font) and face_rule(font))
+    rules = (ours + "\n" if ours else "") + "\n".join(
         f'    .f-{esc(font.get("slug") or slug(font["name"]))} '
         f'{{ font-family: "{esc(font["name"])}", serif; }}'
         for font in fonts)
@@ -1550,12 +1651,12 @@ def char_page(cp, name, block, covering, chars_built):
 
     # Drawn, not just named. Two faces can both cover a codepoint and draw it
     # quite differently, and that difference is what a reader came to see.
-    # Only families the browser can actually fetch. RIT publishes its fonts as
-    # GitLab releases and no webfont stylesheet, so eleven RIT families were being
-    # drawn here in whatever the browser fell back to, under their own names — the
+    # Only families the browser can actually fetch — from Google, from the
+    # foundry's stylesheet, or from the copy of their own release build that we
+    # publish where they host none. Before any of that, eleven RIT families were
+    # drawn here in whatever the browser fell back to, under their own names: the
     # page asserting a drawing it could not make. A browser test caught it.
-    drawable = [font for font in covering
-                if font.get("source") == "google" or font.get("css")]
+    drawable = [font for font in covering if can_draw(font)]
     ordered = sorted(drawable, key=lambda f: (f.get("tier") != "measured",
                                               f["name"].lower()))
     drawn = ordered[:DRAWN_LIMIT]
@@ -1570,15 +1671,15 @@ def char_page(cp, name, block, covering, chars_built):
     # What the grid dropped, said out loud: twenty-four tiles where nine hundred
     # families have the character would otherwise read as "twenty-four have it".
     drawn_note = (f"Showing {len(drawn)} of {len(drawable):,} families that cover it and "
-                  "publish a webfont, measured ones first — a page cannot load nine hundred "
+                  "can be loaded, measured ones first — a page cannot load nine hundred "
                   "of them."
                   if len(drawable) > len(drawn) else
                   f"All {len(drawable):,} indexed families that cover this codepoint and "
-                  "publish a webfont.")
+                  "can be loaded.")
     if undrawable:
-        drawn_note += (f" A further {undrawable:,} cover it but publish no webfont stylesheet, "
-                       "so they cannot be drawn here — their coverage still comes from their "
-                       "own font tables.")
+        drawn_note += (f" A further {undrawable:,} cover it but publish no webfont we can "
+                       "load or re-serve, so they cannot be drawn here — their coverage "
+                       "still comes from their own font tables.")
 
     body = f"""    <section class="entity-head">
       <div class="head-row">
@@ -2269,6 +2370,13 @@ def main():
     # own page come from one place.
     for asset in ("style.css", "app.js", "core.js", "inspect.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
+
+    # The one thing we serve that we did not write: a foundry's own woff2 build,
+    # copied unmodified, with the licence that permits it beside it. gen_index
+    # decides what may be here; this only moves it.
+    source = os.path.join(ROOT, "web", "webfonts")
+    if os.path.isdir(source):
+        shutil.copytree(source, os.path.join(OUT_SITE, "webfonts"), dirs_exist_ok=True)
 
     # Which codepoints get a page of their own. Not all 1.1 million: the blocks
     # of the scripts we have depth in, plus the Latin every face carries. The

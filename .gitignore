@@ -25,6 +25,7 @@ site/inspect/
 site/regex/
 site/identify/
 site/compare/
+site/webfonts/
 
 __pycache__/
 *.pyc
@@ -32,4 +33,8 @@ __pycache__/
 venv/
 node_modules/
 test-results/
+
+# The one thing we serve that we did not write: a foundry's own woff2 build,
+# fetched and licence-checked by gen_index. Build output, rebuilt on deploy.
+web/webfonts/
 playwright-report/
