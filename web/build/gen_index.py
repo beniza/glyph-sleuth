@@ -1379,6 +1379,57 @@ def scripts_for(tags):
 
 # ------------------------------------------------------- names and blocks
 
+# Indic_Syllabic_Category and Indic_Positional_Category: what a codepoint *does*
+# in a cluster, and where it sits. This is the vocabulary a script engineer
+# reasons in — that U+093F is a dependent vowel positioned Left is the whole
+# explanation for why it is typed after its consonant and drawn before it — and
+# general category alone cannot say any of it.
+INSC = ["Virama", "Vowel_Dependent", "Vowel_Independent", "Consonant", "Consonant_Dead",
+        "Consonant_Medial", "Consonant_Final", "Consonant_Head_Letter", "Consonant_Killer",
+        "Consonant_Placeholder", "Consonant_Preceding_Repha", "Consonant_Succeeding_Repha",
+        "Consonant_Subjoined", "Consonant_With_Stacker", "Nukta", "Bindu", "Visarga",
+        "Avagraha", "Cantillation_Mark", "Tone_Mark", "Gemination_Mark", "Pure_Killer",
+        "Invisible_Stacker", "Joiner", "Non_Joiner", "Number", "Number_Joiner",
+        "Modifying_Letter", "Syllable_Modifier", "Brahmi_Joining_Number"]
+INPC = ["Top", "Bottom", "Left", "Right", "Top_And_Bottom", "Top_And_Right", "Top_And_Left",
+        "Bottom_And_Right", "Bottom_And_Left", "Left_And_Right", "Top_And_Left_And_Right",
+        "Top_And_Bottom_And_Right", "Top_And_Bottom_And_Left", "Overstruck",
+        "Visual_Order_Left"]
+
+
+def write_props():
+    """Per codepoint: category, cluster role, position, combining class.
+
+    Only the codepoints where any of it is interesting — a role, a position, a
+    combining class, or a mark or format category. That is 6,054 codepoints and
+    190 KB rather than a table of everything, and the rest are plain letters
+    whose category the client can read for itself.
+    """
+    import unicodedata
+    import regex
+
+    key = "props:" + ucd_module().UNICODE_VERSION
+    hit = cached(key)
+    if hit is None:
+        insc = [(name, regex.compile(r"\p{InSC=%s}" % name)) for name in INSC]
+        inpc = [(name, regex.compile(r"\p{InPC=%s}" % name)) for name in INPC]
+        found = {}
+        for cp in range(0x110000):
+            ch = chr(cp)
+            try:
+                unicodedata.name(ch)
+            except ValueError:
+                continue
+            category = unicodedata.category(ch)
+            combining = unicodedata.combining(ch)
+            role = next((name for name, rx in insc if rx.fullmatch(ch)), "")
+            position = next((name for name, rx in inpc if rx.fullmatch(ch)), "")
+            if role or position or combining or category in ("Mn", "Mc", "Me", "Cf"):
+                found[f"{cp:04X}"] = [category, role, position, combining]
+        hit = remember(key, {"props": found})
+    write(os.path.join(OUT_DATA, "props.json"), hit["props"])
+
+
 def write_blocks():
     """The UCD blocks, straight out of the vendored table the companion uses."""
     ucd = ucd_module()
@@ -1482,6 +1533,7 @@ def main():
     print("Unicode tables")
     write_blocks()
     write_names()
+    write_props()
 
     print("Languages (UDHR text + SLDR exemplars)")
     entries = udhr_languages(args.limit)

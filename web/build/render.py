@@ -1165,6 +1165,41 @@ def compare_page(fonts):
                             "shaping verdicts disagree.")
 
 
+# How many faces one block's entry lists. Enough to see that families differ,
+# few enough that a page loading them is still a page.
+BLOCK_FACES = 10
+
+
+def block_faces(fonts, blocks, assigned):
+    """{block: [faces that cover all of it]} — what Inspect draws a string in.
+
+    Per block rather than per string: shipping every family's ranges so the
+    browser could work it out itself is megabytes, and the useful answer for
+    "why do these two render differently" is a handful of families that all
+    cover the script, not an exhaustive list.
+    """
+    out = {}
+    for first, last, name in blocks:
+        total = len(assigned.get(name) or [])
+        if not total:
+            continue
+        faces = [font for font in fonts
+                 if font.get("tier") == "measured"
+                 and (font.get("_blocks") or {}).get(name, 0) >= total
+                 and (font.get("source") == "google" or font.get("css"))]
+        if not faces:
+            continue
+        # Families drawn for this script first: they are the ones whose
+        # differences are about the writing system rather than incidental.
+        faces.sort(key=lambda font: ((font.get("_dominant") or ("", 0, 0))[0] != name,
+                                     font["name"].lower()))
+        out[name] = [{"name": font["name"], "slug": font["slug"],
+                      "source": font.get("source", ""), "css": font.get("css") or "",
+                      "for": (font.get("_dominant") or ("", 0, 0))[0] == name}
+                     for font in faces[:BLOCK_FACES]]
+    return out
+
+
 def inspect_page():
     """Paste anything and read what it is.
 
@@ -1195,6 +1230,7 @@ def inspect_page():
            <a href="{chars}">browse a block</a> to reach one.</p>
       </noscript>
       <div id="inspect-out"></div>
+      <div id="inspect-faces" hidden></div>
     </section>
 """
     return page("Inspect", body.replace("{chars}", link("/block/basic-latin/")),
@@ -2174,6 +2210,14 @@ def write_many(pages, label):
     return written
 
 
+def write_json(name, payload):
+    """A data file the browser reads, beside the pages."""
+    out = os.path.join(OUT_SITE, "data")
+    os.makedirs(out, exist_ok=True)
+    with io.open(os.path.join(out, name), "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
+
+
 def load(name):
     path = os.path.join(ROOT, "web", "data", f"{name}.json")
     if not os.path.exists(path):
@@ -2201,7 +2245,7 @@ def main():
     # core.js goes out too: Inspect imports it at runtime to read the same
     # Unicode tables the build reads, so a codepoint's facts there and on its
     # own page come from one place.
-    for asset in ("style.css", "app.js", "core.js"):
+    for asset in ("style.css", "app.js", "core.js", "inspect.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
 
     # Which codepoints get a page of their own. Not all 1.1 million: the blocks
@@ -2296,7 +2340,12 @@ def main():
     # served: the block ranges, the formulaic name ranges, and the name
     # table itself, which is 1.4 MB and fetched only when a name is asked
     # for.
-    for table in ("blocks.json", "names.txt", "names-formulaic.json"):
+    # What Inspect needs beyond the Unicode tables: which families cover each
+    # block, and the sequences we have authored notes and verdicts for.
+    write_json("block-faces.json", block_faces(fonts["fonts"], blocks, assigned))
+    shutil.copyfile(os.path.join(ROOT, "web", "content", "sequences.json"),
+                    os.path.join(OUT_SITE, "data", "sequences.json"))
+    for table in ("blocks.json", "names.txt", "names-formulaic.json", "props.json"):
         source = os.path.join(ROOT, "web", "data", table)
         if os.path.exists(source):
             os.makedirs(os.path.join(OUT_SITE, "data"), exist_ok=True)
