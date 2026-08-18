@@ -147,9 +147,22 @@ def measure_and_shape(blob, url, label, ranges=None):
     return remember(url, facts)
 
 
+# Hosts our GitHub token belongs to. Anywhere else it is at best useless and at
+# worst a credential handed to a third party: CI sent it to gitlab.com with
+# every RIT download, and GitLab answered 401, which is the polite version of
+# what could have happened.
+GITHUB_HOSTS = ("github.com", "api.github.com", "objects.githubusercontent.com",
+                "codeload.github.com", "release-assets.githubusercontent.com")
+
+
+def for_github(url):
+    host = urllib.parse.urlsplit(url).hostname or ""
+    return host in GITHUB_HOSTS or host.endswith(".githubusercontent.com")
+
+
 def fetch(url, token=None):
     request = urllib.request.Request(url, headers=dict(HEADERS))
-    if token:
+    if token and for_github(url):
         request.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(request, timeout=60) as response:
         return response.read()
@@ -737,30 +750,39 @@ def foundry_family(source, project, token=None):
     key = f"{source['id']}:{project}:{key}"
     label = os.path.basename(urllib.parse.urlsplit(key).path) or project
     licence = ""
-    try:
-        # The probe was cheap; the download only happens on a cache miss — or
-        # when the cache remembers a webfont that is no longer on disk.
-        facts = cached(key)
-        if facts is not None and webfont_present(facts):
-            licence = facts.get("licence", "")
-        else:
+    # The probe was cheap; the download only happens on a cache miss — or when
+    # the cache remembers a webfont that is no longer on disk.
+    facts = cached(key)
+    if facts is None or not webfont_present(facts):
+        try:
             found, members = faces()
             if not found:
                 return foundry_record(fallback_name, source["id"], page, css=css)
             label, blob = found[0]
-            facts = dict(measure_and_shape(blob, key, label))
+            fresh = dict(measure_and_shape(blob, key, label))
             licence, text = find_licence(members)
             web = webfont_for(label, members) if licence else None
-            facts["licence"] = licence
+            fresh["licence"] = licence
             # Recorded even when it is None, so a warm cache can tell "we looked
             # and there was nothing to serve" from "we never looked".
-            facts["webfont"] = (publish_webfont(source["id"], project, web,
+            fresh["webfont"] = (publish_webfont(source["id"], project, web,
                                                 members[web], text)
                                 if web else None)
-            remember(key, facts)
-    except Exception as error:
-        print(f"  !! {project}: {error}")
-        return foundry_record(fallback_name, source["id"], page, css=css)
+            remember(key, fresh)
+            facts = fresh
+        except Exception as error:
+            # A download that fails must not cost us a measurement we already
+            # have. Twelve RIT families went from measured to "not measured yet"
+            # in one build because the fetch 401'd and the whole record was
+            # thrown away with it — the coverage, the tags, the shaping, all of
+            # it read from the release weeks earlier and still true. What the
+            # failure costs is the webfont, and only until the next build.
+            print(f"  !! {project}: {error}")
+            if facts is None:
+                return foundry_record(fallback_name, source["id"], page, css=css)
+            facts = dict(facts)
+            facts["webfont"] = None
+    licence = facts.get("licence", licence)
 
     facts = dict(facts)
     facts["provenance"] = {"file": label,

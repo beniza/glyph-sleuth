@@ -1,12 +1,14 @@
 """Smallest thing that fails if the index generator breaks: `python test_gen.py`.
 
 Covers the range arithmetic, the family-merging rule, the stylesheet reading,
-and the constraint the whole design rests on: nothing here downloads a font.
+and the constraint the whole design rests on: a font file is published only
+when a licence in its own release permits it.
 """
 import hashlib
 import io
 import json
 import os
+import urllib.error
 import sys
 import zipfile
 
@@ -157,6 +159,60 @@ def test_only_a_licensed_font_is_ever_served():
     assert source.count('"wb"') + source.count("'wb'") == 1, "something else writes binary"
     assert gen_index.OUT_WEBFONTS.endswith(os.path.join("web", "webfonts"))
     assert gen_index.OUT_DATA.endswith(os.path.join("web", "data"))
+
+
+def test_a_failed_download_keeps_the_measurement_we_already_had():
+    """A family measured last week is still measured when today's fetch fails.
+
+    This is how twelve RIT families lost their coverage, tags and shaping in one
+    build: the download 401'd, the exception handler returned a stub, and a
+    perfectly good cached measurement went out as "not measured yet". A network
+    failure costs the webfont and nothing else.
+    """
+    source = {"id": "rit", "host": "gitlab", "group": "rit-fonts",
+              "page": "https://gitlab.com/rit-fonts/{project}", "skip": set()}
+
+    def boom():
+        raise urllib.error.HTTPError("u", 401, "Unauthorized", {}, None)
+
+    # No pytest fixture: this file is also run as a plain script by CI, where a
+    # `monkeypatch` argument would just be a TypeError.
+    probe, cache = gen_index.release_probe, gen_index.cached
+    gen_index.release_probe = lambda *a, **k: ("1.5.2", "1.5.2", boom)
+    gen_index.cached = lambda url: {"ranges": [[0x0D15, 0x0D15]], "tags": ["mlym"],
+                                    "family": "RIT Rachana", "licence": "OFL-1.1",
+                                    "webfont": "webfonts/rit/RIT-Rachana/x.woff2",
+                                    "read": "2026-08-01"}
+    try:
+        record = gen_index.foundry_family(source, "RIT-Rachana")
+    finally:
+        gen_index.release_probe, gen_index.cached = probe, cache
+
+    assert record["tier"] == "measured", "a 401 turned a measured family into a stub"
+    assert record["ranges"] == [[0x0D15, 0x0D15]]
+    assert record["provenance"]["read"] == "2026-08-01", "provenance claims a fresh read"
+    # The one thing the failure does cost: we cannot promise a file we did not
+    # write, so the page falls back to saying it cannot draw this family.
+    assert record["webfont"] is None
+
+
+def test_the_github_token_only_goes_to_github():
+    """CI hands the generator a GITHUB_TOKEN, and it was attached to every
+    download — including RIT's, which are on gitlab.com. GitLab answered 401 and
+    twelve Malayalam families dropped to "not measured yet" in one build. The
+    401 was the lucky outcome: the unlucky one is a CI credential sitting in
+    another company's access log.
+    """
+    assert gen_index.for_github("https://api.github.com/repos/silnrsi/font-andika/releases")
+    assert gen_index.for_github("https://objects.githubusercontent.com/x/y.tar.xz")
+    assert gen_index.for_github("https://release-assets.githubusercontent.com/a/b.zip")
+    assert not gen_index.for_github(
+        "https://gitlab.com/rit-fonts/RIT-Rachana/-/jobs/artifacts/1.5.2/download?job=build-tag")
+    assert not gen_index.for_github("https://smc.org.in/fonts/manjari.css")
+    assert not gen_index.for_github("https://fonts.gstatic.com/s/x/v9/abc.woff2")
+    # Not a substring match: a host that merely ends in the right letters is a
+    # different host, and that is how a token reaches somewhere it should not.
+    assert not gen_index.for_github("https://github.com.example.net/x")
 
 
 def test_an_unrecognised_licence_publishes_nothing():
