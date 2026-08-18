@@ -154,6 +154,37 @@ def test_dominant_script_is_the_font_s_own():
                                  FULL_BLOCKS) is None
 
 
+def test_precomputed_coverage_agrees_with_walking_it():
+    """The build works out each family's block coverage once, by bisection.
+
+    Asking per call was 327 range walks, and the language pages asked once per
+    fitting family per language — eighteen seconds a page. The fast path has to
+    give exactly the same answers as the slow one, or the pages are quietly
+    wrong in a way no reader could catch.
+    """
+    blocks = [[0x0020, 0x007F, "Basic Latin"], [0x00A0, 0x00FF, "Latin-1 Supplement"],
+              [0x0900, 0x097F, "Devanagari"], [0x0D00, 0x0D7F, "Malayalam"]]
+    cases = [
+        {"name": "Latin only", "ranges": [[0x0020, 0x007E]]},
+        {"name": "Deva face", "ranges": [[0x0020, 0x007E], [0x0900, 0x097F]]},
+        {"name": "Straddles a boundary", "ranges": [[0x0070, 0x00B0]]},
+        {"name": "Two scripts", "ranges": [[0x0900, 0x093F], [0x0D00, 0x0D7F]]},
+        {"name": "A few strays", "ranges": [[0x0020, 0x007E], [0x0900, 0x0903]]},
+        {"name": "Nothing", "ranges": []},
+    ]
+    slow = [(render.blocks_covered(dict(font), blocks),
+             render.dominant_block(dict(font), blocks)) for font in cases]
+    render.prepare_fonts(cases, blocks)
+    fast = [(render.blocks_covered(font, blocks), render.dominant_block(font, blocks))
+            for font in cases]
+    assert slow == fast, [(a, b) for a, b in zip(slow, fast) if a != b]
+
+    # And the precompute really did fill in per-block counts.
+    deva = cases[1]
+    assert deva["_blocks"]["Devanagari"] == 128
+    assert deva["_dominant"][0] == "Devanagari"
+
+
 def test_index_filters_on_what_engineers_ask():
     """Script tags and block coverage, which is what the questions are about:
     "which families declare dev2", "which cover Arabic"."""

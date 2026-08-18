@@ -56,9 +56,13 @@ incomplete, which is worse.
       is never downloaded, parsed or shaped again — 7.3s to 1.3s over four
       families locally. Facts only: caching the bytes would put font binaries on
       disk, which the policy rules out and a test enforces.
-- [x] **Page writing is parallel.** It was 19ms of disk wait per page and 33,000
-      pages — the single longest step in the build at 14m29s. Sixteen workers
-      took the local render from 9m16s to 1m30s.
+- [x] **Page writing is parallel.** 19ms of disk wait per page, 33,000 pages.
+      Sixteen workers took the local render from 9m16s to 1m30s.
+- [x] **Block coverage is computed once per family, by bisection.** Asking per
+      call meant 327 range walks, and the language pages asked once per fitting
+      family per language through `made_for`/`dominant_block` — 18 seconds a page,
+      526 pages. Now 0.10s a page, with a test that the fast path returns exactly
+      what walking it returned.
 
 ## 3 · Claims we cannot fully stand behind yet
 

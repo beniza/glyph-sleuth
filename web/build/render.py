@@ -418,8 +418,66 @@ COMMON_BLOCKS = {
 SCRIPT_FLOOR = 24
 
 
+def prepare_fonts(fonts, blocks):
+    """Work out each family's block coverage once, for the whole build.
+
+    Asking "how much of every block does this face cover" was 327 range walks
+    per call, and the language pages called it — through made_for and
+    dominant_block — once per fitting family per language. That was eighteen
+    seconds a page, and there are 526 language pages.
+
+    One pass over the font's own ranges answers it instead: find the block each
+    range starts in by bisection, then walk forward while the blocks overlap.
+    """
+    import bisect
+
+    starts = [block[0] for block in blocks]
+    for font in fonts:
+        counts = {}
+        for first, last in font.get("ranges") or []:
+            at = max(bisect.bisect_right(starts, first) - 1, 0)
+            for index in range(at, len(blocks)):
+                block_first, block_last, name = blocks[index]
+                if block_first > last:
+                    break
+                overlap = min(block_last, last) - max(block_first, first) + 1
+                if overlap > 0:
+                    counts[name] = counts.get(name, 0) + overlap
+        font["_blocks"] = counts
+        font["_dominant"] = dominant_from(counts, blocks)
+    return fonts
+
+
+def block_sizes(blocks):
+    return {name: last - first + 1 for first, last, name in blocks}
+
+
+def dominant_from(counts, blocks):
+    """The block a face exists for, from its per-block counts.
+
+    "Largest block" alone is the wrong test: a workhorse carrying a bit of
+    everything is for none of them in particular, so the block has to dominate
+    what the face has outside Latin and punctuation.
+    """
+    sizes = block_sizes(blocks)
+    spend = [(name, covered, sizes.get(name, covered))
+             for name, covered in counts.items()
+             if name not in COMMON_BLOCKS and covered >= min(SCRIPT_FLOOR, sizes.get(name, 1))]
+    if not spend:
+        return None
+    total_outside = sum(covered for _name, covered, _total in spend)
+    best = max(spend, key=lambda row: row[1])
+    return best if best[1] >= total_outside * 0.5 else None
+
+
 def blocks_covered(font, blocks, floor=SCRIPT_FLOOR):
     """[(name, covered, total)] for the blocks this face meaningfully covers."""
+    sizes = block_sizes(blocks)
+    counts = font.get("_blocks")
+    if counts is not None:
+        return [(name, covered, sizes.get(name, covered))
+                for first, last, name in blocks
+                if (covered := counts.get(name, 0)) >= min(floor, last - first + 1)]
     out = []
     for first, last, name in blocks:
         covered = count_in_range(font.get("ranges") or [], first, last)
@@ -435,6 +493,8 @@ def dominant_block(font, blocks):
     everything is for none of them in particular. The block has to actually
     dominate what the face has outside Latin and punctuation.
     """
+    if "_dominant" in font:
+        return font["_dominant"]
     spend = [(name, covered, total) for name, covered, total in blocks_covered(font, blocks)
              if name not in COMMON_BLOCKS]
     if not spend:
@@ -2079,6 +2139,7 @@ def main():
     languages = (load("languages") or {}).get("languages", [])
 
     blocks = (load("blocks") or {}).get("blocks", [])
+    prepare_fonts(fonts["fonts"], blocks)
 
     for asset in ("style.css", "app.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
