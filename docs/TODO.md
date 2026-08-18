@@ -50,12 +50,15 @@ incomplete, which is worse.
       degrade gracefully: a moved URL keeps the last good record and marks it
       stale." Neither half exists — a moved URL currently just becomes a stub
       with a printed warning, and the previous good measurement is lost
-- [x] **Facts are now cached between builds**, keyed on the URL of the exact
-      file they came from, and restored in CI by `actions/cache`. A cheap probe
-      (a stylesheet, a release JSON) establishes the key, so an unchanged release
-      is never downloaded, parsed or shaped again — 7.3s to 1.3s over four
-      families locally. Facts only: caching the bytes would put font binaries on
-      disk, which the policy rules out and a test enforces.
+- [x] **Everything derived is cached between builds**, restored in CI by
+      `actions/cache`. Font measurements are keyed on the URL of the exact file
+      they came from, behind a cheap probe (a stylesheet, a release JSON) so an
+      unchanged release is never downloaded. The 527 language records — a UDHR
+      fetch and an SLDR fetch each — are keyed on the UDHR file id; the script
+      scan and the 1.1-million-codepoint name table are keyed on the Unicode
+      version. Cold 1m45s, warm 11.5s at `--limit 12`. Facts only: caching the
+      bytes would put font binaries on disk, which the policy rules out and a
+      test enforces.
 - [x] **Page writing is parallel.** 19ms of disk wait per page, 33,000 pages.
       Sixteen workers took the local render from 9m16s to 1m30s.
 - [x] **Block coverage is computed once per family, by bisection.** Asking per

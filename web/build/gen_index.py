@@ -84,6 +84,7 @@ SOURCES = [
                "alerque/libertinus", "aliftype/xits", "rastikerdar/vazirmatn"]},
 ]
 
+NEWLINE = chr(10)   # written explicitly, so a build on Windows still emits LF
 OUT_DATA = os.path.join(ROOT, "web", "data")
 # Stamped onto every measurement: a verdict is about the release it was read
 # from, on the day it was read, not a permanent property of the family.
@@ -120,7 +121,8 @@ def remember(url, facts):
     # The day the file was actually read, kept with the facts. A cached
     # measurement re-stamped with today's date would claim we looked at a
     # release we have not opened since — provenance has to survive the cache.
-    facts["read"] = TODAY
+    if isinstance(facts, dict) and "ranges" in facts:
+        facts["read"] = TODAY
     os.makedirs(CACHE, exist_ok=True)
     path = os.path.join(CACHE, cache_key(url) + ".json")
     with io.open(path, "w", encoding="utf-8") as handle:
@@ -1224,6 +1226,21 @@ def udhr_sample(entry, paragraphs=3):
 
 
 def language(entry):
+    """One language's sample text and exemplar set.
+
+    Two network fetches per language — the UDHR translation and the SLDR
+    exemplar set — times 527 languages, which was five and a half minutes of
+    the build. Keyed on the UDHR file id, since that is what identifies the
+    translation we picked.
+    """
+    key = "lang:" + entry["id"]
+    hit = cached(key)
+    if hit is not None:
+        return hit or None
+    return remember(key, read_language(entry)) or None
+
+
+def read_language(entry):
     entry = dict(entry)
     entry["sample"] = udhr_sample(entry)
     try:
@@ -1232,7 +1249,7 @@ def language(entry):
     except Exception:
         entry["exemplars"] = ""
     if not entry["sample"] and not entry["exemplars"]:
-        return None
+        return {}
     return entry
 
 
@@ -1377,6 +1394,19 @@ def write_names():
     those from a range list and we keep the download to the names that are real.
     """
     import unicodedata
+
+    # The same table until the standard moves, and building it means asking
+    # unicodedata about 1.1 million codepoints.
+    key = "names:" + ucd_module().UNICODE_VERSION
+    hit = cached(key)
+    if hit is not None:
+        path = os.path.join(OUT_DATA, "names.txt")
+        with io.open(path, "w", encoding="utf-8", newline=NEWLINE) as handle:
+            handle.write(hit["names"])
+        print("  wrote %s — from cache, %s names" % (path, hit["count"]))
+        write(os.path.join(OUT_DATA, "names-formulaic.json"), hit["formulaic"])
+        return
+
     lines, formulaic, run = [], [], None
     for cp in range(0x110000):
         try:
@@ -1398,8 +1428,10 @@ def write_names():
     with io.open(path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines))
     print(f"  wrote {path} — {os.path.getsize(path) / 1e6:.1f} MB, {len(lines)} names")
-    write(os.path.join(OUT_DATA, "names-formulaic.json"),
-          [[p, lo, hi] for p, lo, hi in formulaic])
+    ranges = [[p, lo, hi] for p, lo, hi in formulaic]
+    write(os.path.join(OUT_DATA, "names-formulaic.json"), ranges)
+    remember(key, {"names": NEWLINE.join(lines), "count": len(lines),
+                   "formulaic": ranges})
 
 
 def write(path, payload):
@@ -1465,7 +1497,16 @@ def main():
           {"languages": languages, "count": len(languages)})
 
     print("Scripts (Unicode blocks each one spans)")
-    scripts = script_index(languages)
+    # The scan asks the regex engine about every codepoint below 0x30000 for
+    # every script — minutes of work that only changes when Unicode or the
+    # langtags script list moves, so it is keyed on both.
+    codes = ",".join(sorted({code for lang in languages
+                             for code in (lang.get("scripts") or [])}))
+    key = "scripts:%s:%s" % (ucd_module().UNICODE_VERSION,
+                             hashlib.sha1(codes.encode("utf-8")).hexdigest())
+    scripts = cached(key)
+    if scripts is None:
+        scripts = remember(key, script_index(languages))
     print(f"  scripts: {len(scripts)} with "
           f"{sum(len(s['blocks']) for s in scripts)} blocks between them")
     write(os.path.join(OUT_DATA, "scripts.json"),
