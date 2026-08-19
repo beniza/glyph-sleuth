@@ -508,6 +508,42 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert 'data-try="italic"' in render.font_page(both, BLOCKS)
 
 
+def test_every_face_we_serve_gets_its_own_rule():
+    # One @font-face per face, each carrying the weight and style that face
+    # declares. Without the descriptors all four rules claim to be the regular,
+    # the browser uses whichever it loaded last, and the weight control moves
+    # nothing while looking like it does.
+    family = dict(MANJARI, source="rit", css=None, licence="OFL-1.1",
+                  name="RIT Rachana", faces=["400", "700", "400i"],
+                  webfont="webfonts/rit/R/R-Regular.woff2",
+                  webfonts={"400": "webfonts/rit/R/R-Regular.woff2",
+                            "700": "webfonts/rit/R/R-Bold.woff2",
+                            "400i": "webfonts/rit/R/R-Italic.woff2"})
+    rule = render.face_rule(family)
+    assert rule.count("@font-face") == 3
+    assert "R-Bold.woff2\") format(\"woff2\"); font-weight: 700; font-style: normal" in rule
+    assert "R-Italic.woff2\") format(\"woff2\"); font-weight: 400; font-style: italic" in rule
+
+    page = render.font_page(family, BLOCKS)
+    assert '<option value="700">' in page
+    assert 'data-try="italic"' in page
+
+
+def test_a_variable_face_is_offered_across_its_axis():
+    # Two endpoints in the face list, but every round weight between them is a
+    # real thing to ask for — the file covers them all.
+    variable = dict(MANJARI, source="rit", css=None, licence="OFL-1.1", name="Vazirmatn",
+                    faces=["100", "900"], axes=[{"tag": "wght", "min": 100, "max": 900}],
+                    webfont="webfonts/libre/v/V.woff2",
+                    webfonts={"100 900": "webfonts/libre/v/V.woff2"})
+    rule = render.face_rule(variable)
+    assert rule.count("@font-face") == 1
+    assert "font-weight: 100 900" in rule
+    page = render.font_page(variable, BLOCKS)
+    for weight in ("100", "400", "900"):
+        assert f'<option value="{weight}">' in page
+
+
 def test_try_it_is_absent_where_we_cannot_draw_the_family():
     # A box that sets your text in a font the browser cannot load would set it in
     # some other font and present that as this family — the same lie the glyph

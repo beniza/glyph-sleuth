@@ -518,6 +518,58 @@ def publish_webfont(source_id, project, member, blob, licence_text):
     return f"webfonts/{slug_}/{file}"
 
 
+def publish_family(source_id, project, picked, members, licence, text, facts):
+    """Serve every face of this family the release ships, not only the regular.
+
+    Coverage, tags and shaping stay the regular's: they are what the family page
+    reports, and reporting the Bold's cmap under the family's name would be a
+    different font's numbers. What the other faces are for is the weight and
+    italic controls, which until now foundry families could not have — we read
+    one face, so we did not know a second existed, and offering a weight we had
+    not loaded would have been the browser faking a bold.
+
+    A variable face is one file and one @font-face over a weight *range*, so it
+    ships alone and carries its axis instead of a list.
+
+    Returns the keys to merge into the record: `faces`, `webfont` (the regular,
+    which is what "can we draw this at all" turns on) and `webfonts`.
+    """
+    empty = {"faces": [], "webfont": None, "webfonts": {}}
+    if not licence:
+        return empty
+
+    variable = wght_axis(facts)
+    if variable:
+        web = webfont_for(picked, members)
+        if not web:
+            return empty
+        path = publish_webfont(source_id, project, web, members[web], text)
+        low, high = variable
+        return {"faces": [str(low), str(high)], "webfont": path,
+                "webfonts": {f"{low} {high}": path}}
+
+    faces, webfonts, regular = [], {}, None
+    for member, weight, italic in sibling_faces(picked, members):
+        web = webfont_for(member, members)
+        if not web:
+            continue                      # no webfont build for this face
+        key = face_key(weight, italic)
+        if key in webfonts:
+            continue                      # two files claiming one face: first wins
+        webfonts[key] = publish_webfont(source_id, project, web, members[web], text)
+        faces.append(key)
+        if member == picked:
+            regular = webfonts[key]
+
+    if not webfonts:
+        return empty
+    # The face we measured is the one the specimen is set in. If its own build is
+    # missing but a sibling's is not, we still have something to draw with.
+    return {"faces": sorted(faces, key=lambda k: (k.endswith("i"), int(k.rstrip("i")))),
+            "webfont": regular or next(iter(webfonts.values())),
+            "webfonts": webfonts}
+
+
 def webfont_present(facts):
     """Is the file a cached measurement claims we published still on disk?
 
@@ -580,6 +632,77 @@ def pick_faces(members):
                    if not any(word in os.path.basename(f).lower() for word in NOT_REGULAR)]
         picked.append((regular or faces)[0])
     return picked
+
+
+def face_style(blob):
+    """(weight, italic, family) from a face's own tables.
+
+    Read from `OS/2`, not guessed from the filename. A file called
+    `Foo-Medium.ttf` is a claim; `usWeightClass` is what the browser will match
+    against, and the two disagree often enough that guessing would put a weight
+    in the control that never arrives when it is picked.
+    """
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(io.BytesIO(blob), fontNumber=0, lazy=True)
+    os2 = font.get("OS/2")
+    weight = int(getattr(os2, "usWeightClass", 400) or 400)
+    if os2 is not None:
+        italic = bool(getattr(os2, "fsSelection", 0) & 0x01)
+    else:
+        italic = bool(font["head"].macStyle & 0x02)
+    family = str(font["name"].getBestFamilyName() or "")
+    font.close()
+    return weight, italic, family
+
+
+def wght_axis(facts):
+    """(min, max) of a variable font's weight axis, or None.
+
+    One file covering 100–900 is one @font-face with a weight *range*, not nine
+    faces. Missing that would either offer a single weight for a font that has
+    every one of them, or ask for eight files that do not exist.
+    """
+    for axis in facts.get("axes") or []:
+        if axis.get("tag") == "wght":
+            return int(axis["min"]), int(axis["max"])
+    return None
+
+
+def face_key(weight, italic):
+    """Google's own notation for a face — "400", "700i" — so a foundry family
+    and a Google family describe their weights the same way and the page needs
+    one code path."""
+    return f"{weight}{'i' if italic else ''}"
+
+
+def sibling_faces(picked, members):
+    """Every face in the release belonging to the same family as `picked`.
+
+    Grouped on the family name each file declares, not on its filename. RIT's
+    archives are the reason: `pick_faces` splits a stem on "-", so every
+    RIT-Something face groups under "rit", and a release carrying two families
+    would hand back one. Reading the name table costs a parse per face and is
+    simply correct.
+
+    Returns [(member, weight, italic)], the picked face included.
+    """
+    try:
+        _weight, _italic, wanted = face_style(members[picked])
+    except Exception:
+        return []
+
+    found = []
+    for name in sorted(members):
+        if not is_font_member(name):
+            continue
+        try:
+            weight, italic, family = face_style(members[name])
+        except Exception:
+            continue                      # an unreadable sibling is not fatal
+        if squash(family) == squash(wanted):
+            found.append((name, weight, italic))
+    return found
 
 
 def measure(blob):
@@ -761,13 +884,11 @@ def foundry_family(source, project, token=None):
             label, blob = found[0]
             fresh = dict(measure_and_shape(blob, key, label))
             licence, text = find_licence(members)
-            web = webfont_for(label, members) if licence else None
             fresh["licence"] = licence
-            # Recorded even when it is None, so a warm cache can tell "we looked
-            # and there was nothing to serve" from "we never looked".
-            fresh["webfont"] = (publish_webfont(source["id"], project, web,
-                                                members[web], text)
-                                if web else None)
+            # Recorded even when they are empty, so a warm cache can tell "we
+            # looked and there was nothing to serve" from "we never looked".
+            fresh.update(publish_family(source["id"], project, label, members,
+                                        licence, text, fresh))
             remember(key, fresh)
             facts = fresh
         except Exception as error:
@@ -782,6 +903,7 @@ def foundry_family(source, project, token=None):
                 return foundry_record(fallback_name, source["id"], page, css=css)
             facts = dict(facts)
             facts["webfont"] = None
+            facts["webfonts"] = {}
     licence = facts.get("licence", licence)
 
     facts = dict(facts)

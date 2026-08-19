@@ -320,6 +320,14 @@ def try_it(font, name):
     faces = font.get("faces") or []
     weights = sorted({f.rstrip("i") for f in faces if f.rstrip("i").isdigit()}, key=int)
     italic = any(f.endswith("i") for f in faces)
+
+    # A variable face is one file covering everything between two numbers, so the
+    # choices are the round weights inside its own range — not the two endpoints,
+    # which is all the face list can say.
+    axis = next((a for a in (font.get("axes") or []) if a.get("tag") == "wght"), None)
+    if axis:
+        low, high = int(axis["min"]), int(axis["max"])
+        weights = [str(w) for w in range(100, 1000, 100) if low <= w <= high] or [str(low)]
     features = [t for t in (font.get("features") or []) if t not in ("aalt",)]
 
     controls = ['        <label class="try-size"><span class="quiet">size</span>'
@@ -737,8 +745,24 @@ def face_rule(font):
     web = font.get("webfont")
     if not web:
         return ""
-    return (f'@font-face {{ font-family: "{esc(font["name"])}"; '
-            f'src: url("{link("/" + web)}") format("woff2"); font-display: swap; }}')
+    # One rule per face the release ships, each carrying the weight and style the
+    # face declares, so `font-weight: 700` reaches the real bold instead of the
+    # browser smearing the regular into one. A variable face is a single file
+    # over a range and its key says so: "100 900".
+    faces = font.get("webfonts") or {web: web}
+    rules = []
+    for key, path in sorted(faces.items()):
+        if key == web:                                  # a record from before faces were read
+            weight, style = "400", "normal"
+        elif " " in key:                                # variable: a weight range
+            weight, style = key, "normal"
+        else:
+            weight = key.rstrip("i") or "400"
+            style = "italic" if key.endswith("i") else "normal"
+        rules.append(f'@font-face {{ font-family: "{esc(font["name"])}"; '
+                     f'src: url("{link("/" + path)}") format("woff2"); '
+                     f'font-weight: {esc(weight)}; font-style: {style}; font-display: swap; }}')
+    return " ".join(rules)
 
 
 def can_draw(font):

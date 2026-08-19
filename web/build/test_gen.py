@@ -259,7 +259,8 @@ def test_parsed_fonts_are_not_kept():
 
 
 def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
-                extra_glyphs=()):
+                extra_glyphs=(), family="Test Face", style="Regular",
+                weight=400, italic=False):
     """A real font, built in memory, so the parser is tested against the thing
     it actually parses rather than a stub of it."""
     from fontTools.fontBuilder import FontBuilder
@@ -274,9 +275,9 @@ def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
     builder.setupGlyf({name: empty for name in names})
     builder.setupHorizontalMetrics({name: (500, 0) for name in names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupNameTable({"familyName": "Test Face", "styleName": "Regular",
+    builder.setupNameTable({"familyName": family, "styleName": style,
                             "version": "1.234"})
-    builder.setupOS2()
+    builder.setupOS2(usWeightClass=weight, fsSelection=0x01 if italic else 0x40)
     builder.setupPost()
     if axes:
         builder.setupFvar(axes, [])
@@ -285,6 +286,57 @@ def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
     blob = io.BytesIO()
     builder.save(blob)
     return blob.getvalue()
+
+
+def test_a_face_is_weighed_by_its_own_tables_not_its_filename():
+    # A file called Foo-Medium.ttf is a claim; usWeightClass is what the browser
+    # matches against. Where they disagree, guessing from the name would put a
+    # weight in the control that never arrives when someone picks it.
+    blob = sample_font(style="Medium", weight=500)
+    assert gen_index.face_style(blob) == (500, False, "Test Face")
+    assert gen_index.face_style(sample_font(weight=700, italic=True))[:2] == (700, True)
+    assert gen_index.face_key(700, True) == "700i"
+    assert gen_index.face_key(400, False) == "400"
+
+
+def test_siblings_are_grouped_by_family_name_not_by_filename():
+    # RIT's archives are why. pick_faces splits a stem on "-", so every
+    # RIT-Something face lands under "rit" — and a release carrying two families
+    # would hand back one of them wearing the other's name.
+    members = {
+        "ttf/RIT-Rachana-Regular.ttf": sample_font(family="RIT Rachana"),
+        "ttf/RIT-Rachana-Bold.ttf": sample_font(family="RIT Rachana", weight=700),
+        "ttf/RIT-Unny-Regular.ttf": sample_font(family="RIT Unny"),
+    }
+    found = gen_index.sibling_faces("ttf/RIT-Rachana-Regular.ttf", members)
+    assert sorted(name for name, _w, _i in found) == [
+        "ttf/RIT-Rachana-Bold.ttf", "ttf/RIT-Rachana-Regular.ttf"]
+    assert sorted(w for _n, w, _i in found) == [400, 700]
+
+
+def test_only_the_regular_is_measured_however_many_faces_ship():
+    # The family page reports coverage, script tags and shaping verdicts. Those
+    # are the regular's; the Bold's cmap under the family's name would be a
+    # different font's numbers.
+    members = {
+        "X-Regular.ttf": sample_font(family="X", codepoints=(0x0D15,)),
+        "X-Bold.ttf": sample_font(family="X", weight=700, codepoints=(0x0D15, 0x0D16)),
+    }
+    assert gen_index.pick_faces(members) == ["X-Regular.ttf"]
+    assert gen_index.measure(members["X-Regular.ttf"])["ranges"] == [[0x0D15, 0x0D15]]
+
+
+def test_a_variable_face_is_one_file_over_a_range():
+    # One file covering 100-900 is one @font-face with a weight range, not nine
+    # faces. Missing that would ask for eight files that do not exist.
+    assert gen_index.wght_axis({"axes": [{"tag": "wght", "min": 100, "max": 900}]}) == (100, 900)
+    assert gen_index.wght_axis({"axes": [{"tag": "wdth", "min": 75, "max": 125}]}) is None
+    assert gen_index.wght_axis({}) is None
+
+
+def test_nothing_is_published_without_a_licence_however_many_faces():
+    published = gen_index.publish_family("rit", "X", "X-Regular.ttf", {}, "", "", {})
+    assert published == {"faces": [], "webfont": None, "webfonts": {}}
 
 
 def test_measure_coverage():

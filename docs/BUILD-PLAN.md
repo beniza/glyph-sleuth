@@ -138,8 +138,13 @@ distinction is redistribution, not reading. So:
 
   Both foundries ship a `woff2` build and their licence in the same archive. So
   `gen_index` reads the licence out of the release, and where it is one that
-  permits redistribution (`REDISTRIBUTABLE`) it writes that foundry's own file,
-  byte for byte, to `web/webfonts/`. We convert nothing and rename nothing: a
+  permits redistribution (`REDISTRIBUTABLE`) it writes that foundry's own files,
+  byte for byte, to `web/webfonts/` — every face of the family, not only the
+  regular, so the weight and italic controls can offer faces that exist. Which
+  face is which comes from each file's own `OS/2`, and which files belong to the
+  family comes from each file's own name table; neither is guessed from a
+  filename. Coverage, script tags and shaping stay the regular's, because those
+  are what the family page reports. We convert nothing and rename nothing: a
   release with no `woff2` gets no webfont, because a file we generated is not
   the file the foundry released. The gate denies by default — an unreadable
   licence means no webfont — and `test_gen.py` asserts there is exactly one

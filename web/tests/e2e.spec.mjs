@@ -171,6 +171,43 @@ test.describe("Try it", () => {
     expect(specimen).not.toBe("48px");
   });
 
+  test("a foundry family's weights are real files, not a smeared regular", async ({ page }) => {
+    // Foundry families had no weight control at all: we read one face from the
+    // release, so we did not know a second existed. Now every face ships, and
+    // this is the assertion that they are separate files — a browser faking a
+    // bold from one outline set gives the same widths at every step, and four
+    // increasing widths cannot come from one file.
+    await page.goto(`${BASE}/font/charis/`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.fill('[data-try="text"]', "Weights and styles");
+    await page.click('[data-try="go"]');
+    await expect(page.locator(".try-out")).toBeVisible();
+
+    const drawn = () => page.locator(".try-out").evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().width;
+    });
+
+    const widths = [];
+    for (const weight of ["400", "500", "600", "700"]) {
+      await page.selectOption('[data-try="weight"]', weight);
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+      widths.push(await drawn());
+    }
+    for (let i = 1; i < widths.length; i += 1) {
+      expect(widths[i], `weight ${i} drew exactly as the one before it`)
+        .toBeGreaterThan(widths[i - 1]);
+    }
+
+    // And the italic is the family's own italic face, not an oblique transform.
+    await page.check('[data-try="italic"]');
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    const style = await page.locator(".try-out").evaluate(
+      (node) => getComputedStyle(node).fontStyle);
+    expect(style).toBe("italic");
+  });
+
   test("turning a feature off changes what is drawn", async ({ page }) => {
     // akhn builds the Malayalam conjuncts. With it off the same codepoints draw
     // as separate letters, which is the difference the panel exists to show.
