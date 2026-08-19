@@ -173,23 +173,39 @@ test.describe("Try it", () => {
 
   test("the weights on offer are real files, not a smeared regular", async ({ page }) => {
     // Foundry families had no weight control at all: we read one face from the
-    // release, so we did not know a second existed. Now every face ships. The
-    // assertion is that the options are separate files — a browser faking a bold
-    // from one outline set gives the same width at every step, so widths that
-    // grow cannot have come from one file. Which family answers this is the
-    // index's business; that a foundry family *can* is pinned in test_render.
+    // release, so we did not know a second existed. Now every face ships, and
+    // the thing to prove is that each option is backed by a face that loaded
+    // rather than by the browser smearing the regular.
+    //
+    // The obvious proxy — heavier draws wider — is not a law, and CI caught me
+    // assuming it was: weight and advance width need not correlate at all, and
+    // metric-compatible families keep every weight the same width deliberately.
+    // So this asks the font system directly. A FontFace with that weight, for
+    // this family, in state "loaded" is the fact; how wide it drew is not.
+    //
+    // Which family answers this is the index's business; that a foundry family
+    // *can* have a weight control is pinned in test_render, against markup.
     // The family is found, not named. Charis is "Charis" in a small build and
     // "Charis SIL" in the full one — its own release decides — so a hard-coded
     // slug passes locally and 404s in CI, which is exactly what it did.
     await page.goto(`${BASE}/fonts/`);
-    const slugs = await page.locator("table.index a[href*='/font/']").evaluateAll(
-      (nodes) => nodes.map((node) => node.getAttribute("href")).slice(0, 40));
+    // Not any family with a weight control: a Google one gets its faces from
+    // Google's own stylesheet and would pass this while our @font-face rules
+    // were entirely broken. The row's data-source says which are ours, and those
+    // are the ones whose descriptors this build writes.
+    const slugs = await page.locator("table.index tr:not([data-source='google']) a[href*='/font/']")
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href")).slice(0, 60));
+    expect(slugs.length, "no family outside Google is indexed").toBeGreaterThan(0);
+
     let found = null;
     for (const href of slugs) {
       const body = await (await page.request.get(href)).text();
-      if (body.includes('data-try="weight"')) { found = href; break; }
+      if (body.includes('data-try="weight"') && body.includes("/webfonts/")) {
+        found = href;
+        break;
+      }
     }
-    expect(found, "no family in the first 40 offers a weight control").not.toBeNull();
+    expect(found, "no family we serve ourselves offers a weight control").not.toBeNull();
 
     await page.goto(found);
     await page.evaluate(() => document.fonts.ready);
@@ -199,23 +215,29 @@ test.describe("Try it", () => {
     await page.click('[data-try="go"]');
     await expect(page.locator(".try-out")).toBeVisible();
 
-    const drawn = () => page.locator(".try-out").evaluate((node) => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      return range.getBoundingClientRect().width;
-    });
+    expect(weights.length, "a weight control with one option is not a control")
+      .toBeGreaterThan(1);
 
-    const widths = [];
+    const family = await page.locator(".try").getAttribute("data-face");
     for (const weight of weights) {
       await page.selectOption('[data-try="weight"]', weight);
       await page.waitForFunction(() => document.fonts.status === "loaded");
-      widths.push(await drawn());
-    }
-    expect(widths.length, "a weight control with one option is not a control")
-      .toBeGreaterThan(1);
-    for (let i = 1; i < widths.length; i += 1) {
-      expect(widths[i], `${weights[i]} drew exactly as ${weights[i - 1]} did`)
-        .toBeGreaterThan(widths[i - 1]);
+
+      const served = await page.evaluate(([name, want]) => {
+        const unquote = (value) => value.replace(/^["']|["']$/g, "");
+        return [...document.fonts]
+          .filter((face) => unquote(face.family) === name && face.status === "loaded")
+          // A variable face carries a range — "100 900" — and covers every
+          // weight inside it from the one file, which is not a fake bold.
+          .some((face) => {
+            const bounds = String(face.weight).split(/\s+/).map(Number);
+            return bounds.length > 1
+              ? want >= bounds[0] && want <= bounds[1]
+              : bounds[0] === want;
+          });
+      }, [family, Number(weight)]);
+
+      expect(served, `${family} offers weight ${weight} and loaded no such face`).toBe(true);
     }
 
     // And where an italic is offered it is the family's own italic face.
