@@ -171,14 +171,30 @@ test.describe("Try it", () => {
     expect(specimen).not.toBe("48px");
   });
 
-  test("a foundry family's weights are real files, not a smeared regular", async ({ page }) => {
+  test("the weights on offer are real files, not a smeared regular", async ({ page }) => {
     // Foundry families had no weight control at all: we read one face from the
-    // release, so we did not know a second existed. Now every face ships, and
-    // this is the assertion that they are separate files — a browser faking a
-    // bold from one outline set gives the same widths at every step, and four
-    // increasing widths cannot come from one file.
-    await page.goto(`${BASE}/font/charis/`);
+    // release, so we did not know a second existed. Now every face ships. The
+    // assertion is that the options are separate files — a browser faking a bold
+    // from one outline set gives the same width at every step, so widths that
+    // grow cannot have come from one file. Which family answers this is the
+    // index's business; that a foundry family *can* is pinned in test_render.
+    // The family is found, not named. Charis is "Charis" in a small build and
+    // "Charis SIL" in the full one — its own release decides — so a hard-coded
+    // slug passes locally and 404s in CI, which is exactly what it did.
+    await page.goto(`${BASE}/fonts/`);
+    const slugs = await page.locator("table.index a[href*='/font/']").evaluateAll(
+      (nodes) => nodes.map((node) => node.getAttribute("href")).slice(0, 40));
+    let found = null;
+    for (const href of slugs) {
+      const body = await (await page.request.get(href)).text();
+      if (body.includes('data-try="weight"')) { found = href; break; }
+    }
+    expect(found, "no family in the first 40 offers a weight control").not.toBeNull();
+
+    await page.goto(found);
     await page.evaluate(() => document.fonts.ready);
+    const weights = await page.locator('[data-try="weight"] option').evaluateAll(
+      (nodes) => nodes.map((node) => node.value));
     await page.fill('[data-try="text"]', "Weights and styles");
     await page.click('[data-try="go"]');
     await expect(page.locator(".try-out")).toBeVisible();
@@ -190,22 +206,27 @@ test.describe("Try it", () => {
     });
 
     const widths = [];
-    for (const weight of ["400", "500", "600", "700"]) {
+    for (const weight of weights) {
       await page.selectOption('[data-try="weight"]', weight);
       await page.waitForFunction(() => document.fonts.status === "loaded");
       widths.push(await drawn());
     }
+    expect(widths.length, "a weight control with one option is not a control")
+      .toBeGreaterThan(1);
     for (let i = 1; i < widths.length; i += 1) {
-      expect(widths[i], `weight ${i} drew exactly as the one before it`)
+      expect(widths[i], `${weights[i]} drew exactly as ${weights[i - 1]} did`)
         .toBeGreaterThan(widths[i - 1]);
     }
 
-    // And the italic is the family's own italic face, not an oblique transform.
-    await page.check('[data-try="italic"]');
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    const style = await page.locator(".try-out").evaluate(
-      (node) => getComputedStyle(node).fontStyle);
-    expect(style).toBe("italic");
+    // And where an italic is offered it is the family's own italic face.
+    const italic = page.locator('[data-try="italic"]');
+    if (await italic.count()) {
+      await italic.check();
+      await page.waitForFunction(() => document.fonts.status === "loaded");
+      const style = await page.locator(".try-out").evaluate(
+        (node) => getComputedStyle(node).fontStyle);
+      expect(style).toBe("italic");
+    }
   });
 
   test("turning a feature off changes what is drawn", async ({ page }) => {
