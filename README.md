@@ -13,11 +13,15 @@ Malayalam is the flagship script, not the only one.
 
 ## Status
 
-Being rebuilt, web first. What is live today is the **design mockup** — the
-prototype the implementation is being built against, served from `site/`.
+Live at <https://beniza.github.io/glyph-sleuth/> — 1,885 families indexed, 1,878
+measured from their own released file, around 34,000 pages. `/regex/` and
+`/identify/` are not built and are deliberately absent from the nav rather than
+present as 404s.
 
-Start at [`docs/PROGRESS.md`](docs/PROGRESS.md) for where the work stands, and
-[`docs/HANDOFF.md`](docs/HANDOFF.md) for what is being built and why.
+Open work is on the [board](https://github.com/users/beniza/projects/10).
+[`CONTRIBUTING.md`](CONTRIBUTING.md) says how to run it and how the work is
+organised; [`docs/HANDOFF.md`](docs/HANDOFF.md) says what is being built and
+why, and [`docs/PROGRESS.md`](docs/PROGRESS.md) tracks the phase plan.
 
 ## Two halves
 
@@ -27,10 +31,13 @@ Start at [`docs/PROGRESS.md`](docs/PROGRESS.md) for where the work stands, and
 | Where | `web/`, published from `site/` | `desktop/` |
 | Emits | pages | a small stamped JSON record, as a pull request |
 
-> **Fetch and parse, never host.** The build downloads a family's public release,
-> reads its tables in memory and drops it. It never hosts, mirrors, serves or
-> commits a font file, and nothing published here points at a font URL of ours.
-> Specimens render from wherever the family is actually distributed.
+> **Fetch and parse. Serve only what the licence allows.** The build downloads a
+> family's public release and reads its tables in memory. Where the licence in
+> that same release permits redistribution, it also re-serves the foundry's own
+> `woff2` build, unmodified — every face, converted and renamed not at all. We
+> publish nothing we generated and nothing we cannot read a licence for, and a
+> family we cannot draw says so rather than letting the browser substitute one.
+> Specimens otherwise render from wherever the family is actually distributed.
 
 Nothing you type ever leaves your browser. No uploads, no accounts, no server.
 
@@ -50,7 +57,7 @@ build, not behind a GUI.
 
 | | |
 | --- | --- |
-| `site/` | what GitHub Pages serves. Currently the mockup |
+| `site/` | what GitHub Pages serves. Generated; `/mockup/` is the committed prototype |
 | `web/` | the site's source: logic, DOM, styles, build, tests |
 | `desktop/` | the PySide6 companion |
 | `shared/` | the Python Unicode and SLDR layer, used by both |
