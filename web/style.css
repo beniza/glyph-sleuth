@@ -704,6 +704,16 @@ table.tight .quiet { font-size: 12.5px; }
   text-transform: uppercase;
   color: var(--muted);
 }
+/* The snippet and its copy button. The button sits over the top-right corner of
+   the block rather than under it: the snippet is the reason the panel exists and
+   nothing should push it down the page. */
+.snippet-wrap { position: relative; }
+/* The button floats over the block, so the block keeps clear of it — otherwise
+   a long first line wraps underneath and reads as truncated. */
+.snippet-wrap .snippet { padding-right: 64px; }
+.snippet-wrap .copy { position: absolute; top: 8px; right: 8px; opacity: 0.55; }
+.snippet-wrap:hover .copy, .snippet-wrap .copy:focus-visible { opacity: 1; }
+
 .copy:hover { border-color: var(--ink); color: var(--ink); }
 .specimen-line .copy { font-size: 11px; }
 

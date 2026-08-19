@@ -343,14 +343,7 @@ export async function start(field, reading, out, faceStyles) {
       ${drawnBy(subject, codepoints)}`;
   }
 
-  out.addEventListener("click", async (event) => {
-    const button = event.target.closest(".copy");
-    if (!button) return;
-    await navigator.clipboard.writeText(button.dataset.copy);
-    const was = button.textContent;
-    button.textContent = "copied";
-    setTimeout(() => { button.textContent = was; }, 1200);
-  });
+  // Copy buttons are app.js’s, for every page at once — see copy.js.
 
   const url = new URL(location.href);
   if (url.searchParams.get("t")) field.value = url.searchParams.get("t");

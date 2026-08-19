@@ -162,8 +162,10 @@ def page(title, body, kind=None, code=None, description=None, extra_head=""):
   </main>
   <footer class="colophon">
     <div class="column">
-      <p>Read-only. Nothing you type leaves the browser. We host no font files:
-         specimens are drawn from wherever each family is actually distributed.</p>
+      <p>Read-only. Nothing you type leaves the browser. Specimens are drawn from
+         wherever each family is actually distributed — and where a foundry
+         distributes no webfont, from our copy of its own release build, under
+         the licence that release ships.</p>
       <p><a href="https://github.com/beniza/glyph-sleuth">Source and corrections ↗ — external</a></p>
     </div>
   </footer>
@@ -296,17 +298,21 @@ def use_it(font):
 
     Never a fabricated @import for a family that has none, which is what the
     prototype's font page did for every family regardless.
+
+    Returned raw, not escaped. It is shown in a <pre> and also handed to a copy
+    button, and a snippet escaped at the source puts &amp; on someone's
+    clipboard — a stylesheet URL that 404s when they paste it.
     """
-    name = esc(font["name"])
+    name = font["name"]
     if font.get("source") == "google":
         slug_name = font["name"].replace(" ", "+")
         return ("Served from Google Fonts.",
-                f'&lt;link rel="stylesheet"\n      href="https://fonts.googleapis.com/css2'
-                f'?family={slug_name}&amp;display=swap"&gt;\n\n'
+                f'<link rel="stylesheet"\n      href="https://fonts.googleapis.com/css2'
+                f'?family={slug_name}&display=swap">\n\n'
                 f'font-family: "{name}", sans-serif;')
     if font.get("css"):
         return ("Served from the foundry's own site.",
-                f'&lt;link rel="stylesheet" href="{esc(font["css"])}"&gt;\n\n'
+                f'<link rel="stylesheet" href="{font["css"]}">\n\n'
                 f'font-family: "{name}", sans-serif;')
     file = font["name"].replace(" ", "") + ".woff2"
     return ("This family is not served from a public CDN — download it and host the file "
@@ -786,8 +792,14 @@ def font_page(font, blocks):
                       f'      <p class="quiet rule-top">{MATRIX_LEGEND}</p>')
 
     # Right column: taking it away.
+    # The snippet is the one thing on this page a reader takes away with them,
+    # and selecting a <pre> by hand on a phone is a fight.
     right = ['      <h2 class="eyebrow">Use it</h2>\n'
-             f'      <pre class="snippet mono">{snippet}</pre>\n'
+             '      <div class="snippet-wrap">\n'
+             f'        <pre class="snippet mono">{esc(snippet)}</pre>\n'
+             f'        <button class="copy" data-copy="{esc(snippet)}" '
+             'title="Copy this snippet">copy</button>\n'
+             '      </div>\n'
              f'      <p class="quiet">{esc(note)}</p>']
     links = []
     if font.get("tables"):
@@ -2368,7 +2380,7 @@ def main():
     # core.js goes out too: Inspect imports it at runtime to read the same
     # Unicode tables the build reads, so a codepoint's facts there and on its
     # own page come from one place.
-    for asset in ("style.css", "app.js", "core.js", "inspect.js"):
+    for asset in ("style.css", "app.js", "copy.js", "core.js", "inspect.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
 
     # The one thing we serve that we did not write: a foundry's own woff2 build,

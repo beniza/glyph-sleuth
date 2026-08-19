@@ -2,6 +2,10 @@
 // a few of them adjustable. With JS off nothing here is missed except the
 // ability to change a number.
 
+import { copyButtons } from "./copy.js";
+
+copyButtons();
+
 // --------------------------------------------------------------- the index
 //
 // Filter, facets and sort over rows the page already served. Nothing here

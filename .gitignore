@@ -8,6 +8,7 @@ site/data/
 site/index.html
 site/style.css
 site/app.js
+site/copy.js
 site/core.js
 site/inspect.js
 # Generated entity, index and tool pages. site/mockup/ is committed on purpose:

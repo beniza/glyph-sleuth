@@ -89,6 +89,38 @@ test.describe("Inspect", () => {
   });
 });
 
+test.describe("the Use it snippet", () => {
+  // The snippet is the one thing a reader takes away from a family page, and
+  // until now the only copy button on the site was Inspect's, bound to Inspect's
+  // own panel. This asserts two things that were both wrong on the way here:
+  // that the button exists off /inspect/ at all, and that what it puts on the
+  // clipboard is the snippet rather than its HTML escaping — a stylesheet URL
+  // arriving as "&amp;display=swap" 404s when you paste it.
+  test("copies the snippet itself, entities and all", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto(`${BASE}/font/anjalioldlipi/`);
+
+    const shown = (await page.locator(".snippet").first().innerText()).trim();
+    await page.locator(".snippet-wrap .copy").first().click();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+
+    // Line endings are the platform clipboard's business: Windows hands back
+    // CRLF for the LF we wrote, which is what a paste into Notepad should be.
+    expect(copied.replace(/\r\n/g, "\n").trim()).toBe(shown);
+    expect(copied).toContain("<link rel=\"stylesheet\"");
+    expect(copied, "the clipboard got HTML entities").not.toContain("&amp;");
+    expect(copied, "the clipboard got HTML entities").not.toContain("&lt;");
+  });
+
+  test("a Google family's snippet pastes as a working URL", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto(`${BASE}/font/abeezee/`);
+    await page.locator(".snippet-wrap .copy").first().click();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toContain("?family=ABeeZee&display=swap");
+  });
+});
+
 test.describe("a face that is drawing is not marked as absent", () => {
   test("families on a character page render it", async ({ page }) => {
     // The bug this exists for: Dyuthi was marked as not drawing ക, which it
