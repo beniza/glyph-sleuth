@@ -6,6 +6,9 @@ import { copyButtons } from "./copy.js";
 
 copyButtons();
 
+// Only the family pages have a Try it panel, and only they pay for it.
+if (document.querySelector(".try")) import("./tryit.js");
+
 // --------------------------------------------------------------- the index
 //
 // Filter, facets and sort over rows the page already served. Nothing here

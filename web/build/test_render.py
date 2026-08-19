@@ -5,6 +5,7 @@ assert is that the content is *in* the markup — a reader with JS off, and a
 search engine, see the same facts a visitor does.
 """
 import os
+import html as html_module
 import re
 import sys
 
@@ -468,6 +469,60 @@ def test_use_it_never_invents_an_import():
     ours = re.compile(r'(?:href|src)="[^"]*' + re.escape(render.BASE) + r'[^"]*\.(?:woff2?|ttf|otf)')
     for state in (smc, html):
         assert not ours.search(state), "we are linking a font file of our own"
+
+
+def test_the_snippet_is_marked_up_without_becoming_a_hole():
+    # Highlighting means inserting markup into a string, which is how a
+    # highlighter becomes an injection. Escaping happens per token, so a family
+    # named with a tag comes out as text and not as a tag.
+    marked = render.highlight('font-family: "<script>x</script>";')
+    assert "<span" in marked
+    assert "&lt;script&gt;" in marked
+    assert "<script>" not in marked
+    # The three token kinds, and nothing dropped: strip the markup and the
+    # snippet must be exactly what went in.
+    plain = re.sub(r"<[^>]+>", "", render.highlight('@font-face { src: url("a.woff2"); }'))
+    assert html_module.unescape(plain) == '@font-face { src: url("a.woff2"); }'
+
+
+def test_google_is_asked_for_the_weights_the_control_offers():
+    # The weight control may only offer faces that will actually arrive. Ask the
+    # CDN for the regular alone and pick 800 and the browser smears the outlines
+    # into a fake bold — which is exactly the kind of claim this site exists to
+    # catch someone else making.
+    many = dict(MANJARI, source="google", name="Abhaya Libre", css=None,
+                faces=["400", "500", "800"])
+    css = render.face_css_of(many)
+    assert ":wght@400;500;800" in css
+    page = render.font_page(many, BLOCKS)
+    for weight in ("400", "500", "800"):
+        assert f'<option value="{weight}">' in page
+    # One face is no choice, so there is no control and no axis in the request.
+    one = dict(MANJARI, source="google", name="ABeeZee", css=None, faces=["400"])
+    assert "wght@" not in render.face_css_of(one)
+    assert 'data-try="weight"' not in render.font_page(one, BLOCKS)
+    # Italic is offered only where an italic face exists — never synthesised.
+    assert 'data-try="italic"' not in render.font_page(many, BLOCKS)
+    both = dict(many, faces=["400", "400i"])
+    assert ":ital,wght@0,400;1,400" in render.face_css_of(both)
+    assert 'data-try="italic"' in render.font_page(both, BLOCKS)
+
+
+def test_try_it_is_absent_where_we_cannot_draw_the_family():
+    # A box that sets your text in a font the browser cannot load would set it in
+    # some other font and present that as this family — the same lie the glyph
+    # grid and the evidence matrix were fixed for.
+    unloadable = dict(MANJARI, source="rit", css=None, webfont=None, licence="OFL-1.1")
+    page = render.font_page(unloadable, BLOCKS)
+    assert 'class="try"' not in page
+    assert "No specimen here" in page
+
+    servable = dict(unloadable, webfont="webfonts/rit/RIT-Rachana/RIT-Rachana-Regular.woff2")
+    served = render.font_page(servable, BLOCKS)
+    assert 'class="try"' in served
+    # And it fetches its coverage from the file Compare already writes, rather
+    # than inlining a second copy of the ranges into every family page.
+    assert "/data/font/" in served
 
 
 def test_lookups_page_shows_the_working():

@@ -292,6 +292,108 @@ def count_in_range(ranges, first, last):
     return total
 
 
+def try_it(font, name):
+    """Set your own text in this family, with the switches the font really has.
+
+    Two things this deliberately does not offer, because a browser cannot do
+    them and pretending otherwise is the failure mode this whole site is about:
+
+    * **A script-tag switch (mlym against mlm2).** Nothing in CSS selects an
+      OpenType script tag. The shaper picks it from the characters, and
+      HarfBuzz takes mlm2 wherever a font declares it. The family page already
+      says which tags this font declares; which one a browser used is not ours
+      to choose, and a dropdown implying otherwise would be a lie in the shape
+      of a control. `hb-shape --script=mlym` is on every row of the evidence
+      matrix and does answer it.
+    * **A weight or style this family does not publish.** Asked for 800 with
+      one weight loaded, a browser smears the outlines and calls it bold. So
+      the weights offered are the ones the family actually ships, and where we
+      know of only one there is no control at all.
+
+    What is real: size, the features the font's own tables declare, and the
+    weights it publishes. Turning a feature off is the interesting one — it is
+    the difference between what the font can draw and what it draws by default.
+    """
+    if not can_draw(font):
+        return ""
+
+    faces = font.get("faces") or []
+    weights = sorted({f.rstrip("i") for f in faces if f.rstrip("i").isdigit()}, key=int)
+    italic = any(f.endswith("i") for f in faces)
+    features = [t for t in (font.get("features") or []) if t not in ("aalt",)]
+
+    controls = ['        <label class="try-size"><span class="quiet">size</span>'
+                '<input type="range" min="12" max="96" step="1" value="14" '
+                'data-try="size" aria-label="Preview size">'
+                '<span class="mono" data-try="size-value">14px</span></label>']
+    if len(weights) > 1:
+        options = "".join(f'<option value="{esc(w)}">{esc(w)}</option>' for w in weights)
+        controls.append('        <label class="try-weight"><span class="quiet">weight</span>'
+                        f'<select data-try="weight">{options}</select></label>')
+    if italic:
+        controls.append('        <label class="try-italic">'
+                        '<input type="checkbox" data-try="italic"><span>italic</span></label>')
+
+    # Every feature the font's own tables declare, off meaning "as the font
+    # ships it" rather than "off": unchecking is what shows you the rule.
+    chips = "".join(
+        f'<label class="feat"><input type="checkbox" data-feature="{esc(tag)}" checked>'
+        f'<span class="mono">{esc(tag)}</span></label>' for tag in features)
+    feature_block = (
+        '        <details class="try-features"><summary>Features '
+        f'({len(features)})</summary>\n'
+        '          <p class="quiet">Every feature this font declares, on as it ships. '
+        'Untick one to see what it was doing.</p>\n'
+        f'          <div class="feats">{chips}</div>\n        </details>'
+        if features else "")
+
+    return f"""      <h2 class="eyebrow">Try it</h2>
+      <div class="try" data-face="{esc(name)}"
+           data-src="{link(f"/data/font/{font.get('slug') or slug(name)}.json")}">
+        <label class="field">
+          <span class="eyebrow-inline">your text, codepoints or a range</span>
+          <textarea data-try="text" rows="2" spellcheck="false"
+                    placeholder="paste anything, or try 0D15, U+0D15 U+0D4D U+0D15, 0D15..0D3F"
+                    aria-label="Text to set in {esc(name)}"></textarea>
+        </label>
+        <div class="try-controls">
+{chr(10).join(controls)}
+          <button type="button" class="preview" data-try="go">Preview</button>
+        </div>
+{feature_block}
+        <output class="try-out" data-try="out" hidden></output>
+        <p class="quiet" data-try="note" hidden></p>
+        <noscript><p class="quiet">Setting your own text needs JavaScript. The specimen
+           above and every figure on this page are in the HTML without it.</p></noscript>
+      </div>"""
+
+
+# The snippet is HTML and CSS, so it is marked up as HTML and CSS rather than
+# left as one grey block. Three token kinds carry all of it: the tag or at-rule,
+# the names inside it, and the quoted values. Anything unmatched falls through as
+# plain text, which is why this cannot mangle a snippet it does not recognise.
+SNIPPET_TOKENS = re.compile(
+    r'(?P<string>"[^"]*")'
+    r"|(?P<tag></?[a-zA-Z-]+|/?>|@font-face|[{}])"
+    r"|(?P<name>[a-zA-Z-]+(?=\s*[:=]))")
+
+
+def highlight(snippet):
+    """The snippet with its tags, names and strings marked up.
+
+    Escaping happens here, per token, so the markup this adds cannot be confused
+    with markup in the snippet: a family called `<b>` comes out as text.
+    """
+    out, at = [], 0
+    for match in SNIPPET_TOKENS.finditer(snippet):
+        out.append(esc(snippet[at:match.start()]))
+        kind = match.lastgroup
+        out.append(f'<span class="t-{kind}">{esc(match.group())}</span>')
+        at = match.end()
+    out.append(esc(snippet[at:]))
+    return "".join(out)
+
+
 def use_it(font):
     """The CSS to set text in this face, and which of three honest states it is
     in. Mirrors core.js useIt() — the client needs the same answer on Compare.
@@ -315,8 +417,14 @@ def use_it(font):
                 f'<link rel="stylesheet" href="{font["css"]}">\n\n'
                 f'font-family: "{name}", sans-serif;')
     file = font["name"].replace(" ", "") + ".woff2"
-    return ("This family is not served from a public CDN — download it and host the file "
-            "yourself.",
+    served = ("The specimens here are drawn from our copy of the foundry's own release "
+              "build, kept under the licence that release ships. Do not link to it: it is "
+              "this site's copy, not a CDN. Take the file from the foundry and serve it "
+              "yourself — "
+              if font.get("webfont") else
+              "This family is not served from a public CDN — download it and host the file "
+              "yourself: ")
+    return (served + "the template below names a bare filename because the URL is yours.",
             f'@font-face {{\n  font-family: "{name}";\n  src: url("{file}") format("woff2");\n'
             f'  font-display: swap;\n}}\n\nfont-family: "{name}", sans-serif;')
 
@@ -596,8 +704,26 @@ def face_css_of(font):
     ourselves: that is an @font-face rule, not a stylesheet URL."""
     if font.get("source") == "google":
         return ("https://fonts.googleapis.com/css2?family="
-                + font["name"].replace(" ", "+") + "&display=swap")
+                + font["name"].replace(" ", "+") + google_axes(font) + "&display=swap")
     return font.get("css") or ""
+
+
+def google_axes(font):
+    """`:ital,wght@0,400;1,400` — the faces this family actually publishes.
+
+    Without this the CDN sends the regular alone, and the weight control under
+    "Try it" would be asking the browser to smear one set of outlines into a
+    bold. Only the weights Google lists for the family are requested, so the
+    control can only offer faces that will arrive.
+    """
+    faces = font.get("faces") or []
+    pairs = sorted({(1 if f.endswith("i") else 0, int(f.rstrip("i")))
+                    for f in faces if f.rstrip("i").isdigit()})
+    if len(pairs) < 2:
+        return ""
+    if not any(ital for ital, _ in pairs):
+        return ":wght@" + ";".join(str(w) for _, w in pairs)
+    return ":ital,wght@" + ";".join(f"{ital},{w}" for ital, w in pairs)
 
 
 def face_rule(font):
@@ -796,7 +922,7 @@ def font_page(font, blocks):
     # and selecting a <pre> by hand on a phone is a fight.
     right = ['      <h2 class="eyebrow">Use it</h2>\n'
              '      <div class="snippet-wrap">\n'
-             f'        <pre class="snippet mono">{esc(snippet)}</pre>\n'
+             f'        <pre class="snippet mono">{highlight(snippet)}</pre>\n'
              f'        <button class="copy" data-copy="{esc(snippet)}" '
              'title="Copy this snippet">copy</button>\n'
              '      </div>\n'
@@ -810,6 +936,7 @@ def font_page(font, blocks):
         links.append(f'<a href="{esc(font["url"])}">Download {esc(name)} ↗</a>')
     links.append(f'<a href="{link("/compare/")}">Compare with another family</a>')
     right.append('      <div class="links">' + " ".join(links) + '</div>')
+    right.append(try_it(font, name))
 
     if parsed and font.get("features"):
         chips = " ".join(f'<a class="chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
@@ -2380,7 +2507,7 @@ def main():
     # core.js goes out too: Inspect imports it at runtime to read the same
     # Unicode tables the build reads, so a codepoint's facts there and on its
     # own page come from one place.
-    for asset in ("style.css", "app.js", "copy.js", "core.js", "inspect.js"):
+    for asset in ("style.css", "app.js", "copy.js", "core.js", "inspect.js", "tryit.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
 
     # The one thing we serve that we did not write: a foundry's own woff2 build,

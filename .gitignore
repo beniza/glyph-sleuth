@@ -11,6 +11,7 @@ site/app.js
 site/copy.js
 site/core.js
 site/inspect.js
+site/tryit.js
 # Generated entity, index and tool pages. site/mockup/ is committed on purpose:
 # it is the design the build is checked against, not output.
 site/script/

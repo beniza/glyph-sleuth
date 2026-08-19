@@ -714,6 +714,86 @@ table.tight .quiet { font-size: 12.5px; }
 .snippet-wrap .copy { position: absolute; top: 8px; right: 8px; opacity: 0.55; }
 .snippet-wrap:hover .copy, .snippet-wrap .copy:focus-visible { opacity: 1; }
 
+/* The snippet, marked up as what it is. Three token kinds, no more: a rainbow
+   in a five-line block is decoration, and the point is only to separate the tag
+   from the values you might edit. */
+.t-tag { color: var(--muted); }
+.t-name { color: var(--ink); }
+.t-string { color: var(--proof); }
+
+/* Try it: your own text in this family. */
+.try { margin-top: 10px; }
+.try textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--ink);
+}
+.try-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 10px 0;
+}
+.try-size, .try-weight, .try-italic {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.try-size input[type=range] { width: 110px; }
+.try-weight select {
+  font: inherit;
+  padding: 2px 4px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  color: var(--ink);
+}
+.preview {
+  font: 500 12px var(--cond);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  margin-left: auto;
+}
+.preview:hover { border-color: var(--ink); color: var(--ink); }
+
+.try-features summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+.feats { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; }
+.feat { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+
+/* The preview itself. A well, so it reads as a rendering and not as page copy,
+   and it wraps: a reader pasting a paragraph should get a paragraph. */
+.try-out {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 14px 16px;
+  margin-top: 4px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* A character this font does not have, marked where it is rather than only
+   counted underneath. Hatched, not coloured: the drawing beside it is the
+   subject and a block of colour would compete with it. */
+.uncovered {
+  background: repeating-linear-gradient(135deg, var(--hatch) 0 3px, transparent 3px 6px);
+  outline: 1px solid var(--rule);
+  outline-offset: 1px;
+}
+
 .copy:hover { border-color: var(--ink); color: var(--ink); }
 .specimen-line .copy { font-size: 11px; }
 

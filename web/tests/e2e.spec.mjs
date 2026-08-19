@@ -121,6 +121,83 @@ test.describe("the Use it snippet", () => {
   });
 });
 
+test.describe("Try it", () => {
+  const type = async (page, text) => {
+    await page.goto(`${BASE}/font/rit-rachana/`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.fill('[data-try="text"]', text);
+    await page.click('[data-try="go"]');
+    await expect(page.locator(".try-out")).toBeVisible();
+  };
+
+  test("sets what you typed in this family, and marks what it cannot draw", async ({ page }) => {
+    // Malayalam this font has, Kannada it does not. Both in one line, because
+    // the panel's whole job is telling them apart inside a run of text.
+    await type(page, "മലയാളം ಕನ್ನಡ");
+
+    const face = await page.locator(".try-out").evaluate(
+      (node) => getComputedStyle(node).fontFamily);
+    expect(face).toContain("RIT Rachana");
+
+    const marked = await page.locator(".try-out .uncovered").evaluateAll(
+      (nodes) => nodes.map((node) => node.textContent));
+    expect(marked.join(""), "Kannada is not in this Malayalam face").toContain("ಕ");
+    expect(marked.join(""), "Malayalam it has was marked as missing").not.toContain("മ");
+    await expect(page.locator('[data-try="note"]')).toContainText("not in RIT Rachana");
+  });
+
+  test("reads codepoints and a range, the way Inspect does", async ({ page }) => {
+    await type(page, "U+0D15 U+0D4D U+0D15");
+    await expect(page.locator(".try-out")).toHaveText("ക്ക");
+
+    // A range is a chart. The cap matters: 0000..10FFFF must not try to paint
+    // a million characters into a panel.
+    await page.fill('[data-try="text"]', "0000..10FFFF");
+    await page.click('[data-try="go"]');
+    const painted = await page.locator(".try-out").evaluate((node) => [...node.textContent].length);
+    expect(painted).toBeLessThanOrEqual(256);
+  });
+
+  test("the size slider moves the preview and nothing else", async ({ page }) => {
+    await type(page, "മലയാളം");
+    const before = await page.locator(".try-out").evaluate((n) => getComputedStyle(n).fontSize);
+    await page.locator('[data-try="size"]').fill("48");
+    const after = await page.locator(".try-out").evaluate((n) => getComputedStyle(n).fontSize);
+    expect(before).toBe("14px");
+    expect(after).toBe("48px");
+    // The family's own specimen at the top of the page has its own control.
+    const specimen = await page.locator(".specimen").first()
+      .evaluate((n) => getComputedStyle(n).fontSize);
+    expect(specimen).not.toBe("48px");
+  });
+
+  test("turning a feature off changes what is drawn", async ({ page }) => {
+    // akhn builds the Malayalam conjuncts. With it off the same codepoints draw
+    // as separate letters, which is the difference the panel exists to show.
+    // Measured across the text, not the box: the panel is a block and its own
+    // width never moves, which is how this test first passed while proving
+    // nothing.
+    const drawnWidth = () => page.locator(".try-out").evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().width;
+    });
+
+    await type(page, "ക്ക");
+    const on = await drawnWidth();
+    // The features are folded away by default — nine to thirty tags is a wall,
+    // and the default state is the one the reader wants first.
+    await page.locator(".try-features summary").click();
+    await page.locator('[data-feature="akhn"]').uncheck();
+    await expect(page.locator(".try-out")).toBeVisible();
+    const off = await drawnWidth();
+    // The conjunct is one glyph; two letters side by side are wider. If Chrome
+    // ever stops honouring font-feature-settings for a mandatory Indic feature,
+    // this fails and the control has to go rather than sit there doing nothing.
+    expect(off, "unticking akhn drew the same thing").toBeGreaterThan(on);
+  });
+});
+
 test.describe("a face that is drawing is not marked as absent", () => {
   test("families on a character page render it", async ({ page }) => {
     // The bug this exists for: Dyuthi was marked as not drawing ക, which it
