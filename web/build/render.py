@@ -916,6 +916,53 @@ def two_releases(font):
             '    </section>')
 
 
+def moved_slugs(font):
+    """[(alternate, old slug)] for the URLs this family used to live at.
+
+    Only where the two publishers disagree about the name. Where they agree there
+    is nothing to redirect, and emitting a stub would be a page pointing at
+    itself.
+    """
+    out = []
+    for other in font.get("alternates") or []:
+        moved = slug(other.get("name") or "")
+        if moved and moved != font["slug"]:
+            out.append((other, moved))
+    return out
+
+
+def moved_page(other, font):
+    """Where a family went when its two publishers disagree about its name.
+
+    Google calls SIL's Charis "Charis SIL" and its Gentium "Gentium Plus". Once
+    the foundry's release became the primary record the page moved to the
+    foundry's own name, and `/font/charis-sil/` — a URL that worked yesterday and
+    that people have — started 404ing. `check_site.py` could not catch it: no
+    page links to the old slug, so nothing was broken *inside* the site.
+
+    A real page rather than a redirect, saying which name belongs to whom, since
+    the disagreement is itself worth knowing. The canonical link and the refresh
+    take a reader on.
+    """
+    name, to = other.get("name") or "", font["name"]
+    where = link(f"/font/{font['slug']}/")
+    return page(
+        f"{name} is {to}",
+        f'''    <section class="entity-head">
+      <h1>{esc(name)}</h1>
+      <p class="quiet">{esc(FOUNDRIES.get(other.get("source"), "This distributor"))} calls this
+         family <strong>{esc(name)}</strong>. Its publisher calls it
+         <strong>{esc(to)}</strong>, and that is the name the font's own tables
+         carry — so the family lives at <a href="{where}">{esc(to)}</a>, with both
+         releases compared on that page.</p>
+      <p class="quiet">Taking you there now.</p>
+    </section>''',
+        kind="font", code=slug(name),
+        description=f"{name} is this site's page for {to}.",
+        extra_head=f'  <link rel="canonical" href="{where}">\n'
+                   f'  <meta http-equiv="refresh" content="2; url={where}">')
+
+
 def font_page(font, blocks):
     name = font["name"]
     measured = font.get("tier") == "measured"
@@ -2735,6 +2782,12 @@ def main():
                 yield (f"/font/{font['slug']}/lookups/", lookups_page(font))
             if font.get("glyphs"):
                 yield (f"/font/{font['slug']}/glyphs/", glyphs_page(font, chars_built))
+            # A family the foundry and Google name differently lives at the
+            # foundry's name, because the font's own tables outrank a
+            # distributor's rename — that is the argument this whole site makes.
+            # But /font/charis-sil/ was a real URL yesterday, so it stays one.
+            for other, moved in moved_slugs(font):
+                yield (f"/font/{moved}/", moved_page(other, font))
 
     write_many(family_pages(), "family pages, with lookups and glyphs where measured")
     write("/fonts/", fonts_index(fonts["fonts"], blocks))

@@ -558,6 +558,38 @@ def test_only_the_rows_that_differ_appear():
     assert "GSUB · GPOS lookups" in rows
 
 
+def test_a_renamed_family_keeps_its_old_url():
+    """Google calls SIL's Charis "Charis SIL" and its Gentium "Gentium Plus".
+
+    Once the foundry's release became primary the page moved to the foundry's own
+    name — correct, because the font's tables outrank a distributor's rename —
+    and /font/charis-sil/ started 404ing. That URL worked yesterday and people
+    have it. check_site could not catch it: nothing inside the site links to the
+    old slug, so nothing internal was broken.
+    """
+    google = {"name": "Charis SIL", "source": "google", "tier": "measured",
+              "url": "https://fonts.google.com/specimen/Charis+SIL",
+              "ranges": [[0x41, 0x5A]], "faces": ["400"]}
+    font = dict(MANJARI, name="Charis", slug="charis", alternates=[google])
+
+    html = render.moved_page(google, font)
+    assert "Charis SIL" in html and "Charis" in html
+    assert 'rel="canonical"' in html
+    assert f'{render.BASE}/font/charis/' in html
+    # It says who calls it what, because the disagreement is the interesting part.
+    assert "Google Fonts" in html
+
+    # The wiring, not just the page: a rename yields one stub at the old slug.
+    assert render.moved_slugs(font) == [(google, "charis-sil")]
+
+    # And none where the two names agree — that would be a page pointing at
+    # itself. Akatab is Akatab to both SIL and Google.
+    agree = dict(MANJARI, name="Akatab", slug="akatab",
+                 alternates=[dict(google, name="Akatab")])
+    assert render.moved_slugs(agree) == []
+    assert render.moved_slugs(MANJARI) == []
+
+
 def test_a_family_with_one_release_is_unchanged():
     # Only ~30 of 1,885 families have a second release. The rest must render
     # exactly as before, or this change is a redesign wearing a bug fix's name.
