@@ -191,9 +191,73 @@ def test_a_failed_download_keeps_the_measurement_we_already_had():
     assert record["tier"] == "measured", "a 401 turned a measured family into a stub"
     assert record["ranges"] == [[0x0D15, 0x0D15]]
     assert record["provenance"]["read"] == "2026-08-01", "provenance claims a fresh read"
-    # The one thing the failure does cost: we cannot promise a file we did not
-    # write, so the page falls back to saying it cannot draw this family.
+    # The webfont the cache names is not on disk here, so it is dropped: we
+    # cannot promise a file nobody wrote.
     assert record["webfont"] is None
+
+
+def test_a_failed_download_keeps_a_webfont_that_is_still_on_disk():
+    """Dropping it whenever the fetch failed was too eager.
+
+    A read timeout on RIT Rachana made the flagship family undrawable — no
+    specimen, no Try it, five browser tests red — while all four of its woff2
+    files sat on disk, published by the build before. What a failed fetch costs
+    is a *fresh* copy, not the one we already have.
+    """
+    source = {"id": "rit", "host": "gitlab", "group": "rit-fonts",
+              "page": "https://gitlab.com/rit-fonts/{project}", "skip": set()}
+
+    def boom():
+        raise TimeoutError("The read operation timed out")
+
+    here = os.path.join("webfonts", "test-kept", "Kept.woff2")
+    full = os.path.join(gen_index.ROOT, "web", *here.split(os.sep))
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "wb") as handle:
+        handle.write(b"wOF2")
+
+    probe, cache = gen_index.release_probe, gen_index.cached
+    gen_index.release_probe = lambda *a, **k: ("1.0", "1.0", boom)
+    gen_index.cached = lambda url: {"ranges": [[0x0D15, 0x0D15]], "family": "Kept",
+                                    "licence": "OFL-1.1", "read": "2026-08-01",
+                                    "webfont": here.replace(os.sep, "/"),
+                                    "webfonts": {"400": here.replace(os.sep, "/")},
+                                    "glyph_count": 1, "glyphs": [{"name": "a"}]}
+    try:
+        record = gen_index.foundry_family(source, "Kept")
+    finally:
+        gen_index.release_probe, gen_index.cached = probe, cache
+        os.remove(full)
+        os.rmdir(os.path.dirname(full))
+
+    assert record["webfont"], "a timeout dropped a webfont that was still on disk"
+    assert record["tier"] == "measured"
+
+
+def test_the_glyph_cap_keeps_the_total_it_dropped():
+    """A CJK face has tens of thousands of glyphs and the page is not a font
+    editor, so the inventory is capped. But truncating and keeping no count is
+    how the page came to show 4,000 and read as complete — the one thing this
+    site may not do. Every other cap here is disclosed.
+    """
+    blob = sample_font(codepoints=tuple(range(0x0D00, 0x0D40)))
+    inventory, total = gen_index.glyphs(blob, limit=10)
+    assert len(inventory) == 10, "the cap stopped working"
+    assert total == 65, "the total was lost with the glyphs that were dropped"
+    # Uncapped, the two agree, so a page can tell "complete" from "truncated".
+    inventory, total = gen_index.glyphs(blob)
+    assert len(inventory) == total
+
+
+def test_a_measurement_taken_before_the_total_is_a_cache_miss():
+    # Same shape and reason as webfont_present: a warm cache holds a short list
+    # with nothing to compare it against, so the page cannot disclose a shortfall
+    # it cannot see. Only families with a glyph list re-measure.
+    assert not gen_index.counted_glyphs({"glyphs": [{"name": "a"}]})
+    assert gen_index.counted_glyphs({"glyphs": [{"name": "a"}], "glyph_count": 900})
+    # Nothing to re-measure for a family we never read a glyph list from.
+    assert gen_index.counted_glyphs({"ranges": []})
+    assert gen_index.counted_glyphs({})
 
 
 def test_a_throttled_fetch_is_retried_but_not_forever():
@@ -233,6 +297,22 @@ def test_a_throttled_fetch_is_retried_but_not_forever():
         except urllib.error.HTTPError:
             pass
         assert len(calls) == gen_index.RETRIES, f"{len(calls)} attempts, expected bounded"
+
+        # A read timeout is socket.timeout, which is a TimeoutError and not a
+        # URLError. The first version of retriable() missed it and RIT Rachana
+        # lost its measurement to one on the very next build.
+        calls.clear()
+        timeouts = []
+
+        def slow(request, timeout=None):
+            timeouts.append(1)
+            if len(timeouts) < 2:
+                raise TimeoutError("The read operation timed out")
+            return io.BytesIO(b"wOF2")
+
+        gen_index.urllib.request.urlopen = slow
+        assert gen_index.fetch("https://gitlab.com/x", sleep=lambda _s: None) == b"wOF2"
+        assert len(timeouts) == 2
 
         # A 404 is an answer, not a failure. Seven SIL projects have no release
         # and must stay fast.
@@ -543,7 +623,7 @@ def test_glyph_inventory():
     feature akhn { sub g0D15 g0D4D g0D15 by lig; } akhn;
     """
     blob = sample_font(codepoints=(0x0D15, 0x0D4D), fea=fea, extra_glyphs=("lig", "orphan"))
-    glyphs = gen_index.glyphs(blob)
+    glyphs, _total = gen_index.glyphs(blob)
     by_name = {g["name"]: g for g in glyphs}
 
     # Encoded glyphs carry the codepoint that reaches them.
@@ -579,7 +659,7 @@ def test_every_built_glyph_carries_a_recipe():
     """
     blob = sample_font(codepoints=(0x0D15, 0x0D16, 0x0D4D), fea=fea,
                        extra_glyphs=("lig", "variant", "orphan"))
-    by_name = {g["name"]: g for g in gen_index.glyphs(blob)}
+    by_name = {g["name"]: g for g in gen_index.glyphs(blob)[0]}
 
     # A ligature: the components, in order, as text the browser can shape.
     assert by_name["lig"]["from"]["text"] == "ക്ക"
@@ -610,7 +690,7 @@ def test_orphans_are_counted_from_every_rule():
     fea = "feature akhn {\n" + many + "\n} akhn;"
     blob = sample_font(codepoints=tuple(sources) + (0x0D4D,), fea=fea,
                        extra_glyphs=tuple(f"lig{n}" for n in range(12)) + ("orphan",))
-    by_name = {g["name"]: g for g in gen_index.glyphs(blob)}
+    by_name = {g["name"]: g for g in gen_index.glyphs(blob)[0]}
 
     # The twelfth ligature is past the sample cap and is still not an orphan.
     assert by_name["lig11"]["produced"] == ["akhn"]

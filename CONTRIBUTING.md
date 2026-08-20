@@ -62,6 +62,11 @@ first. Prefer a test that kills a *class* of bug over one that pins a page: the
 `/char/` fallback fix was correct and the lesson never left that function, so
 three other page types stayed broken for weeks.
 
+The three webfont-dependent browser tests can flake locally under twelve
+parallel workers all fetching faces at once. `npx playwright test --workers=1`
+settles it. Do not loosen the assertion — it is contention on this machine, and
+CI has never seen it.
+
 `check_site.py` runs after `render.py` and needs a build to look at. It reports
 what it skipped rather than implying it checked everything, and `site/mockup/`
 is excluded on purpose — it is a committed client-side template whose

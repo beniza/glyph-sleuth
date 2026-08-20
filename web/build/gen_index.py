@@ -139,7 +139,7 @@ def remember(url, facts):
 def measure_and_shape(blob, url, label, ranges=None):
     """Everything we read from one font file, cached against that file's URL."""
     hit = cached(url)
-    if hit is not None:
+    if hit is not None and counted_glyphs(hit):
         return hit
     facts = measure(blob)
     for script, script_blocks in SHAPED_SCRIPTS.items():
@@ -178,7 +178,11 @@ BACKOFF = 1.5          # seconds, then doubled
 def retriable(error):
     if isinstance(error, urllib.error.HTTPError):
         return error.code in RETRY_STATUS
-    return isinstance(error, urllib.error.URLError)
+    # A read timeout is `socket.timeout`, which is a TimeoutError and *not* a
+    # URLError — so the first version of this let one through. RIT Rachana lost
+    # its measurement to exactly that on the build after this was written, which
+    # is a decent argument for checking a predicate against a real run.
+    return isinstance(error, (urllib.error.URLError, TimeoutError))
 
 
 def fetch(url, token=None, attempts=RETRIES, sleep=time.sleep):
@@ -333,7 +337,7 @@ def measure_google_face(font):
         # Ask the cache before the network: the stylesheet is a few hundred bytes
         # and names the exact file, so a cache hit costs one cheap fetch.
         facts = cached(url)
-        if facts is None:
+        if facts is None or not counted_glyphs(facts):
             facts = measure_and_shape(fetch(url), url, label, font["ranges"])
     except Exception as error:
         print(f"  !! {font['name']}: {error}")
@@ -620,6 +624,20 @@ def webfont_present(facts):
     return os.path.exists(os.path.join(ROOT, "web", *web.split("/")))
 
 
+def counted_glyphs(facts):
+    """Does a cached measurement know how many glyphs the font really had?
+
+    Same shape and same reason as `webfont_present`: the inventory was capped
+    at 4,000 long before the total was recorded, so a warm cache holds a short
+    list with nothing to compare it against — and the page cannot disclose a
+    shortfall it cannot see. Only the families with a glyph list re-measure.
+    """
+    facts = facts or {}
+    if not facts.get("glyphs"):
+        return True
+    return "glyph_count" in facts
+
+
 def is_font_url(url):
     """Is this stylesheet `src` a font file?
 
@@ -786,7 +804,7 @@ def measure(blob):
     facts["tables"] = lookups(blob)
     # Every glyph, and what the rules do with it — the page that shows a
     # font is more than its codepoints.
-    facts["glyphs"] = glyphs(blob)
+    facts["glyphs"], facts["glyph_count"] = glyphs(blob)
 
     name = font["name"]
     facts["family"] = str(name.getBestFamilyName() or "")
@@ -908,7 +926,7 @@ def foundry_family(source, project, token=None):
     # The probe was cheap; the download only happens on a cache miss — or when
     # the cache remembers a webfont that is no longer on disk.
     facts = cached(key)
-    if facts is None or not webfont_present(facts):
+    if facts is None or not webfont_present(facts) or not counted_glyphs(facts):
         try:
             found, members = faces()
             if not found:
@@ -934,8 +952,14 @@ def foundry_family(source, project, token=None):
             if facts is None:
                 return foundry_record(fallback_name, source["id"], page, css=css)
             facts = dict(facts)
-            facts["webfont"] = None
-            facts["webfonts"] = {}
+            # Only drop the webfont if it is actually gone. Blanking it whenever
+            # the download failed was too eager: a read timeout on RIT Rachana
+            # made the flagship family undrawable while all four of its woff2
+            # files sat on disk, published by the build before. What a failed
+            # fetch costs is a *fresh* copy, not the one we already have.
+            if not webfont_present(facts):
+                facts["webfont"] = None
+                facts["webfonts"] = {}
     licence = facts.get("licence", licence)
 
     facts = dict(facts)
@@ -1182,7 +1206,13 @@ def glyphs(blob, limit=4000):
 
     sfnt = as_sfnt(blob)
     font = TTFont(io.BytesIO(sfnt), fontNumber=0, lazy=True)
-    order = font.getGlyphOrder()[:limit]
+    # The cap is real — a CJK face has tens of thousands of glyphs and the page
+    # is not a font editor — but the total has to survive it. Truncating and
+    # keeping no count is how the page came to show 4,000 and read as complete,
+    # which is the one thing this site may not do.
+    every = font.getGlyphOrder()
+    total = len(every)
+    order = every[:limit]
     reverse = {}
     for cp, name in font.getBestCmap().items():
         reverse.setdefault(name, cp)
@@ -1211,7 +1241,7 @@ def glyphs(blob, limit=4000):
             if text:
                 entry["from"] = {"text": text, "features": features}
         out.append(entry)
-    return out
+    return out, total
 
 
 def lookups(blob):

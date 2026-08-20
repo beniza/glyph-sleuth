@@ -508,6 +508,32 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert 'data-try="italic"' in render.font_page(both, BLOCKS)
 
 
+def test_the_glyphs_page_says_what_the_cap_dropped():
+    # 4,000 shown out of 22,000 read as complete, because the page printed the
+    # capped number on both sides of "showing N of N". Every other cap on the
+    # site is disclosed; this one was the exception.
+    inventory = [{"name": f"g{i}", "cp": None, "produced": [], "consumed": [],
+                  "orphan": False} for i in range(10)]
+    capped = dict(MANJARI, glyphs=inventory, glyph_count=22000)
+    page = render.glyphs_page(capped)
+    assert "Showing" in page and "of 22,000" in page
+    assert "first 10 of the 22,000 glyphs" in page
+    assert "21,990 are not shown" in page
+
+    # Nothing dropped: no note, and the two numbers agree.
+    whole = dict(MANJARI, glyphs=inventory, glyph_count=10)
+    page = render.glyphs_page(whole)
+    assert "are not shown" not in page
+
+    # A measurement taken before the total was recorded must not guess. It says
+    # what it has and claims nothing about what it does not.
+    unknown = dict(MANJARI, glyphs=inventory)
+    unknown.pop("glyph_count", None)
+    page = render.glyphs_page(unknown)
+    assert "are not shown" not in page
+    assert "of 10" in page
+
+
 def test_every_face_we_serve_gets_its_own_rule():
     # One @font-face per face, each carrying the weight and style that face
     # declares. Without the descriptors all four rules claim to be the regular,

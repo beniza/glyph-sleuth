@@ -1259,6 +1259,15 @@ def glyphs_page(font, chars_built=()):
     # captioned with this font's glyph names — the whole page a fabrication.
     drawn = can_draw(font)
     why = why_not_drawn(font)
+    # The inventory is capped in the generator, and until now the page showed the
+    # capped number twice and read as complete. Every other cap on this site is
+    # disclosed; this was the exception. `glyph_count` is absent only for a
+    # measurement taken before it was recorded — say nothing rather than guess.
+    counted = font.get("glyph_count")
+    dropped = (counted - len(inventory)) if counted else 0
+    cap_note = (f" This page lists the first {len(inventory):,} of the "
+                f"{counted:,} glyphs the font carries; {dropped:,} are not shown."
+                if dropped > 0 else "")
     drawn_note = (
         "Glyphs are drawn by your browser from the family's own distribution. An "
         "unencoded glyph is shown by setting the input that produces it, so what you "
@@ -1322,13 +1331,13 @@ def glyphs_page(font, chars_built=()):
       <div class="head-row">
         <h1>{esc(name)}: glyphs</h1>
         <p class="showing quiet">Showing <span data-showing>{len(inventory):,}</span>
-           of {len(inventory):,}</p>
+           of {counted or len(inventory):,}</p>
       </div>
       <p class="quiet">A font is not its codepoints. {len(built):,} of these
          {len(inventory):,} glyphs have no codepoint at all — they are the conjuncts, half
          forms and positional variants the layout rules build — and
          {len(orphans):,} are reachable by nothing: no codepoint, and no rule that produces
-         them. However well drawn, those cannot appear in text.</p>
+         them. However well drawn, those cannot appear in text.{cap_note}</p>
       <p class="quiet">{drawn_note}</p>
     </section>
 
