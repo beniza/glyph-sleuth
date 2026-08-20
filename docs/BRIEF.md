@@ -1,5 +1,15 @@
 # Glyph Sleuth — implementation handoff
 
+> **Archival.** This is the original brief, kept because it is the only record of
+> what was asked for and why the project exists. It describes a plan, not the
+> built site — several of its decisions were revisited, and where that happened
+> the reasoning lives in [`DECISIONS.md`](DECISIONS.md), not here. Nothing in
+> this file is a task; open work is on the
+> [board](https://github.com/users/beniza/projects/10).
+>
+> Renamed from `HANDOFF.md` on 2026-08-20, when the static planning files were
+> retired.
+
 *Consolidated brief for whoever (or whichever session) implements this. Read this document
 top to bottom before opening any other file — it tells you what's here, what's settled, and
 what's still genuinely open. Where this document and an individual addendum disagree, this
@@ -106,7 +116,7 @@ data shapes (`FAMILIES`/`FONT_DETAIL`/`SHAPING`), which were still moving as of 
 handoff (the matrix alone adds a `graphite` field). Build the web app's remaining pieces
 first; spec the companion's exporter against the settled schema once it exists, not before.
 
-> **Corrected during implementation — see `BUILD-PLAN.md`.** This section
+> **Corrected during implementation — see `DECISIONS.md` D2.** This section
 > originally read: *"no font binary should ever be fetched, mirrored, or hosted by
 > Glyph Sleuth's own infrastructure, even transiently in a build pipeline."* That
 > is stricter than `chats/chat1.md` §10, which forbids **hosting** a font,
@@ -194,5 +204,5 @@ lose them in the handoff:
 | `docs/addenda/addendum-compare-final.md` | Compare — final settled spec |
 | `docs/addenda/addendum-identify-final.md` | Identify — final settled spec |
 | `docs/addenda/addendum-matrix-final.md` | Shaping-engine matrix — final settled spec |
-| `docs/HANDOFF.md` | This document |
-| `docs/PROGRESS.md` | The resumable build checklist — start here to pick the work back up |
+| `docs/BRIEF.md` | This document |
+| the [board](https://github.com/users/beniza/projects/10) | Open work. Replaced the checklist in `PROGRESS.md`, retired 2026-08-20 |

@@ -20,8 +20,8 @@ present as 404s.
 
 Open work is on the [board](https://github.com/users/beniza/projects/10).
 [`CONTRIBUTING.md`](CONTRIBUTING.md) says how to run it and how the work is
-organised; [`docs/HANDOFF.md`](docs/HANDOFF.md) says what is being built and
-why, and [`docs/PROGRESS.md`](docs/PROGRESS.md) tracks the phase plan.
+organised, [`docs/DECISIONS.md`](docs/DECISIONS.md) holds the standing rules and
+why they stand, and [`docs/BRIEF.md`](docs/BRIEF.md) is the original brief.
 
 ## Two halves
 

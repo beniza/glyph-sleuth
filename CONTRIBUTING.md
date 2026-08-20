@@ -67,6 +67,35 @@ and metric-compatible families keep every weight the same width on purpose. If a
 test has never been seen to fail, break the code deliberately and watch it fail
 before trusting it.
 
+## Build cost, measured
+
+Kept so nobody re-derives it. Numbers from the CI run of 2026-08-18,
+1,885 families and ~34,000 pages:
+
+| step | before | after |
+| --- | --- | --- |
+| `gen_index.py` | 7m54s | **0m20s** warm, 7m cold |
+| `render.py` | 14m29s | **2m48s** |
+| upload artifact | 6s | 5s |
+| deploy | 16s | 11s |
+| **total** | **25m** | **3m46s** |
+
+Three causes, and only the first was the one I expected:
+
+1. **Writing pages** — 19ms of disk wait each, 33,000 of them. Sixteen threads.
+2. **Block coverage recomputed per call** — the real render cost, and invisible
+   in a seven-font local set. `made_for` asked `dominant_block`, which walked all
+   327 blocks, once per fitting family per language, from three separate places:
+   **18 seconds per language page**, 526 pages, 157 minutes projected. Computed
+   once per family by bisection it is 0.10s a page.
+3. **527 UDHR and SLDR fetches** — five and a half minutes of the generator, now
+   cached per language, with the script scan and the name table keyed on the
+   Unicode version.
+
+The lesson worth keeping: profile against a realistic corpus. Every local
+measurement said the build was I/O-bound, because seven fonts never exercised
+the O(families × blocks × languages) path that dominated it.
+
 ## The board
 
 <https://github.com/users/beniza/projects/10>
@@ -100,8 +129,8 @@ empty, tag it.
 **Labels** carry the kind: `bug`, `feature`, `test`, `docs`, `perf`, `a11y`,
 `honesty`.
 
-`docs/TODO.md` is not a task list any more — it keeps the measured build cost and
-the decisions not taken, so neither gets re-derived.
+There are no task lists in the repo. `docs/DECISIONS.md` holds the standing
+rules, `docs/BRIEF.md` the original brief; everything that is *work* is a card.
 
 ## Commits, releases and deploys
 
@@ -144,6 +173,9 @@ the decisions not taken, so neither gets re-derived.
 ## Font files
 
 We may read any font; we re-serve only what its own licence permits, and only
-the foundry's own build. See "The font-file policy" in
-[`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md) — it has been revised twice and the
-reasoning for both revisions is recorded there.
+the foundry's own build. See **D2** in [`docs/DECISIONS.md`](docs/DECISIONS.md)
+— it has been revised twice, and both revisions are kept, because both were
+cases of a rule being stricter than anything required it.
+
+Every standing rule lives in that file. Read it before changing what the build
+publishes.
