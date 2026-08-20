@@ -508,6 +508,63 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert 'data-try="italic"' in render.font_page(both, BLOCKS)
 
 
+def test_two_releases_of_one_family_show_where_they_differ():
+    # Google and a foundry carry about thirty families in common. Only one used
+    # to survive and it was Google's, so Charis SIL reported two faces where SIL
+    # ships eight, and "not read" where SIL's release has 263 GSUB lookups.
+    google = {"name": "Charis SIL", "source": "google", "tier": "measured",
+              "url": "https://fonts.google.com/specimen/Charis+SIL",
+              "version": "3", "ranges": [[0x0041, 0x005A]],
+              "faces": ["400", "400i"], "tags": None, "gsub": None, "gpos": None}
+    font = dict(MANJARI, name="Charis SIL", source="sil", version="7.000",
+                faces=["400", "500", "600", "700"], gsub=263, gpos=90,
+                webfont="webfonts/sil/font-charis/Charis-Regular.woff2",
+                alternates=[google])
+    page = render.font_page(font, BLOCKS)
+
+    assert "Two releases" in page
+    assert "SIL v7.000" in page and "Google Fonts v3" in page
+    # Rows that differ are here...
+    assert "weights published" in page
+    assert "GSUB · GPOS lookups" in page
+    # ...and the page says plainly which release everything else came from.
+    assert "is the SIL v7.000 release" in page
+    assert "never merged" in page
+
+
+def test_only_the_rows_that_differ_appear():
+    """A row repeating one number twice is furniture.
+
+    My first version of this asserted that two agreeing releases produce no table
+    at all. That premise was wrong: Google and a foundry almost always differ on
+    *delivery* — served here against Google's CDN — and saying so is real
+    information a reader installing a font wants. What must be suppressed is a
+    row where the two numbers are identical.
+    """
+    twin = {"name": "Manjari", "source": "google", "tier": "measured",
+            "version": MANJARI.get("version"), "ranges": MANJARI["ranges"],
+            "faces": MANJARI.get("faces"), "tags": MANJARI.get("tags"),
+            "gsub": MANJARI.get("gsub"), "gpos": MANJARI.get("gpos"),
+            "provenance": MANJARI.get("provenance")}
+    html = render.two_releases(dict(MANJARI, alternates=[twin]))
+    rows = re.findall(r'<th scope="row">([^<]+)</th>', html)
+    # Everything measured agrees, so only how you get it is left.
+    assert rows == ["webfont"], rows
+
+    # And a genuine difference in a measured figure does appear.
+    fewer = dict(twin, gsub=4, gpos=1)
+    rows = re.findall(r'<th scope="row">([^<]+)</th>',
+                      render.two_releases(dict(MANJARI, alternates=[fewer])))
+    assert "GSUB · GPOS lookups" in rows
+
+
+def test_a_family_with_one_release_is_unchanged():
+    # Only ~30 of 1,885 families have a second release. The rest must render
+    # exactly as before, or this change is a redesign wearing a bug fix's name.
+    assert render.two_releases(MANJARI) == ""
+    assert "Two releases" not in render.font_page(MANJARI, BLOCKS)
+
+
 def test_the_glyphs_page_says_what_the_cap_dropped():
     # 4,000 shown out of 22,000 read as complete, because the page printed the
     # capped number on both sides of "showing N of N". Every other cap on the

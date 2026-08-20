@@ -374,6 +374,20 @@ def squash(name):
 FAMILY_SUFFIXES = {"sil", "plus", "lolo", "alu", "wsp", "vf"}
 
 
+# What a second release of the same family is kept for: enough to say where the
+# two differ, and no more. The glyph inventory and the lookup tables are the
+# large fields and the comparison never reads them — a count of each is the
+# comparison.
+ALTERNATE_KEYS = ("name", "source", "url", "licence", "version", "ranges",
+                  "tags", "gsub", "gpos", "faces", "webfont", "provenance",
+                  "tier", "css")
+
+
+def alternate(record):
+    """One release of a family, trimmed to what a comparison needs."""
+    return {key: record[key] for key in ALTERNATE_KEYS if key in record}
+
+
 def same_family(a, b):
     if a == b:
         return True
@@ -1863,13 +1877,33 @@ def main():
         print(f"{source['id'].upper()} — families Google doesn't carry")
         found = projects(source, token)
         found = found[:args.limit] if args.limit else found
-        have = [squash(f["name"]) for f in fonts]
         for font in in_parallel(found, lambda p: foundry_family(source, p, token), "families"):
-            # Already indexed — by Google, or by another project of this family.
-            if any(same_family(squash(font["name"]), name) for name in have):
+            key = squash(font["name"])
+            at = next((i for i, f in enumerate(fonts)
+                       if same_family(key, squash(f["name"]))), None)
+            if at is None:
+                fonts.append(font)
                 continue
-            fonts.append(font)
-            have.append(squash(font["name"]))
+
+            # Already indexed. Two quite different cases hid behind one `continue`
+            # here, and the interesting one was being thrown away.
+            #
+            # Another project of the same family — two RIT repos for one face —
+            # is a duplicate, and the first wins as before.
+            #
+            # But Google and a foundry publishing the same family is not a
+            # duplicate: it is two releases, measured separately, and the
+            # difference between them is the argument this whole site makes.
+            # Google's Manjari is v14 with 44 GSUB lookups where SMC's own is
+            # v2.200 with 48. Dropping the foundry's record hid that, and cost
+            # Charis SIL six of its eight faces.
+            #
+            # The foundry's release becomes primary — it is the publisher's own,
+            # it usually ships more, and it is the one we can serve — and
+            # Google's is kept beside it to compare against.
+            if fonts[at].get("source") == "google" and font.get("tier") == "measured":
+                font["alternates"] = [alternate(fonts[at])]
+                fonts[at] = font
 
     fonts.sort(key=lambda f: f["name"])
     measured = sum(1 for f in fonts if f["tier"] == "measured")

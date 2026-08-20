@@ -721,6 +721,12 @@ table.tight .quiet { font-size: 12.5px; }
 .t-name { color: var(--ink); }
 .t-string { color: var(--proof); }
 
+/* Two releases of one family, side by side. Numbers right-aligned so the pair
+   can be compared down the column rather than read as prose. */
+.releases table { max-width: 46rem; }
+.releases td { text-align: right; }
+.releases thead th:not(:first-child) { text-align: right; }
+
 /* Try it: your own text in this family. */
 .try { margin-top: 10px; }
 .try textarea {

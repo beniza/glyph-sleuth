@@ -826,6 +826,96 @@ def byline(font):
     return " · ".join(p for p in parts if p)
 
 
+def release_label(record):
+    """"SIL v7.000" — who published this release, and which one."""
+    who = FOUNDRIES.get(record.get("source"), (record.get("source") or "").upper())
+    version = record.get("version") or ""
+    return f"{who} v{version}" if version else who
+
+
+def webfont_state(record):
+    """How a browser would get this release, in three words."""
+    if record.get("webfont"):
+        return "served here"
+    if record.get("source") == "google":
+        return "Google's CDN"
+    if record.get("css"):
+        return "foundry stylesheet"
+    return "none published"
+
+
+def two_releases(font):
+    """The same family, published twice, wherever the two disagree.
+
+    Google and a foundry both carry about thirty families. Only one used to
+    survive, and it was Google's — so Charis SIL reported two faces where SIL
+    ships eight, and "not read" for tags where SIL's release has 263 GSUB
+    lookups. That difference is not noise to be resolved; it is the argument this
+    site makes, and a reader deciding which release to install needs it.
+
+    Only differing rows appear. Two releases that agree have nothing to say here,
+    and a row repeating one number twice is furniture.
+
+    Nothing on this page merges the two. Every other figure, the specimen, the
+    evidence matrix, the lookups and the glyphs come wholly from the primary
+    record — which this table names, so it is never a mystery which release a
+    number belongs to.
+    """
+    alternates = font.get("alternates") or []
+    if not alternates:
+        return ""
+    other = alternates[0]
+
+    def codepoints(record):
+        return f"{count_in_range(record.get('ranges') or [], 0, 0x10FFFF):,}"
+
+    def tags(record):
+        found = record.get("tags")
+        return ", ".join(found) if found else ("not read" if found is None else "none")
+
+    def lookups(record):
+        if record.get("gsub") is None and record.get("gpos") is None:
+            return "not read"
+        return f"{record.get('gsub', 0)} · {record.get('gpos', 0)}"
+
+    def weights(record):
+        return f"{len(record.get('faces') or [])}" or "0"
+
+    def read(record):
+        return (record.get("provenance") or {}).get("read") or "not read"
+
+    rows = []
+    for label, of in (("codepoints", codepoints), ("script tags", tags),
+                      ("GSUB · GPOS lookups", lookups), ("weights published", weights),
+                      ("webfont", webfont_state), ("file read", read)):
+        mine, theirs = of(font), of(other)
+        if mine == theirs:
+            continue
+        rows.append(f'      <tr><th scope="row">{esc(label)}</th>'
+                    f'<td class="mono">{esc(mine)}</td>'
+                    f'<td class="mono">{esc(theirs)}</td></tr>')
+    if not rows:
+        return ""
+
+    return ('    <section class="releases">\n'
+            '      <h2 class="eyebrow">Two releases</h2>\n'
+            f'      <p class="quiet">{esc(release_label(font))} and '
+            f'{esc(release_label(other))} publish this family separately. '
+            'Where they differ:</p>\n'
+            '      <table class="index">\n'
+            '        <thead><tr><th></th>'
+            f'<th>{esc(release_label(font))}</th>'
+            f'<th><a href="{esc(other.get("url") or "")}">{esc(release_label(other))} ↗</a>'
+            '</th></tr></thead>\n'
+            '      <tbody>\n' + "\n".join(rows) + '\n      </tbody>\n'
+            '      </table>\n'
+            f'      <p class="quiet">Everything else on this page — the specimen, the '
+            f'evidence, the lookups, the glyphs — is the {esc(release_label(font))} release. '
+            'The two are measured separately and never merged: a number from one release '
+            'reported under the other\'s name would be a different font\'s number.</p>\n'
+            '    </section>')
+
+
 def font_page(font, blocks):
     name = font["name"]
     measured = font.get("tier") == "measured"
@@ -1002,6 +1092,11 @@ def font_page(font, blocks):
     # other columns, and a matrix of four engine columns plus an hb-shape line
     # does not fit in 300px — the verdicts wrapped into each other and the
     # command ran under the panel to its right.
+    # Before the evidence, because it names which release the evidence is of.
+    releases = two_releases(font)
+    if releases:
+        body.append(releases)
+
     if middle:
         body.append('    <section class="evidence">\n' + "\n".join(middle) + "\n    </section>")
 

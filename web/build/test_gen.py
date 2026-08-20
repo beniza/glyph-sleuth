@@ -234,6 +234,27 @@ def test_a_failed_download_keeps_a_webfont_that_is_still_on_disk():
     assert record["tier"] == "measured"
 
 
+def test_a_second_release_is_kept_rather_than_dropped():
+    """Google and a foundry publishing one family is two releases, not a duplicate.
+
+    `same_family` matches "charis" with "charissil" through the `sil` suffix, and
+    the loop used to `continue` on that — so SIL's own record went on the floor
+    and the page reported Google's two faces where SIL ships eight.
+
+    Two projects of the *same* foundry family are still a duplicate, and the
+    first still wins. This asserts both halves, because collapsing them is what
+    caused the bug.
+    """
+    assert gen_index.same_family("charis", "charissil")
+    trimmed = gen_index.alternate({"name": "Charis SIL", "source": "google",
+                                   "ranges": [[65, 90]], "faces": ["400"],
+                                   "glyphs": [{"name": "a"}] * 4000,
+                                   "tables": {"gsub": [1, 2, 3]}})
+    # The two large fields are exactly what a comparison never reads.
+    assert "glyphs" not in trimmed and "tables" not in trimmed
+    assert trimmed["source"] == "google" and trimmed["faces"] == ["400"]
+
+
 def test_the_glyph_cap_keeps_the_total_it_dropped():
     """A CJK face has tens of thousands of glyphs and the page is not a font
     editor, so the inventory is capped. But truncating and keeping no count is
