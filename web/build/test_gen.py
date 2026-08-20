@@ -196,6 +196,58 @@ def test_a_failed_download_keeps_the_measurement_we_already_had():
     assert record["webfont"] is None
 
 
+def test_a_throttled_fetch_is_retried_but_not_forever():
+    """GitLab answers 401, not 429, for a throttled anonymous artifact download.
+
+    It cost RIT Rachana its webfont in an otherwise green build — one family of
+    twelve, nothing else wrong. So 401 is retriable here, which is unusual and is
+    the reason this test names it.
+
+    The attempt count is asserted deliberately: an unbounded retry does not fail
+    a build, it hangs one, and a hung CI job is worse than a red one.
+    """
+    calls = []
+
+    def opener(fail_times, code=401):
+        def fake(request, timeout=None):
+            calls.append(request.full_url)
+            if len(calls) <= fail_times:
+                raise urllib.error.HTTPError(request.full_url, code, "nope", {}, None)
+            return io.BytesIO(b"wOF2")
+        return fake
+
+    real = gen_index.urllib.request.urlopen
+    try:
+        # Fails twice, succeeds on the third. Sleep is injected so the test does
+        # not actually wait 4.5 seconds.
+        gen_index.urllib.request.urlopen = opener(2)
+        assert gen_index.fetch("https://gitlab.com/x", sleep=lambda _s: None) == b"wOF2"
+        assert len(calls) == 3
+
+        # Always failing: raises, and stops.
+        calls.clear()
+        gen_index.urllib.request.urlopen = opener(99)
+        try:
+            gen_index.fetch("https://gitlab.com/x", sleep=lambda _s: None)
+            raise AssertionError("a persistent 401 should still raise")
+        except urllib.error.HTTPError:
+            pass
+        assert len(calls) == gen_index.RETRIES, f"{len(calls)} attempts, expected bounded"
+
+        # A 404 is an answer, not a failure. Seven SIL projects have no release
+        # and must stay fast.
+        calls.clear()
+        gen_index.urllib.request.urlopen = opener(99, code=404)
+        try:
+            gen_index.fetch("https://api.github.com/x", sleep=lambda _s: None)
+            raise AssertionError("a 404 should raise")
+        except urllib.error.HTTPError:
+            pass
+        assert len(calls) == 1, "a 404 was retried"
+    finally:
+        gen_index.urllib.request.urlopen = real
+
+
 def test_the_github_token_only_goes_to_github():
     """CI hands the generator a GITHUB_TOKEN, and it was attached to every
     download — including RIT's, which are on gitlab.com. GitLab answered 401 and

@@ -28,6 +28,8 @@ import os
 import re
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -160,12 +162,42 @@ def for_github(url):
     return host in GITHUB_HOSTS or host.endswith(".githubusercontent.com")
 
 
-def fetch(url, token=None):
+# A host saying "not now" rather than "no". GitLab answers 401 for a throttled
+# anonymous job-artifact download rather than 429, which is why 401 is in here:
+# it cost RIT Rachana its webfont in an otherwise green build, one family of
+# twelve, nothing else wrong. 5xx and a dropped connection are the ordinary
+# transient failures.
+#
+# 404 is deliberately absent. It is an answer, and the seven SIL projects with no
+# release must stay fast rather than being asked three times.
+RETRY_STATUS = frozenset({401, 408, 429, 500, 502, 503, 504})
+RETRIES = 3
+BACKOFF = 1.5          # seconds, then doubled
+
+
+def retriable(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in RETRY_STATUS
+    return isinstance(error, urllib.error.URLError)
+
+
+def fetch(url, token=None, attempts=RETRIES, sleep=time.sleep):
+    """The bytes at `url`, retrying only what a retry can fix.
+
+    `attempts` is bounded and asserted in the tests: an unbounded retry does not
+    fail a build, it hangs one, which is worse.
+    """
     request = urllib.request.Request(url, headers=dict(HEADERS))
     if token and for_github(url):
         request.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read()
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.read()
+        except Exception as error:
+            if attempt == attempts or not retriable(error):
+                raise
+            sleep(BACKOFF * (2 ** (attempt - 1)))
 
 
 def fetch_text(url, token=None):
