@@ -103,6 +103,28 @@ def test_an_empty_data_face_is_not_a_claim():
     assert problems({"p/index.html": '<span data-face="">x</span>'}) == []
 
 
+def test_a_truncated_table_with_no_note_is_caught():
+    # render.py's capped() writes the marker and the note together, so a marker
+    # on its own means the note was taken out. Five caps on this site were
+    # undisclosed at one time or another; this is the guard against the sixth.
+    found = problems({"block/basic-latin/index.html":
+                      '<table class="index" data-showing="100" data-of="1854">'
+                      "<tr><th>Face</th></tr></table>"})
+    assert len(found) == 1
+    assert "shows 100 of 1854 rows and says nothing" in found[0]
+
+
+def test_a_truncated_table_that_says_so_is_fine():
+    assert problems({"block/basic-latin/index.html":
+                     '<table class="index" data-showing="100" data-of="1854">'
+                     "<tr><th>Face</th></tr></table>"
+                     '<p class="quiet cap-note">Showing 100 of 1,854 families.</p>'}) == []
+    # And a table showing everything needs nothing, marker or note.
+    assert problems({"p/index.html":
+                     '<table class="index" data-showing="40" data-of="40">'
+                     "<tr><th>Face</th></tr></table>"}) == []
+
+
 def test_the_committed_mockup_is_skipped():
     # site/mockup/ is the design prototype, committed on purpose and rendered by
     # its own support.js in the browser. Its href="{{ font.source.url }}" are

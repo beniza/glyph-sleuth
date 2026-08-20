@@ -38,6 +38,10 @@ SHOWN = 25
 # boundary matters — without it `href` also matches inside `data-href`, and the
 # check would be right by accident rather than by intent.
 LINK = re.compile(r'(?:^|[\s])(?:href|src|data-src)="([^"]+)"')
+# A table that stopped short. render.py's `capped()` writes both of these and
+# the note; the checker's job is to notice if the note ever goes missing.
+TRUNCATED = re.compile(r'data-showing="(\d+)"\s+data-of="(\d+)"')
+
 FACE_ATTR = re.compile(r'data-face="([^"]*)"')
 FONT_FAMILY = re.compile(r'font-family:\s*"([^"]+)"')
 CSS2_FAMILY = re.compile(r'[?&]family=([^&:"]+)')
@@ -132,6 +136,13 @@ def check(root=SITE):
             checked += 1
             if not resolves(url, page):
                 problems.append((shown, f"link goes nowhere: {url}"))
+
+        # A table that stopped short must say so on the same page. `capped()` in
+        # render.py emits the marker and the note together, so a bare marker means
+        # somebody took the note out.
+        for count, of in TRUNCATED.findall(html):
+            if int(count) < int(of) and "cap-note" not in html:
+                problems.append((shown, f"shows {count} of {of} rows and says nothing"))
 
         declared = faces_declared(html)
         has_foreign = bool(foreign_stylesheets(html))

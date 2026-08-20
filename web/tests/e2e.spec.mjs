@@ -306,17 +306,22 @@ test.describe("faces arrive as you scroll", () => {
   test("scrolling loads more, and marks none of them as failed", async ({ page }) => {
     await page.goto(`${BASE}/char/0041/`);
     await page.evaluate(() => document.fonts.ready);
-    const before = await page.locator(".tile-glyph[data-face]").count();
+    const waitingAtFirst = await page.locator(".tile-glyph[data-family]").count();
+    expect(waitingAtFirst, "nothing was left to load, so this proves nothing")
+      .toBeGreaterThan(0);
 
     // Scroll the window, not the element: Playwright's scrollIntoViewIfNeeded
     // left scrollY at 0 here, so the observer never fired and the test proved
-    // nothing while passing its second assertion.
+    // nothing while passing its other assertion.
+    //
+    // Then wait for a condition rather than a duration. Comparing a before/after
+    // count across a fixed sleep passed alone and failed inside the full suite,
+    // because how many faces land in 2.5s depends on what else is running.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(2500);
+    await page.waitForFunction(
+      (was) => document.querySelectorAll(".tile-glyph[data-family]").length < was,
+      waitingAtFirst, { timeout: 15000 });
 
-    const after = await page.locator(".tile-glyph[data-face]").count();
-    expect(after, "scrolling to the end loaded no further faces").toBeGreaterThan(before);
     expect(await page.locator(".tile-glyph.fallback").count(),
       "a face that arrived was marked as absent").toBe(0);
   });

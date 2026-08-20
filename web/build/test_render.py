@@ -4,6 +4,7 @@ The pages are generated HTML, not assembled in the browser, so what these
 assert is that the content is *in* the markup — a reader with JS off, and a
 search engine, see the same facts a visitor does.
 """
+import io
 import os
 import html as html_module
 import re
@@ -794,6 +795,62 @@ def test_char_page_draws_the_glyph_in_each_family():
     assert ".f-manjari" in html and ".f-baloo-chettan-2" in html
     # And the tile links to the family it draws.
     assert render.link("/font/manjari/") in html
+
+
+# Slices that are deliberately not a truncated answer. Keyed on the line itself,
+# not on the bound: an allowlist of "[:200]" would wave through any table that
+# happened to cap at 200, which is how `implementers[:200]` slipped past the
+# first version of this test. Editing one of these lines re-triggers the review,
+# which is the point.
+ALLOWED_SLICES = {
+    'hexdigest()[:8]': "a slug's hash suffix, not a list of anything",
+    'for s in scripts[:12])': "the home page's featured scripts, not an answer to a question",
+    'for l in languages[:12])': "the home page's featured languages",
+    'for f in fonts[:12])': "the home page's featured families",
+    'if word][:3]': "the first three words of a specimen line",
+    "if not ch.isspace()][:8]": "the first letters of an exemplar set, as a sample",
+    'join(gaps[:12])': "a sample of the characters a family is missing, inside one cell",
+    "split(chr(10))[0][:200]": "the first 200 characters of a UDHR paragraph",
+}
+
+
+def test_a_truncated_table_cannot_be_silent():
+    """Five caps on this site were undisclosed at one time or another.
+
+    The glyph inventory, the character grid, the language cards, the block
+    families, the script families. Every one was a bare `[:N]` slice that read as
+    complete, and every one was found by hand — four of them after shipping.
+
+    `check_site.py` can only see a truncation that marked itself, so the source
+    is what has to be policed: a slice with a literal bound, in the renderer, is
+    either inside `capped()` or in the list above with a reason.
+    """
+    source = io.open(render.__file__, encoding="utf-8").read()
+    offenders = []
+    for line_no, line in enumerate(source.splitlines(), 1):
+        if not re.search(r"\[:\d+\]", line):
+            continue
+        if "capped(" in line or any(ok in line for ok in ALLOWED_SLICES):
+            continue
+        offenders.append(f"{line_no}: {line.strip()[:80]}")
+    
+    assert not offenders, ("a table is truncated without going through capped(): "
+                           + "; ".join(offenders))
+
+
+def test_capped_says_what_it_dropped():
+    rows = list(range(100))
+    shown, attrs, note = render.capped(rows, 10, "families", "each one is a webfont")
+    assert len(shown) == 10
+    assert 'data-showing="10"' in attrs and 'data-of="100"' in attrs
+    assert "Showing 10 of 100 families" in note
+    assert "each one is a webfont" in note
+    assert "cap-note" in note
+
+    # Nothing dropped, nothing claimed: no marker for check_site to police and
+    # no sentence for a reader to read past.
+    shown, attrs, note = render.capped(rows[:5], 10, "families")
+    assert len(shown) == 5 and attrs == "" and note == ""
 
 
 def test_language_page_shows_every_family_that_fits():

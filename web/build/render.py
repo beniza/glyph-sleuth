@@ -1754,6 +1754,28 @@ DRAWN_LIMIT = 24
 CARDS_LIMIT = 36
 
 
+def capped(rows, limit, noun, because=""):
+    """Truncate a table and say so, in one call so the two cannot drift apart.
+
+    Five caps on this site were undisclosed at one time or another, found one at
+    a time and mostly after shipping — the glyph inventory, the character grid,
+    the language cards, the block families, the script families. Each was written
+    as a bare `[:N]` slice, and each read as complete.
+
+    Returns (shown, attributes for the table, the note). The attributes let
+    `check_site.py` find a truncated table and demand the note; passing through
+    here is what makes the note exist at all.
+    """
+    shown = rows[:limit]
+    if len(rows) <= limit:
+        return shown, "", ""
+    attrs = f' data-showing="{len(shown)}" data-of="{len(rows)}"'
+    note = (f'      <p class="quiet cap-note">Showing {len(shown):,} of '
+            f'{len(rows):,} {esc(noun)}'
+            + (f" — {esc(because)}" if because else "") + ".</p>")
+    return shown, attrs, note
+
+
 def face_attrs(font, eager):
     """The attributes that either claim a face or ask for one later.
 
@@ -1910,19 +1932,32 @@ def feature_page(tag, content, fonts):
                     'fallback face for the script, so they show what the sequence means '
                     'rather than how any one family draws it.</p>\n    </section>')
 
+    # Supporting evidence rather than the answer to "which fonts do this", so a
+    # stated cap is right here where removing it would not be. It is bounded by
+    # how many font files we have read — 194 today — so it climbs whenever the
+    # tier-2 gate widens, and would have passed 200 with nobody touching this.
+    shown_implementers, implementers_attrs, implementers_note = capped(
+        implementers, 200, "families that run it",
+        "ordered by how many rules they give it")
     listed = "\n".join(
         f'      <tr><th scope="row"><a href="{font_href(font)}lookups/">'
         f'{esc(font["name"])}</a></th>'
         f'<td class="mono">{rules:,}</td><td class="mono">{lookups}</td>'
         f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
-        for font, rules, lookups in implementers[:200])
+        for font, rules, lookups in shown_implementers)
+    # This page already said what it dropped, in better words than the generic
+    # note — so it keeps its own sentence and takes only the marker, which is
+    # what lets check_site.py notice if the sentence ever goes away. The
+    # `cap-note` class is the contract between the two.
     who = ('    <section>\n      <h2 class="eyebrow">Implemented by</h2>\n'
-           '      <table class="index">\n        <thead><tr><th>Family</th><th>Rules</th>'
+           f'      <table class="index"{implementers_attrs}>\n'
+           '        <thead><tr><th>Family</th><th>Rules</th>'
            '<th>Lookups</th><th>Foundry</th></tr></thead>\n'
            f'      <tbody>\n{listed}\n      </tbody>\n      </table>\n'
-           f'      <p class="quiet">{len(implementers):,} of the families whose tables we '
-           f'have read run this feature'
-           + (", the 200 largest shown." if len(implementers) > 200 else ".")
+           f'      <p class="quiet cap-note">{len(implementers):,} of the families whose '
+           f'tables we have read run this feature'
+           + (f", the {len(shown_implementers)} largest shown."
+              if len(implementers) > len(shown_implementers) else ".")
            + ' Rule counts are what the font actually carries, not what it declares.</p>\n'
            "    </section>") if implementers else (
         '    <section>\n      <h2 class="eyebrow">Implemented by</h2>\n'
@@ -2151,7 +2186,7 @@ def block_page(block, fonts, chars_built):
         f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
         f'<td class="mono">{n}/{len(assigned)}</td>'
         f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
-        for font, n in covering[:100])
+        for font, n in covering)
 
     notes = []
     # A chart whose cells are links except where they silently are not is worse
@@ -2307,16 +2342,19 @@ def script_page(script, fonts, languages, chars_built):
         for block in script["blocks"])
 
     written_by = [lang for lang in languages if script["code"] in (lang.get("scripts") or [])]
+    shown_langs, _langs_attrs, langs_note = capped(
+        sorted(written_by, key=lambda l: l["name"].lower()), 60,
+        "languages written in it", "alphabetical")
     langs_html = " ".join(
         f'<a href="{link("/lang/" + lang["id"] + "/")}">{esc(lang["name"])}</a>'
-        for lang in sorted(written_by, key=lambda l: l["name"].lower())[:60])
+        for lang in shown_langs)
 
     families = "\n".join(
         f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
         f'<td class="mono">{cov["covered"]}/{cov["chars"]}</td>'
         f'<td class="quiet">{esc(" · ".join(font.get("tags") or []) or "not read")}</td>'
         f'<td class="quiet">{esc(FOUNDRIES.get(font.get("source"), ""))}</td></tr>'
-        for font, cov in ranked[:100])
+        for font, cov in ranked)
 
     body = f"""    <section class="entity-head">
       <h1>{esc(script["name"])}</h1>
@@ -2348,6 +2386,7 @@ def script_page(script, fonts, languages, chars_built):
     <section>
       <h2 class="eyebrow">Written by</h2>
       <div class="links">{langs_html or '<span class="quiet">No language in the index is recorded as using it.</span>'}</div>
+{langs_note}
     </section>
 
     <section>
@@ -2536,11 +2575,14 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     script_links = " ".join(
         f'<a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>' for s in used)
 
+    # Near misses are context for the families that do fit, not the answer, so
+    # this table keeps its cap and says so.
+    shown_near, near_attrs, near_note = capped(near, 40, "near misses", "closest first")
     nearly = "\n".join(
         f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
         f'<td class="mono">{len(gaps)}</td>'
         f'<td class="glyph-small">{esc("".join(gaps[:12]))}</td></tr>'
-        for font, gaps in near[:40])
+        for font, gaps in shown_near)
 
     body = f"""    <section class="entity-head">
       <h1>{esc(language["name"])}</h1>
@@ -2581,12 +2623,13 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
 
     <section>
       <h2 class="eyebrow">Nearly fits</h2>
-      <table class="index">
+      <table class="index"{near_attrs}>
         <thead><tr><th>Family</th><th>Missing</th><th>Which characters</th></tr></thead>
       <tbody>
 {nearly or '      <tr><td colspan="3" class="quiet">Nothing came close without fitting.</td></tr>'}
       </tbody>
       </table>
+{near_note}
       <p class="quiet">Families missing no more than {threshold} of the {needed} exemplar
          characters, and which ones they drop to a fallback face. Naming them is the useful
          part: one absent letter is a different problem from twenty.
