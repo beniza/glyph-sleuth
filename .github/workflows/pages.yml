@@ -66,6 +66,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: python web/build/render.py
 
+      # Two invariants over the built site: every internal link resolves, and no
+      # page names a face it carries no source for. Both were learned from bugs
+      # that shipped; it found three more the first time it ran.
+      - run: python web/build/check_site.py
+
       # Checks the served tables against the code that reads them: a rename in
       # the generator would leave Inspect reading nothing while every unit test
       # still passed, so this runs after the build rather than before it.

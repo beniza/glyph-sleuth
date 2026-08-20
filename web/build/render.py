@@ -982,11 +982,20 @@ def font_page(font, blocks):
 
     if font.get("provenance"):
         source = font["provenance"]
+        # `release` is a URL only for foundries we read a stylesheet from. For a
+        # GitHub or GitLab release it is a tag — "v4.100" — and linking it
+        # produced `href="v4.100"`, a relative link to nothing, on every SIL, RIT
+        # and libre family page, labelled "external". The checker found it.
+        release = source.get("release") or ""
+        where = release if release.startswith("http") else font.get("url") or ""
+        named = ("" if release.startswith("http")
+                 else f' release <span class="mono">{esc(release)}</span>')
+        link_text = (f'<a href="{esc(where)}">the release the foundry publishes ↗ — external</a>'
+                     if where else "the release the foundry publishes")
         right.append('      <h2 class="eyebrow">Provenance</h2>\n'
                      '      <p class="quiet">Read from <span class="mono">'
-                     f'{esc(source.get("file"))}</span> on {esc(source.get("read"))}, via '
-                     f'<a href="{esc(source.get("release"))}">the release the foundry'
-                     ' publishes ↗ — external</a>.<br>'
+                     f'{esc(source.get("file"))}</span>{named} on {esc(source.get("read"))}, '
+                     f'via {link_text}.<br>'
                      f'<span class="mono break">{esc(font.get("checksum"))}</span></p>')
 
     # The evidence gets the full width. It was in a third of it, beside two
@@ -1220,16 +1229,23 @@ def feature_styles(inventory):
     return f"  <style>\n{rules}\n  </style>" if rules else ""
 
 
-def unloadable_cell(glyph, why):
+def unloadable_cell(glyph, why, chars_built=()):
     """What stands where the drawing would be for a family we cannot load.
 
     Not a blank, and not the character set in the page font: an encoded glyph
-    still has a codepoint worth linking, and everything the layout builds has
+    still has a codepoint worth naming, and everything the layout builds has
     nothing honest to show at all.
+
+    `chars_built` is not optional in practice, whatever the default says. Without
+    it this linked every codepoint it found — including private use and control
+    characters, which have no page — and put 99 dead links on Junicode's glyphs
+    page alone. `glyph_cell()` has always checked; this was written later and did
+    not, which is what `check_site.py` was built to catch.
     """
     if glyph.get("cp"):
-        return (f'<a class="mono quiet" href="{link(f"/char/{glyph["cp"]:04X}/")}">'
-                f'U+{glyph["cp"]:04X}</a>')
+        code = f'U+{glyph["cp"]:04X}'
+        return (f'<a class="mono quiet" href="{link(f"/char/{glyph["cp"]:04X}/")}">{code}</a>'
+                if glyph["cp"] in chars_built else f'<span class="mono quiet">{code}</span>')
     return ('<span class="faint" title="nothing here can draw this: '
             + esc(why) + '">not loadable</span>')
 
@@ -1286,7 +1302,7 @@ def glyphs_page(font, chars_built=()):
             for tag in glyph["consumed"])
         rows.append(
             f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}">'
-            + f'<td>{glyph_cell(glyph, chars_built) if drawn else unloadable_cell(glyph, why)}</td>'
+            + f'<td>{glyph_cell(glyph, chars_built) if drawn else unloadable_cell(glyph, why, chars_built)}</td>'
             + f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
             f"<td>{reach}</td>"
             f'<td><div class="chips">{chips}</div></td>'
@@ -2644,18 +2660,22 @@ def main():
             os.makedirs(os.path.join(OUT_SITE, "data"), exist_ok=True)
             shutil.copyfile(source, os.path.join(OUT_SITE, "data", table))
 
-    # One small file per family with lookup tables, for Compare to fetch. Only
-    # the families there is something to compare — not all 1,885.
+    # One small file per measured family, for Compare and for the Try it panel's
+    # coverage marking. It was written only for families with lookup tables,
+    # which left Try it fetching a 404 on every other family and falling back to
+    # "we could not load the coverage list" — for families whose ranges we had
+    # all along. The site checker found it. A family with no tables carries only
+    # its ranges here, which is a few hundred bytes.
     out = os.path.join(OUT_SITE, "data", "font")
     os.makedirs(out, exist_ok=True)
     written = 0
     for font in fonts["fonts"]:
-        if not font.get("tables"):
+        if font.get("tier") != "measured":
             continue
         with io.open(os.path.join(out, f"{font['slug']}.json"), "w", encoding="utf-8") as handle:
             json.dump(font_data(font), handle, ensure_ascii=False, separators=(",", ":"))
         written += 1
-    print(f"  wrote compare data for {written} families")
+    print(f"  wrote per-family data for {written} families")
     measured = sum(1 for f in fonts["fonts"] if f.get("tier") == "measured")
     print(f"  {len(fonts['fonts']):,} families — {measured:,} measured, "
           f"{len(fonts['fonts']) - measured:,} not yet")

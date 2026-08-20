@@ -49,6 +49,7 @@ pass locally and fail in production.
 | Python | `python -m pytest web/build` | the generator and the renderer, against markup |
 | Node | `npm run test:unit` · `npm run test:data` | `core.js`, and the served tables against the code that reads them |
 | Browser | `npx playwright test` | what only a browser can answer |
+| Output | `python web/build/check_site.py` | the built site: every link resolves, every named face has a source |
 
 **Run the browser suite before pushing anything that touches a page.** Every bug
 in this project that reached a deploy was the same kind: a page that passed every
@@ -60,6 +61,11 @@ Non-trivial logic leaves a runnable check behind, and the failing test comes
 first. Prefer a test that kills a *class* of bug over one that pins a page: the
 `/char/` fallback fix was correct and the lesson never left that function, so
 three other page types stayed broken for weeks.
+
+`check_site.py` runs after `render.py` and needs a build to look at. It reports
+what it skipped rather than implying it checked everything, and `site/mockup/`
+is excluded on purpose — it is a committed client-side template whose
+`href="{{ font.source.url }}"` are expressions, not links.
 
 An assertion is only as good as its premise. Two of this project's tests were
 written on premises that were simply false — "heavier draws wider" is not a law,
