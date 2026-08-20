@@ -764,17 +764,38 @@ def test_char_page_draws_the_glyph_in_each_family():
     assert render.link("/font/manjari/") in html
 
 
-def test_char_page_says_how_many_faces_it_drew():
-    # Loading a hundred webfonts on one page is not a page. The cap is stated,
-    # because a grid of twenty-four when there are nine hundred reads as
-    # "twenty-four families have this" unless it says otherwise.
+def test_char_page_shows_every_family_and_claims_only_the_drawn_ones():
+    """Every family that covers the codepoint gets a tile; only the first batch
+    claims to be drawn.
+
+    This used to cap the grid at DRAWN_LIMIT and say so, which was honest but
+    answered "24 of 912" to a reader asking which fonts have this character.
+    Every tile is now in the markup — they are cheap — and the faces arrive on
+    scroll, because nine hundred webfonts is ninety megabytes.
+
+    The claim is what matters. A tile without its face has not been drawn by the
+    family it names, so it carries `data-family`, not `data-face` — otherwise the
+    fallback marking in app.js flags all eight hundred as failed on load.
+    """
     fonts = [{"name": f"Face {n}", "slug": f"face-{n}", "source": "google",
               "tier": "measured", "ranges": [[0x0D00, 0x0D7F]], "licence": "OFL"}
              for n in range(40)]
     html = render.char_page(0x0D15, "MALAYALAM LETTER KA",
                             [0x0D00, 0x0D7F, "Malayalam"], fonts, {0x0D15})
-    assert html.count('class="tile-glyph') == render.DRAWN_LIMIT
-    assert f"{render.DRAWN_LIMIT} of 40" in html
+
+    assert html.count('class="tile-glyph') == 40, "a family that covers it has no tile"
+    assert html.count("data-face=") == render.DRAWN_LIMIT, "claimed more than it drew"
+    assert html.count("data-family=") == 40 - render.DRAWN_LIMIT
+    # The note stops being about what was dropped, because nothing is.
+    assert "All 40 indexed families" in html
+    assert "arrive as you scroll" in html
+
+    # A page whose families all fit needs no lazy loading and no second note.
+    few = fonts[:4]
+    small = render.char_page(0x0D15, "MALAYALAM LETTER KA",
+                             [0x0D00, 0x0D7F, "Malayalam"], few, {0x0D15})
+    assert small.count("data-family=") == 0
+    assert "arrive as you scroll" not in small
 
 
 def test_every_script_gets_character_pages():

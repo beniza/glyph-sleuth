@@ -278,6 +278,86 @@ test.describe("Try it", () => {
   });
 });
 
+test.describe("faces arrive as you scroll", () => {
+  // U+0041 is covered by a hundred families in a small build and nine hundred in
+  // the full one, so it is the page this exists for.
+  test("every family has a tile, and only the drawn ones claim to be", async ({ page }) => {
+    await page.goto(`${BASE}/char/0041/`);
+    const tiles = page.locator(".tile-glyph");
+    const total = await tiles.count();
+    expect(total, "the page should carry every covering family").toBeGreaterThan(30);
+
+    // On load: a first batch claiming a face, the rest waiting and claiming
+    // nothing. A tile without its face has not been drawn by the family it
+    // names, and app.js must not mark it as failed.
+    await page.evaluate(() => document.fonts.ready);
+    const claimed = await page.locator(".tile-glyph[data-face]").count();
+    const waiting = await page.locator(".tile-glyph[data-family]").count();
+    expect(claimed).toBeGreaterThan(0);
+    expect(waiting).toBeGreaterThan(0);
+    expect(claimed + waiting).toBe(total);
+
+    // The one that would be a disaster: eight hundred families cried wolf over.
+    await page.waitForTimeout(1200);
+    expect(await page.locator(".tile-glyph.fallback").count(),
+      "a tile still waiting for its face was marked as failed").toBe(0);
+  });
+
+  test("scrolling loads more, and marks none of them as failed", async ({ page }) => {
+    await page.goto(`${BASE}/char/0041/`);
+    await page.evaluate(() => document.fonts.ready);
+    const before = await page.locator(".tile-glyph[data-face]").count();
+
+    // Scroll the window, not the element: Playwright's scrollIntoViewIfNeeded
+    // left scrollY at 0 here, so the observer never fired and the test proved
+    // nothing while passing its second assertion.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(2500);
+
+    const after = await page.locator(".tile-glyph[data-face]").count();
+    expect(after, "scrolling to the end loaded no further faces").toBeGreaterThan(before);
+    expect(await page.locator(".tile-glyph.fallback").count(),
+      "a face that arrived was marked as absent").toBe(0);
+  });
+
+  test("a lazily-loaded face that never arrives is still marked", async ({ page }) => {
+    // The gap this closes: app.js runs its check once on load, and these tiles
+    // are only promoted to claims afterwards — so for a while a lazy face that
+    // failed to arrive was presented as a drawing, silently. The eager path has
+    // always had a test for exactly this; the lazy path needed its own.
+    //
+    // Every webfont request is blocked, so no lazy face can possibly arrive.
+    await page.route("**/*.woff2", (route) => route.abort());
+    await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
+
+    await page.goto(`${BASE}/char/0041/`);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(2500);
+
+    const promoted = await page.locator(".tile-glyph[data-face]").count();
+    const marked = await page.locator(".tile-glyph.fallback").count();
+    expect(promoted, "nothing was promoted, so this proves nothing").toBeGreaterThan(24);
+    expect(marked, "a face that never arrived was presented as a drawing")
+      .toBeGreaterThan(0);
+    // And the panel says so once, not once per tile.
+    expect(await page.locator(".fallback-note").count()).toBe(1);
+  });
+
+  test("with JavaScript off every family is still listed", async ({ browser }) => {
+    // The tiles are the cheap part and they are in the markup. What a reader
+    // without JavaScript loses is the drawing of the later ones, not the answer
+    // to "which families have this character".
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/char/0041/`);
+    expect(await page.locator(".tile-glyph").count()).toBeGreaterThan(30);
+    expect(await page.locator(".draws-name").count()).toBeGreaterThan(30);
+    await context.close();
+  });
+});
+
 test.describe("a face that is drawing is not marked as absent", () => {
   test("families on a character page render it", async ({ page }) => {
     // The bug this exists for: Dyuthi was marked as not drawing ക, which it

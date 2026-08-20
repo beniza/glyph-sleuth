@@ -1707,6 +1707,23 @@ DRAWN_LIMIT = 24
 CARDS_LIMIT = 36
 
 
+def lazy_face_styles(fonts):
+    """The `.f-<slug>` rules for tiles whose faces have not arrived yet.
+
+    The class has to exist in the markup or the tile would jump from the page
+    font to the family's the instant its face loads. What is absent is the face
+    itself — no stylesheet link, no @font-face — so until `lazyfaces.js` injects
+    one these tiles are the page font, marked pending, and claim nothing.
+    """
+    if not fonts:
+        return ""
+    rules = "\n".join(
+        f'    .f-{esc(font.get("slug") or slug(font["name"]))} '
+        f'{{ font-family: "{esc(font["name"])}", serif; }}'
+        for font in fonts)
+    return "  <style>\n" + rules + "\n  </style>"
+
+
 def face_styles(fonts):
     """Load these families, and give each a class that sets it.
 
@@ -1942,23 +1959,47 @@ def char_page(cp, name, block, covering, chars_built):
     drawable = [font for font in covering if can_draw(font)]
     ordered = sorted(drawable, key=lambda f: (f.get("tier") != "measured",
                                               f["name"].lower()))
+    # Every family that covers this codepoint gets a tile. The first
+    # DRAWN_LIMIT arrive with their faces in the markup, so a reader with
+    # JavaScript off sees those drawn and the rest listed by name — the same
+    # thing they saw before, plus everything they could not reach.
+    #
+    # The rest carry what a face needs and are drawn as they are scrolled to.
+    # Deliberately *not* their `data-face`: until a face is injected the tile has
+    # not been drawn by this family, and the fallback marking in app.js would
+    # otherwise mark every one of them as failed the moment the page loaded.
+    # lazyfaces.js sets `data-face` after the face lands, which is the whole
+    # safety argument and is why #2 shipped first.
     drawn = ordered[:DRAWN_LIMIT]
+    later = ordered[DRAWN_LIMIT:]
     undrawable = len(covering) - len(drawable)
-    tiles = "\n".join(
-        f'        <a class="draws" href="{font_href(font)}">'
-        f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
-        f' data-face="{esc(font["name"])}">{esc(ch)}</span>'
-        f'<span class="draws-name">{esc(font["name"])}</span></a>'
-        for font in drawn)
-    faces = face_styles(drawn)
+
+    def tile(font, eager):
+        css = face_css_of(font)
+        rule = "" if css else face_rule(font)
+        face = (f' data-face="{esc(font["name"])}"' if eager else
+                f' data-family="{esc(font["name"])}"'
+                + (f' data-css="{esc(css)}"' if css else "")
+                + (f' data-rule="{esc(rule)}"' if rule else ""))
+        return (f'        <a class="draws" href="{font_href(font)}">'
+                f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
+                f'{face}>{esc(ch)}</span>'
+                f'<span class="draws-name">{esc(font["name"])}</span></a>')
+
+    tiles = "\n".join([tile(font, True) for font in drawn]
+                      + [tile(font, False) for font in later])
+    faces = face_styles(drawn) + "\n" + lazy_face_styles(later)
     # What the grid dropped, said out loud: twenty-four tiles where nine hundred
     # families have the character would otherwise read as "twenty-four have it".
-    drawn_note = (f"Showing {len(drawn)} of {len(drawable):,} families that cover it and "
-                  "can be loaded, measured ones first — a page cannot load nine hundred "
-                  "of them."
-                  if len(drawable) > len(drawn) else
-                  f"All {len(drawable):,} indexed families that cover this codepoint and "
-                  "can be loaded.")
+    # Every drawable family is now on the page, so the note is no longer about
+    # what was dropped — nothing is — but about what has been *drawn* so far.
+    # A tile still in the page font is not a drawing by the family it names, and
+    # lazyfaces.js rewrites this line while the faces arrive.
+    drawn_note = (f"All {len(drawable):,} indexed families that cover this codepoint and "
+                  "can be loaded, measured ones first."
+                  + (f" The first {len(drawn)} are drawn as this page loads; the rest arrive "
+                     "as you scroll, because each one is a webfont."
+                     if later else ""))
     if undrawable:
         drawn_note += (f" A further {undrawable:,} cover it but publish no webfont we can "
                        "load or re-serve, so they cannot be drawn here — their coverage "
@@ -1985,7 +2026,7 @@ def char_page(cp, name, block, covering, chars_built):
         <div class="drawn">
 {tiles}
         </div>
-        <p class="quiet">{drawn_note}
+        <p class="quiet" data-drawn-note="{esc(drawn_note)}">{drawn_note}
            Each is drawn by your browser in that family's own face, from that family's own
            distribution. Covering a codepoint is not the same as drawing it correctly in
            context — that is what a font's sequences show.</p>
@@ -2651,7 +2692,8 @@ def main():
     # core.js goes out too: Inspect imports it at runtime to read the same
     # Unicode tables the build reads, so a codepoint's facts there and on its
     # own page come from one place.
-    for asset in ("style.css", "app.js", "copy.js", "core.js", "inspect.js", "tryit.js"):
+    for asset in ("style.css", "app.js", "copy.js", "core.js", "inspect.js", "tryit.js",
+                  "lazyfaces.js", "facecheck.js"):
         shutil.copyfile(os.path.join(ROOT, "web", asset), os.path.join(OUT_SITE, asset))
 
     # The one thing we serve that we did not write: a foundry's own woff2 build,

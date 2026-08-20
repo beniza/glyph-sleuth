@@ -721,6 +721,11 @@ table.tight .quiet { font-size: 12.5px; }
 .t-name { color: var(--ink); }
 .t-string { color: var(--proof); }
 
+/* A tile whose face has not arrived. Dimmed, not hatched: it is not a failure,
+   it is a face on its way, and it must not read as either a drawing by this
+   family or a fault. */
+.tile-glyph.waiting { opacity: .35; }
+
 /* Two releases of one family, side by side. Numbers right-aligned so the pair
    can be compared down the column rather than read as prose. */
 .releases table { max-width: 46rem; }

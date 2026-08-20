@@ -9,6 +9,10 @@ copyButtons();
 // Only the family pages have a Try it panel, and only they pay for it.
 if (document.querySelector(".try")) import("./tryit.js");
 
+// Character pages carry every family that covers the codepoint. Only the
+// first two dozen arrive with their faces; the rest ask for theirs on scroll.
+if (document.querySelector(".tile-glyph[data-family]")) import("./lazyfaces.js");
+
 // --------------------------------------------------------------- the index
 //
 // Filter, facets and sort over rows the page already served. Nothing here
@@ -270,52 +274,8 @@ if (inspectField) {
 const faced = document.querySelectorAll("[data-face]");
 if (faced.length) {
   (async () => {
-    const unquote = (name) => name.replace(/^["']|["']$/g, "");
-    const asked = new Map();
-
-    const webfontFailed = async (family) => {
-      if (!asked.has(family)) {
-        asked.set(family, (async () => {
-          const faces = [...document.fonts].filter(
-            (face) => unquote(face.family) === family);
-          // No @font-face at all: the stylesheet did not arrive, or the family
-          // is spelled differently there than we think. Either way our face is
-          // not drawing this.
-          if (!faces.length) return "no stylesheet";
-          await Promise.all(faces.map((face) => face.load().catch(() => {})));
-          if (faces.some((face) => face.status === "loaded")) return "";
-          return "the file failed";
-        })());
-      }
-      return asked.get(family);
-    };
-
+    const { markMissing, noteFallbacks } = await import("./facecheck.js");
     await document.fonts.ready;
-
-    let missing = 0;
-    for (const node of faced) {
-      const family = node.dataset.face;
-      if (!family) continue;
-      const failure = await webfontFailed(family);
-      if (!failure) continue;
-      node.classList.add("fallback");
-      node.title = `${family} did not load (${failure}) — your browser is drawing this `
-        + "in another face";
-      missing += 1;
-    }
-
-    // Said once per panel, where the drawing is, rather than as a badge on every
-    // tile.
-    if (missing) {
-      for (const panel of document.querySelectorAll(".drawn, .drawn-rows, .cards")) {
-        if (!panel.querySelector(".fallback")) continue;
-        const note = document.createElement("p");
-        note.className = "quiet fallback-note";
-        note.textContent = "Marked families did not load, so what you see there is your "
-          + "browser's fallback rather than the font. Their coverage figures still come "
-          + "from the font's own tables.";
-        panel.after(note);
-      }
-    }
+    if (await markMissing(faced)) noteFallbacks();
   })();
 }
