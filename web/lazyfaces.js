@@ -16,7 +16,10 @@
 // DRAWN_LIMIT tiles have their faces in the markup, and the rest are a list of
 // family names, each a link to a page that draws it.
 
-const pending = [...document.querySelectorAll(".tile-glyph[data-family]")];
+// Any panel that asked for its faces later — the character grid's tiles and the
+// language page's cards both do, and anything else that adopts `data-family`
+// gets this for free.
+const pending = [...document.querySelectorAll("[data-family]")];
 
 if (pending.length) {
   const head = document.head;

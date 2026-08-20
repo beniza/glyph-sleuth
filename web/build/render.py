@@ -1754,6 +1754,28 @@ DRAWN_LIMIT = 24
 CARDS_LIMIT = 36
 
 
+def face_attrs(font, eager):
+    """The attributes that either claim a face or ask for one later.
+
+    `data-face` is a claim: this family drew this text. It is only true once the
+    face is really here, so a panel that loads faces on scroll emits
+    `data-family` plus what a face needs, and lazyfaces.js swaps one for the
+    other after the face lands. Backwards, it marks every waiting tile as a
+    failure the moment the page loads.
+
+    Shared by the character grid and the language cards because they had the same
+    cap and want the same fix — and writing it twice is how one of them gets
+    fixed and the other does not, which is exactly what happened the first time.
+    """
+    if eager:
+        return f' data-face="{esc(font["name"])}"'
+    css = face_css_of(font)
+    rule = "" if css else face_rule(font)
+    return (f' data-family="{esc(font["name"])}"'
+            + (f' data-css="{esc(css)}"' if css else "")
+            + (f' data-rule="{esc(rule)}"' if rule else ""))
+
+
 def lazy_face_styles(fonts):
     """The `.f-<slug>` rules for tiles whose faces have not arrived yet.
 
@@ -2022,12 +2044,7 @@ def char_page(cp, name, block, covering, chars_built):
     undrawable = len(covering) - len(drawable)
 
     def tile(font, eager):
-        css = face_css_of(font)
-        rule = "" if css else face_rule(font)
-        face = (f' data-face="{esc(font["name"])}"' if eager else
-                f' data-family="{esc(font["name"])}"'
-                + (f' data-css="{esc(css)}"' if css else "")
-                + (f' data-rule="{esc(rule)}"' if rule else ""))
+        face = face_attrs(font, eager)
         return (f'        <a class="draws" href="{font_href(font)}">'
                 f'<span class="tile-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
                 f'{face}>{esc(ch)}</span>'
@@ -2482,18 +2499,33 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     unsuitable = len(partial) - len(near)
 
     specimen = specimen_for(language, exemplars)
+    # Same cap and the same fix as the character grid: every family that covers
+    # the exemplars gets a card, the first CARDS_LIMIT arrive with their faces in
+    # the markup, and the rest load as they are scrolled to. "Showing 36 of 59
+    # families" is not an answer to "what can I set Hindi in".
     shown = fits[:CARDS_LIMIT]
+    later_cards = fits[CARDS_LIMIT:]
     cards = "\n".join(
         f'        <a class="card" href="{font_href(font)}">'
         f'<span class="card-specimen f-{esc(font.get("slug") or slug(font["name"]))}"'
-        f' data-face="{esc(font["name"])}">{esc(specimen)}</span>'
+        f'{face_attrs(font, at < CARDS_LIMIT)}>{esc(specimen)}</span>'
         f'<span class="card-name">{esc(font["name"])}</span>'
         f'<span class="card-note quiet">'
         + ("built for " + esc(main["name"]) if made_for(font, main, blocks)
            else esc(FOUNDRIES.get(font.get("source"), "")))
         + "</span></a>"
-        for font, _gaps in shown)
-    faces = face_styles([font for font, _gaps in shown])
+        for at, (font, _gaps) in enumerate(fits))
+    faces = (face_styles([font for font, _gaps in shown]) + "\n"
+             + lazy_face_styles([font for font, _gaps in later_cards]))
+
+    cards_note = (
+        f"All {len(fits):,} families that cover every exemplar character, the ones drawn "
+        f"for {main['name'] if main else 'the script'} first."
+        + (f" The first {len(shown)} are drawn as this page loads; the rest arrive as you "
+           "scroll, because each one is a webfont." if later_cards else "")
+        + " Each is set in real words of the language, drawn by your browser from that "
+          "family's own distribution. Covering the characters is not the same as shaping "
+          "them correctly — the family's own page carries that.")
 
     tiles = "".join(
         f'<span class="tile">' +
@@ -2532,12 +2564,7 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
       <div class="cards">
 {cards or '        <p class="quiet">No indexed family covers this exemplar set.</p>'}
       </div>
-      <p class="quiet">{"Showing " + str(len(shown)) + " of " + f"{len(fits):,}"
-         if len(fits) > len(shown) else f"All {len(fits):,}"} families that cover every
-         exemplar character, the ones drawn for {esc(main["name"]) if main else "the script"}
-         first. Each is set in real words of the language, drawn by your browser from that
-         family's own distribution. Covering the characters is not the same as shaping them
-         correctly — the family's own page carries that.</p>
+      <p class="quiet" data-drawn-note="{esc(cards_note)}">{esc(cards_note)}</p>
     </section>
 
     <section>

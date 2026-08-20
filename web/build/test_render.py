@@ -796,6 +796,29 @@ def test_char_page_draws_the_glyph_in_each_family():
     assert render.link("/font/manjari/") in html
 
 
+def test_language_page_shows_every_family_that_fits():
+    """The character grid and the language page had the same cap.
+
+    Only the grid was fixed, and the language page went on saying "Showing 36 of
+    59 families that cover every exemplar character" — which is not an answer to
+    "what can I set Hindi in". That is why `face_attrs` is shared now: two copies
+    of one mechanism is how one gets fixed and the other does not.
+    """
+    fonts = [{"name": f"Face {n}", "slug": f"face-{n}", "source": "google",
+              "tier": "measured", "ranges": [[0x0900, 0x097F]], "licence": "OFL"}
+             for n in range(50)]
+    language = {"id": "hi", "name": "Hindi", "scripts": ["Deva"],
+                "exemplars": "कखग", "text": "कखग"}
+    html = render.lang_page(language, fonts, [{"code": "Deva", "name": "Devanagari"}],
+                            set(), BLOCKS)
+
+    assert html.count('class="card-specimen') == 50, "a family that fits has no card"
+    assert html.count("data-face=") == render.CARDS_LIMIT, "claimed more than it drew"
+    assert html.count("data-family=") == 50 - render.CARDS_LIMIT
+    assert f"All 50 families" in html
+    assert "Showing 36 of" not in html
+
+
 def test_char_page_shows_every_family_and_claims_only_the_drawn_ones():
     """Every family that covers the codepoint gets a tile; only the first batch
     claims to be drawn.

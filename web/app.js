@@ -9,9 +9,9 @@ copyButtons();
 // Only the family pages have a Try it panel, and only they pay for it.
 if (document.querySelector(".try")) import("./tryit.js");
 
-// Character pages carry every family that covers the codepoint. Only the
-// first two dozen arrive with their faces; the rest ask for theirs on scroll.
-if (document.querySelector(".tile-glyph[data-family]")) import("./lazyfaces.js");
+// Character and language pages carry every family that fits. Only the first
+// batch arrives with its faces; the rest ask for theirs on scroll.
+if (document.querySelector("[data-family]")) import("./lazyfaces.js");
 
 // --------------------------------------------------------------- the index
 //
