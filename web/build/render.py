@@ -2283,6 +2283,13 @@ CHAR_GROUPS = [
 ]
 
 
+# How many characters of one category a script page draws. Han has 89,300
+# assigned characters and drawing them all made a 2.5 MB page that answered 503
+# under its own weight. Enough to see what the script looks like; the block pages
+# hold the full charts, and this says so.
+ALPHABET_LIMIT = 320
+
+
 def script_alphabet(script, chars_built, faces=""):
     """The script's own characters, grouped, on the script's own page.
 
@@ -2307,10 +2314,20 @@ def script_alphabet(script, chars_built, faces=""):
                         break
 
     sections = []
+    dropped = 0
     for label, _categories in CHAR_GROUPS:
-        cps = found[label]
-        if not cps:
+        every = found[label]
+        if not every:
             continue
+        # Han is 89,300 assigned characters, and this emitted a span for every
+        # one: 2.47 MB of the 2.5 MB Han page, which then answered 503 under its
+        # own weight. Nobody reads 89,000 cells.
+        #
+        # Bounded per group and said out loud, with the block pages carrying the
+        # rest — they exist for every block the script spans, and a full chart is
+        # what they are for. core.js has always bounded its own version at 22.
+        cps, _attrs, _note = capped(every, ALPHABET_LIMIT, "characters")
+        dropped += len(every) - len(cps)
         # A mark drawn on its own is a mark floating in space, so it is shown on
         # a dotted circle — which is what the shaper does with it anyway.
         base = "◌" if label == "Marks" else ""
@@ -2320,19 +2337,29 @@ def script_alphabet(script, chars_built, faces=""):
                if cp in chars_built else esc(base + chr(cp)))
             + "</span>"
             for cp in cps)
+        count = (f"{len(cps):,} of {len(every):,}" if len(cps) < len(every)
+                 else f"{len(cps):,}")
         sections.append(f'      <h3 class="group">{esc(label)} '
-                        f'<span class="quiet mono">{len(cps)}</span></h3>\n'
+                        f'<span class="quiet mono">{esc(count)}</span></h3>\n'
                         f'      <div class="tiles alphabet">{tiles}</div>')
 
     if not sections:
         return ""
+    blocks = " · ".join(
+        f'<a href="{link(f"/block/{slug(block["name"])}/")}">{esc(block["name"])}</a>'
+        for block in script["blocks"])
+    more = (f'\n      <p class="quiet cap-note">{dropped:,} further characters of this '
+            'script are not drawn here — a script with tens of thousands of them is a '
+            'chart, not an alphabet. The full charts are on the block pages: '
+            f'{blocks}.</p>' if dropped else "")
     return ('    <section>\n      <h2 class="eyebrow">The characters</h2>\n'
             + "\n".join(sections)
-            + '\n      <p class="quiet">Every assigned character of the script, in Unicode\'s '
+            + '\n      <p class="quiet">The script\'s characters, in Unicode\'s '
               'own categories rather than a grouping of ours — ours could not be checked '
               'against anything. Combining marks are shown on a dotted circle, which is what '
               'a shaper does with a mark that has no base. Each links to the character, where '
-              'every indexed family draws it.</p>\n    </section>')
+              'every indexed family draws it.</p>'
+            + more + '\n    </section>')
 
 
 def script_page(script, fonts, languages, chars_built):

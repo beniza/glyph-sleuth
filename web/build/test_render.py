@@ -509,6 +509,36 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert 'data-try="italic"' in render.font_page(both, BLOCKS)
 
 
+def test_a_huge_script_does_not_draw_every_character():
+    """/script/Hani/ was 2,498,355 bytes and answered 503 under its own weight.
+
+    2.47 MB of it was one section: a span per assigned character, 89,293 of them.
+    Nobody reads 89,000 cells, and the block pages hold the full charts.
+
+    The inverse of the caps fixed in v0.4.3 — not a bound that hid an answer, but
+    the absence of one where the answer cannot be shown at all.
+    """
+    han = {"code": "Hani", "name": "Han",
+           "blocks": [{"name": "CJK Unified Ideographs",
+                       "ranges": [[0x4E00, 0x9FFF]], "chars": 20992}]}
+    html = render.script_alphabet(han, set())
+    assert html.count("<span") <= render.ALPHABET_LIMIT + 8, "still drawing everything"
+    assert len(html) < 40_000, f"{len(html):,} bytes is still a download"
+    # And it says what it left out, with the chart that holds it.
+    assert "cap-note" in html
+    assert "further characters" in html
+    assert "/block/cjk-unified-ideographs/" in html
+    assert "320 of 20,992" in html
+
+    # A script that fits is untouched: no note, no truncation, same page as before.
+    malayalam = {"code": "Mlym", "name": "Malayalam",
+                 "blocks": [{"name": "Malayalam", "ranges": [[0x0D00, 0x0D7F]],
+                             "chars": 118}]}
+    small = render.script_alphabet(malayalam, set())
+    assert "cap-note" not in small
+    assert " of " not in re.search(r'class="quiet mono">([^<]*)<', small).group(1)
+
+
 def test_a_run_of_links_is_marked_up_as_a_list():
     # Four destinations joined by a plain space read as one sentence on the page
     # — "Lookups Glyphs Download Anek Malayalam ↗ Compare with another family" —
