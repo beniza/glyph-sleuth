@@ -79,6 +79,20 @@ test.describe("Inspect", () => {
     expect(spills, "a drawing spills out of its own box").toBe(0);
   });
 
+  test("says how many families it is not showing", async ({ page }) => {
+    // Two caps used to stack silently: the served file holds ten families per
+    // block and the panel then showed eight of those — out of 1,879 covering
+    // Basic Latin. The block page lists every one, so the panel points there.
+    await page.goto(`${BASE}/inspect/?t=A`);
+    const note = page.locator("#inspect-out .quiet", { hasText: "families that cover" });
+    await expect(note).toBeVisible();
+    await expect(note).toContainText("Showing");
+    // And the link it offers actually goes to the page with the full answer.
+    const href = await note.locator("a").getAttribute("href");
+    expect(href).toContain("/block/basic-latin/");
+    expect((await page.request.get(href)).status()).toBe(200);
+  });
+
   test("copy hands over what it shows", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto(`${BASE}/inspect/?t=%E0%B4%95`);

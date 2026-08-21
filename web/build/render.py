@@ -1631,10 +1631,17 @@ def block_faces(fonts, blocks, assigned):
         # differences are about the writing system rather than incidental.
         faces.sort(key=lambda font: ((font.get("_dominant") or ("", 0, 0))[0] != name,
                                      font["name"].lower()))
-        out[name] = [{"name": font["name"], "slug": font["slug"],
-                      "source": font.get("source", ""), "css": font.get("css") or "",
-                      "for": (font.get("_dominant") or ("", 0, 0))[0] == name}
-                     for font in faces[:BLOCK_FACES]]
+        # The cap stays — uncapped this file is megabytes, and the docstring above
+        # says why — but the total ships with it so Inspect can say what it is not
+        # showing and point at the page that lists every one. Basic Latin is
+        # covered by 1,879 families; showing eight and saying nothing was the bug.
+        out[name] = {
+            "of": len(faces),
+            "faces": [{"name": font["name"], "slug": font["slug"],
+                       "source": font.get("source", ""), "css": font.get("css") or "",
+                       "for": (font.get("_dominant") or ("", 0, 0))[0] == name}
+                      for font in faces[:BLOCK_FACES]],
+        }
     return out
 
 

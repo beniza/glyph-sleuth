@@ -103,11 +103,18 @@ function test_authored_sequences_are_recognisable() {
 function test_faces_are_offered_per_block() {
   // Inspect draws a string in families that cover its block. Shipping every
   // family's ranges so the browser could work that out itself is megabytes.
-  const malayalam = faces.Malayalam;
-  if (!malayalam) {
+  const entry = faces.Malayalam;
+  if (!entry) {
     console.log("      (no Malayalam faces in this build's data — skipped)");
     return;
   }
+  // The shape carries the total beside the sample, because the sample is capped
+  // and Inspect has to be able to say so. Eight families shown out of 1,879 that
+  // cover Basic Latin, with nothing said, was the bug this shape fixes.
+  assert.ok(Array.isArray(entry.faces), "faces must be under .faces now");
+  assert.ok(typeof entry.of === "number" && entry.of >= entry.faces.length,
+            `total ${entry.of} is less than the ${entry.faces.length} shown`);
+  const malayalam = entry.faces;
   assert.ok(malayalam.length > 0);
   for (const face of malayalam) {
     assert.ok(face.name && face.slug, JSON.stringify(face));

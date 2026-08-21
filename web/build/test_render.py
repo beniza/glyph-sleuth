@@ -817,7 +817,18 @@ def test_char_page_draws_the_glyph_in_each_family():
 # first version of this test. Editing one of these lines re-triggers the review,
 # which is the point.
 ALLOWED_SLICES = {
-    'hexdigest()[:8]': "a slug's hash suffix, not a list of anything",
+    # The eager/lazy splits. Not truncations: everything is on the page, and what
+    # these bound is how many faces load immediately. The first version of this
+    # guard matched literal digits only, so a named bound was invisible — which is
+    # how the Inspect cap survived the release that removed every other one.
+    "ordered[:DRAWN_LIMIT]": "how many faces load eagerly, not how many tiles exist",
+    "fits[:CARDS_LIMIT]": "how many faces load eagerly, not how many cards exist",
+    "rows[:limit]": "capped() itself",
+    # Deliberate, and disclosed: uncapped this file is megabytes. The true
+    # total ships beside the faces as "of", Inspect says what it is not
+    # showing, and the block page lists every family.
+    "faces[:BLOCK_FACES]": "the Inspect payload, capped with its total alongside",
+    "hexdigest()[:8]": "a slug's hash suffix, not a list of anything",
     'for s in scripts[:12])': "the home page's featured scripts, not an answer to a question",
     'for l in languages[:12])': "the home page's featured languages",
     'for f in fonts[:12])': "the home page's featured families",
@@ -842,7 +853,7 @@ def test_a_truncated_table_cannot_be_silent():
     source = io.open(render.__file__, encoding="utf-8").read()
     offenders = []
     for line_no, line in enumerate(source.splitlines(), 1):
-        if not re.search(r"\[:\d+\]", line):
+        if not re.search(r"[\w\)\]]\[:[A-Za-z_0-9]+\]", line):
             continue
         if "capped(" in line or any(ok in line for ok in ALLOWED_SLICES):
             continue

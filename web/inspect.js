@@ -204,7 +204,12 @@ export async function start(field, reading, out, faceStyles) {
     const common = /^(Basic Latin|Latin-1|General Punctuation|Spacing Modifier)/;
     const ranked = [...counts].sort((a, b) => b[1] - a[1]);
     const block = (ranked.find(([name]) => !common.test(name)) || ranked[0] || [])[0];
-    const list = (faces[block] || []).slice(0, 8);
+    // Two caps used to stack here and neither said so: the served file holds ten
+    // families per block, and this then showed eight of those — out of 1,879 that
+    // cover Basic Latin. The block page lists every one, so this says what it is
+    // not showing and links there.
+    const entry = faces[block] || { faces: [], of: 0 };
+    const list = entry.faces.slice(0, 8);
     if (!list.length) return "";
 
     const google = list.filter((face) => face.source === "google")
@@ -230,7 +235,11 @@ export async function start(field, reading, out, faceStyles) {
 
     return `<h2 class="eyebrow">Drawn by families that cover ${esc(block)}</h2>
       <div class="${long ? "drawn-rows" : "drawn"}">${tiles}</div>
-      <p class="quiet">The same codepoints, drawn by each family's own face. Where they differ,
+      <p class="quiet">${list.length < entry.of
+        ? `Showing ${list.length} of ${entry.of.toLocaleString()} families that cover `
+          + `${esc(block)} — <a href="${BASE}block/${slug(block)}/">every one is on the `
+          + "block page</a>. "
+        : ""}The same codepoints, drawn by each family's own face. Where they differ,
         the difference is the font's: which lookups it carries, and which sequences it was
         built to handle. A dot marks a family drawn for this script rather than one that
         merely covers it.</p>`;
