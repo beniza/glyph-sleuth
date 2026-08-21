@@ -1685,22 +1685,42 @@ def script_blocks(engine_name):
     return out
 
 
-# ISO 15924 codes that stand for several scripts at once. langtags uses them for
-# exactly the languages you would expect, and `script_names()` — which maps UCD
-# script *values* — has nothing for any of them, so every one used to be dropped
-# without a word. Japanese and Korean had no script page at all, and Hiragana
-# appeared nowhere on the site.
+# ISO 15924 codes that are not UCD script values, and what they resolve to.
+# `script_names()` maps UCD values, so every one of these used to be dropped
+# without a word.
 #
-# The list is closed and documented by ISO 15924, so expanding it is a table
-# rather than a heuristic.
-COMPOSITES = {
+# Two kinds, and the difference is worth seeing:
+#
+#   *Composites* stand for several scripts at once. Japanese and Korean had no
+#   script page at all because of these.
+#
+#   *Variants* narrow one script — Simplified and Traditional Han, Fraktur and
+#   Gaelic Latin, Khutsuri Georgian. These are the ones that cost Chinese: `zh`
+#   is recorded as Hans and Hant, both resolved to nothing, and Mandarin linked
+#   no script whatsoever. Fifteen languages were affected by Hans alone.
+#
+# Found by the drop report added alongside this table, which is the argument for
+# printing what you skip rather than skipping it quietly.
+#
+# Not here on purpose: Garay (Gara), encoded in Unicode 16 and genuinely absent
+# from the UCD this build reads. The report names it every build, which is the
+# right answer until the tables catch up.
+SCRIPT_PARTS = {
+    # composites
     "Jpan": ("Hani", "Hira", "Kana"),   # Japanese
     "Kore": ("Hang", "Hani"),           # Korean
-    # Hrkt is here for a different reason: it *does* resolve, to
-    # Katakana_Or_Hiragana, which covers no blocks at all — so it would be
-    # dropped one step later and a reader would still find nothing.
-    "Hrkt": ("Hira", "Kana"),           # Japanese syllabaries
     "Hanb": ("Hani", "Bopo"),           # Han with Bopomofo
+    # Hrkt resolves, to Katakana_Or_Hiragana, which covers no blocks at all — so
+    # it would be dropped one step later and a reader would still find nothing.
+    "Hrkt": ("Hira", "Kana"),           # Japanese syllabaries
+    # variants
+    "Hans": ("Hani",),                  # Han, Simplified
+    "Hant": ("Hani",),                  # Han, Traditional
+    "Cyrs": ("Cyrl",),                  # Old Church Slavonic Cyrillic
+    "Latf": ("Latn",),                  # Latin, Fraktur
+    "Latg": ("Latn",),                  # Latin, Gaelic
+    "Geok": ("Geor",),                  # Georgian, Khutsuri
+    "Jamo": ("Hang",),                  # Hangul Jamo
 }
 
 
@@ -1712,7 +1732,7 @@ def expand_scripts(codes):
     it. Anything that decides what a page says should be callable from a test.
     """
     return list(dict.fromkeys(
-        part for code in codes for part in COMPOSITES.get(code, (code,))))
+        part for code in codes for part in SCRIPT_PARTS.get(code, (code,))))
 
 
 def script_index(languages):
@@ -1728,7 +1748,7 @@ def script_index(languages):
         # should never reach here — but expanding again is free and means this
         # function is correct whoever calls it.
         for code in lang.get("scripts", ()):
-            for part in COMPOSITES.get(code, (code,)):
+            for part in SCRIPT_PARTS.get(code, (code,)):
                 used[part].append(lang["id"])
 
     out = []
@@ -1739,7 +1759,7 @@ def script_index(languages):
             # This used to be a bare `continue`, and it cost Japanese and Korean
             # their script pages entirely: langtags writes them `ja-Jpan` and
             # `ko-Kore`, composites that stand for several scripts and match no
-            # UCD script value. COMPOSITES above expands those; anything still
+            # UCD script value. SCRIPT_PARTS above expands those; anything still
             # unresolved is reported rather than vanishing, because a silent skip
             # is how this survived unnoticed.
             dropped[code] += len(used[code])
@@ -1984,7 +2004,7 @@ def main():
     # langtags script list moves, so it is keyed on both.
     codes = ",".join(sorted({code for lang in languages
                              for code in (lang.get("scripts") or [])}))
-    # COMPOSITES is in the key because it changes the *answer* for unchanged
+    # SCRIPT_PARTS is in the key because it changes the *answer* for unchanged
     # input. Keyed on the Unicode version and the codes alone, adding the
     # composite expansion changed nothing at all: the codes were the same, the
     # version was the same, and the build cheerfully served the cached result
@@ -1993,7 +2013,7 @@ def main():
     # Third time this pattern has bitten — see `webfont_present` and
     # `counted_glyphs`. A cache keyed only on its inputs is stale whenever the
     # function changes, and only the function's author knows that happened.
-    shape = repr(sorted(COMPOSITES.items()))
+    shape = repr(sorted(SCRIPT_PARTS.items()))
     key = "scripts:%s:%s" % (ucd_module().UNICODE_VERSION,
                              hashlib.sha1((codes + shape).encode("utf-8")).hexdigest())
     scripts = cached(key)

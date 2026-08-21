@@ -249,7 +249,7 @@ def test_the_scripts_cache_notices_the_composite_table_changing():
     source = io.open(gen_index.__file__, encoding="utf-8").read()
     scripts_key = source[source.index('key = "scripts:%s:%s"') - 400:
                          source.index('key = "scripts:%s:%s"') + 200]
-    assert "COMPOSITES" in scripts_key, (
+    assert "SCRIPT_PARTS" in scripts_key, (
         "the scripts cache key does not depend on the composite table, so "
         "changing that table will silently reuse the old answer")
 
@@ -262,13 +262,22 @@ def test_a_composite_script_code_is_expanded_not_dropped():
     it has nothing for either. `script_index()` then did a bare `continue`, and
     Hiragana appeared nowhere on the site.
     """
-    assert gen_index.COMPOSITES["Jpan"] == ("Hani", "Hira", "Kana")
-    assert gen_index.COMPOSITES["Kore"] == ("Hang", "Hani")
+    assert gen_index.SCRIPT_PARTS["Jpan"] == ("Hani", "Hira", "Kana")
+    assert gen_index.SCRIPT_PARTS["Kore"] == ("Hang", "Hani")
+
+    # The variants, which are what actually cost Chinese: `zh` is recorded as
+    # Hans and Hant, both resolved to nothing, and Mandarin linked no script at
+    # all. Fifteen languages were affected by Hans alone, and the drop report is
+    # what surfaced them.
+    assert gen_index.SCRIPT_PARTS["Hans"] == ("Hani",)
+    assert gen_index.SCRIPT_PARTS["Hant"] == ("Hani",)
+    assert gen_index.expand_scripts(["Hans", "Hant"]) == ["Hani"], "Han listed twice"
+    assert gen_index.expand_scripts(["Latf", "Latg", "Latn"]) == ["Latn"]
 
     # Every part of every composite resolves to a real UCD script *with blocks*,
     # or expanding them just moves the silent drop one step along.
     names = gen_index.script_names()
-    for code, parts in gen_index.COMPOSITES.items():
+    for code, parts in gen_index.SCRIPT_PARTS.items():
         for part in parts:
             engine = names.get(part)
             assert engine, f"{code} expands to {part}, which resolves to nothing"
