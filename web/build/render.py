@@ -1758,12 +1758,51 @@ def lookups_page(font):
                 extra_head=face_head(font, name))
 
 
-# How many faces one page will load to draw a character in. A grid of nine
-# hundred webfonts is not a page; what is dropped is stated, as everywhere else.
+# How many faces load *eagerly* on a character page. Everything else arrives on
+# scroll, so this is not a cap on the answer — it is the batch a reader with
+# JavaScript off gets drawn.
+#
+# Worth revisiting: at 24 this asks one foundry host for a dozen stylesheets and
+# a dozen woff2 files before the page settles. That is measured and filed, not
+# guessed — but it is a separate change from anything here.
 DRAWN_LIMIT = 24
 
 # How many family cards a language page sets. Each loads a face.
 CARDS_LIMIT = 36
+
+
+def chart_face(candidates, selectors, loaded=False):
+    """Load one covering family so a chart of characters is not a wall of boxes.
+
+    Tofu — the `.notdef` box — is what the page font gives for anything it does
+    not cover, and IBM Plex covers Latin. A Malayalam block chart, a Han
+    alphabet, the headline glyph on a character page: all of them were boxes for
+    a reader whose system font happened to lack the script, on a site that knows
+    exactly which families do cover it.
+
+    This is only for surfaces showing **the character**. A surface that names a
+    family must be drawn by that family or say it was not — the family tiles, the
+    Try it output and the glyph cells all name one, and none of them come near
+    this. The rule is: a cell that names no font may be drawn by any font.
+
+    Deliberately unattributed. Naming the family in each cell would turn a
+    picture of the character into a claim about a font, which is the one thing
+    these surfaces are not making.
+    """
+    face = next((font for font in candidates if can_draw(font)), None)
+    if not face:
+        return ""
+    setting = f'  <style>{selectors} {{ font-family: "{esc(face["name"])}", serif; }}</style>'
+    if loaded:
+        # The page already fetched this family for something else — the character
+        # page loads two dozen for its tiles — so asking for it again is a second
+        # request for bytes already in hand. Just point at it.
+        return setting
+    css = face_css_of(face)
+    rule = "" if css else face_rule(face)
+    return ((f'  <link rel="stylesheet" href="{esc(css)}">\n' if css else "")
+            + ("  <style>" + rule + "</style>\n" if rule else "")
+            + setting)
 
 
 def capped(rows, limit, noun, because=""):
@@ -2147,7 +2186,7 @@ def char_page(cp, name, block, covering, chars_built):
     return page(f"U+{cp:04X} {name}", body, kind="character", code=f"U+{cp:04X}",
                 description=f"U+{cp:04X} {name}: encodings, and how each of the indexed font "
                             f"families draws it.",
-                extra_head=faces)
+                extra_head=faces + "\n" + chart_face(drawn, ".glyph-large", loaded=True))
 
 
 # -------------------------------------------------------------------- blocks
@@ -2249,7 +2288,11 @@ def block_page(block, fonts, chars_built):
 """
     return page(name, body, kind="unicode block", code=f"U+{first:04X}–{last:04X}",
                 description=f"{name} (U+{first:04X}–{last:04X}): the chart, and which font "
-                            f"families cover it.")
+                            f"families cover it.",
+                # Otherwise a chart of any script the reader's system font lacks
+                # is a grid of identical boxes, on a page that lists 1,879
+                # families which do cover it.
+                extra_head=chart_face([font for font, _n in covering], ".cell"))
 
 
 
@@ -2445,7 +2488,13 @@ def script_page(script, fonts, languages, chars_built):
     return page(script["name"], body, kind="script", code=script["code"],
                 description=f"{script['name']} ({script['code']}): the Unicode blocks it "
                             f"spans, the languages written in it, and the font families "
-                            f"that cover it.")
+                            f"that cover it.",
+                # The alphabet is the point of this page, and it was tofu for any
+                # reader whose system font lacked the script. Best-covering
+                # family first, since a face with 3 of 118 characters would leave
+                # most of it boxed anyway.
+                extra_head=chart_face([font for font, _cov in ranked],
+                                      ".alphabet .tile"))
 
 
 def missing_from(ranges, text):

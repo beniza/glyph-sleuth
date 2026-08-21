@@ -509,6 +509,55 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert 'data-try="italic"' in render.font_page(both, BLOCKS)
 
 
+def test_a_chart_of_characters_is_not_a_wall_of_boxes():
+    """Tofu — the .notdef box — on pages that know which families cover the script.
+
+    IBM Plex covers Latin, so a Malayalam block chart was a grid of identical
+    boxes for any reader whose system font lacked the script, on a page listing
+    the families that do cover it.
+
+    The boundary is the whole point and is asserted below: a surface showing *the
+    character* may be drawn by any font; a surface that *names* a family must be
+    drawn by that family or say it was not.
+    """
+    block = render.block_page([0x0D00, 0x0D7F, "Malayalam"], [MANJARI], set())
+    assert 'class="cell"' in block
+    assert ".cell {" in block, "the chart has no face to draw with"
+    # Unattributed: the cells make no claim about which family drew them.
+    assert 'class="cell" data-face' not in block
+
+    script = {"code": "Mlym", "name": "Malayalam", "chars": 118, "languages": ["mal"],
+              "blocks": [{"name": "Malayalam", "ranges": [[0x0D00, 0x0D7F]], "chars": 118}]}
+    page = render.script_page(script, [MANJARI], [], set())
+    assert ".alphabet .tile {" in page
+
+    char = render.char_page(0x0D15, "MALAYALAM LETTER KA",
+                            [0x0D00, 0x0D7F, "Malayalam"], [MANJARI], {0x0D15})
+    assert ".glyph-large {" in char
+
+
+def test_the_surfaces_that_name_a_family_are_untouched():
+    # The other half of the rule. These each name a family, so none of them may
+    # be handed a different font to draw with — that is the bug the whole v0.3.0
+    # webfont work existed to fix, and it must not come back through the tofu fix.
+    unloadable = dict(MANJARI, source="rit", css=None, webfont=None, licence="OFL-1.1")
+
+    # A family we cannot load still draws nothing on its own page.
+    page = render.font_page(unloadable, BLOCKS)
+    assert "No specimen here" in page
+    assert 'class="specimen"' not in page
+
+    # Its glyph cells still say so rather than borrowing a face.
+    glyphs = render.glyphs_page(dict(unloadable, glyphs=[
+        {"name": "g1", "cp": None, "produced": [], "consumed": [], "orphan": False}]))
+    assert "not loadable" in glyphs
+
+    # And a character page's family tiles are only ever the family's own face.
+    char = render.char_page(0x0D15, "MALAYALAM LETTER KA",
+                            [0x0D00, 0x0D7F, "Malayalam"], [unloadable], {0x0D15})
+    assert 'class="tile-glyph' not in char or "data-face" in char
+
+
 def test_a_huge_script_does_not_draw_every_character():
     """/script/Hani/ was 2,498,355 bytes and answered 503 under its own weight.
 

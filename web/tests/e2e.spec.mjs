@@ -12,6 +12,23 @@ import { test, expect } from "@playwright/test";
 
 const BASE = "/glyph-sleuth";
 
+// Character pages link a stylesheet per foundry family — twelve to smc.org.in on
+// /char/0D15/ — and pull a font behind each. Browsers allow about six
+// connections per host, so waiting for `load` means waiting for a third party
+// to serve two dozen files, and it exceeded even a 90s timeout.
+//
+// What these tests actually need is the document and the font *registry*:
+// `document.fonts` reports a FontFace as soon as its @font-face is parsed, and
+// `fonts.ready` settles when the ones in use have resolved either way. Waiting
+// for every image and every unused weight was never part of the assertion.
+//
+// The twelve requests are a real problem for a real reader too, not just for
+// this suite — filed separately.
+async function openWithFaces(page, path) {
+  await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => document.fonts.ready);
+}
+
 // A page whose own content overflows sideways is broken, whatever it looks like.
 async function expectNoSidewaysScroll(page) {
   const overflow = await page.evaluate(() => ({
@@ -296,7 +313,7 @@ test.describe("faces arrive as you scroll", () => {
   // U+0041 is covered by a hundred families in a small build and nine hundred in
   // the full one, so it is the page this exists for.
   test("every family has a tile, and only the drawn ones claim to be", async ({ page }) => {
-    await page.goto(`${BASE}/char/0041/`);
+    await openWithFaces(page, "/char/0041/");
     const tiles = page.locator(".tile-glyph");
     const total = await tiles.count();
     expect(total, "the page should carry every covering family").toBeGreaterThan(30);
@@ -318,8 +335,7 @@ test.describe("faces arrive as you scroll", () => {
   });
 
   test("scrolling loads more, and marks none of them as failed", async ({ page }) => {
-    await page.goto(`${BASE}/char/0041/`);
-    await page.evaluate(() => document.fonts.ready);
+    await openWithFaces(page, "/char/0041/");
     const waitingAtFirst = await page.locator(".tile-glyph[data-family]").count();
     expect(waitingAtFirst, "nothing was left to load, so this proves nothing")
       .toBeGreaterThan(0);
@@ -350,7 +366,7 @@ test.describe("faces arrive as you scroll", () => {
     await page.route("**/*.woff2", (route) => route.abort());
     await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
 
-    await page.goto(`${BASE}/char/0041/`);
+    await openWithFaces(page, "/char/0041/");
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(2500);
@@ -370,7 +386,7 @@ test.describe("faces arrive as you scroll", () => {
     // to "which families have this character".
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
-    await page.goto(`${BASE}/char/0041/`);
+    await openWithFaces(page, "/char/0041/");
     expect(await page.locator(".tile-glyph").count()).toBeGreaterThan(30);
     expect(await page.locator(".draws-name").count()).toBeGreaterThan(30);
     await context.close();
@@ -382,7 +398,7 @@ test.describe("a face that is drawing is not marked as absent", () => {
     // The bug this exists for: Dyuthi was marked as not drawing ക, which it
     // draws perfectly well. A false positive here is worse than no check at all,
     // because it tells a reader a working font is broken.
-    await page.goto(`${BASE}/char/0D15/`);
+    await openWithFaces(page, "/char/0D15/");
     const tiles = page.locator(".drawn .draws");
     await expect(tiles.first()).toBeVisible();
 
@@ -403,8 +419,7 @@ test.describe("a face that is drawing is not marked as absent", () => {
     // browser's own check() cannot: Chrome answers true for a family that does
     // not exist. What is provable is whether our @font-face arrived, so that is
     // what is asserted here.
-    await page.goto(`${BASE}/char/0D15/`);
-    await page.evaluate(() => document.fonts.ready);
+    await openWithFaces(page, "/char/0D15/");
 
     const verdicts = await page.evaluate(async () => {
       const unquote = (name) => name.replace(/^["']|["']$/g, "");
@@ -453,7 +468,14 @@ test.describe("at 380px, which the brief requires", () => {
 
   for (const path of ["/", "/fonts/", "/font/manjari/", "/char/0D15/", "/inspect/?t=%E0%B4%95"]) {
     test(`${path} does not scroll sideways`, async ({ page }) => {
-      await page.goto(`${BASE}${path}`);
+      // domcontentloaded, not load. A character page links twelve stylesheets
+      // from one foundry host and pulls a font behind each; browsers allow about
+      // six connections per host, so waiting for every one of them made this
+      // test hostage to smc.org.in and it timed out at 30s. What it measures is
+      // the layout of containers — the faults it has actually caught were a wide
+      // table, a menu hanging off the edge and a grid child sized by an
+      // unbreakable code snippet, none of which need a webfont to show up.
+      await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(400);
       await expectNoSidewaysScroll(page);
     });
