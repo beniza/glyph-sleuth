@@ -234,6 +234,50 @@ def test_a_failed_download_keeps_a_webfont_that_is_still_on_disk():
     assert record["tier"] == "measured"
 
 
+def test_a_composite_script_code_is_expanded_not_dropped():
+    """Japanese and Korean had no script page at all.
+
+    langtags writes them `ja-Jpan` and `ko-Kore` — composite ISO 15924 codes that
+    stand for several scripts — and `script_names()` maps UCD script *values*, so
+    it has nothing for either. `script_index()` then did a bare `continue`, and
+    Hiragana appeared nowhere on the site.
+    """
+    assert gen_index.COMPOSITES["Jpan"] == ("Hani", "Hira", "Kana")
+    assert gen_index.COMPOSITES["Kore"] == ("Hang", "Hani")
+
+    # Every part of every composite resolves to a real UCD script *with blocks*,
+    # or expanding them just moves the silent drop one step along.
+    names = gen_index.script_names()
+    for code, parts in gen_index.COMPOSITES.items():
+        for part in parts:
+            engine = names.get(part)
+            assert engine, f"{code} expands to {part}, which resolves to nothing"
+            assert gen_index.script_blocks(engine), f"{part} covers no blocks"
+
+    # Two different reasons for being in that table, and the difference matters.
+    # Jpan and Kore have no UCD script value at all. Hrkt has one —
+    # Katakana_Or_Hiragana — which covers no blocks, so it would be dropped one
+    # step later and a reader would still find nothing.
+    assert names.get("Jpan") is None and names.get("Kore") is None
+    assert names.get("Hrkt") == "Katakana_Or_Hiragana"
+    assert not gen_index.script_blocks("Katakana_Or_Hiragana")
+
+    index = gen_index.script_index([
+        {"id": "jpn", "scripts": ["Jpan"]},
+        {"id": "kor", "scripts": ["Kore"]},
+        {"id": "mal", "scripts": ["Mlym"]},
+    ])
+    by_code = {entry["code"]: entry for entry in index}
+    # Japanese reaches Han, Hiragana and Katakana; Korean reaches Hangul and Han.
+    for code in ("Hani", "Hira", "Kana", "Hang", "Mlym"):
+        assert code in by_code, f"{code} is missing from the index"
+    assert "jpn" in by_code["Hira"]["languages"]
+    assert "kor" in by_code["Hang"]["languages"]
+    # Han is reached by both, and appears once.
+    assert sorted(by_code["Hani"]["languages"]) == ["jpn", "kor"]
+    assert [e["code"] for e in index].count("Hani") == 1
+
+
 def test_a_second_release_is_kept_rather_than_dropped():
     """Google and a foundry publishing one family is two releases, not a duplicate.
 

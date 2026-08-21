@@ -1685,6 +1685,25 @@ def script_blocks(engine_name):
     return out
 
 
+# ISO 15924 codes that stand for several scripts at once. langtags uses them for
+# exactly the languages you would expect, and `script_names()` — which maps UCD
+# script *values* — has nothing for any of them, so every one used to be dropped
+# without a word. Japanese and Korean had no script page at all, and Hiragana
+# appeared nowhere on the site.
+#
+# The list is closed and documented by ISO 15924, so expanding it is a table
+# rather than a heuristic.
+COMPOSITES = {
+    "Jpan": ("Hani", "Hira", "Kana"),   # Japanese
+    "Kore": ("Hang", "Hani"),           # Korean
+    # Hrkt is here for a different reason: it *does* resolve, to
+    # Katakana_Or_Hiragana, which covers no blocks at all — so it would be
+    # dropped one step later and a reader would still find nothing.
+    "Hrkt": ("Hira", "Kana"),           # Japanese syllabaries
+    "Hanb": ("Hani", "Bopo"),           # Han with Bopomofo
+}
+
+
 def script_index(languages):
     """Every script SIL records a language for, with where it lives in Unicode.
 
@@ -1695,15 +1714,25 @@ def script_index(languages):
     used = collections.defaultdict(list)
     for lang in languages:
         for code in lang.get("scripts", ()):
-            used[code].append(lang["id"])
+            for part in COMPOSITES.get(code, (code,)):
+                used[part].append(lang["id"])
 
     out = []
+    dropped = collections.Counter()
     for code in sorted(used):
         engine_name = names.get(code)
         if not engine_name:
+            # This used to be a bare `continue`, and it cost Japanese and Korean
+            # their script pages entirely: langtags writes them `ja-Jpan` and
+            # `ko-Kore`, composites that stand for several scripts and match no
+            # UCD script value. COMPOSITES above expands those; anything still
+            # unresolved is reported rather than vanishing, because a silent skip
+            # is how this survived unnoticed.
+            dropped[code] += len(used[code])
             continue
         blocks = script_blocks(engine_name)
         if not blocks:
+            dropped[code] += len(used[code])
             continue
         out.append({
             "code": code,
@@ -1713,6 +1742,9 @@ def script_index(languages):
             "chars": sum(count for _name, _ranges, count in blocks),
             "languages": sorted(used[code]),
         })
+    if dropped:
+        listed = ", ".join(f"{code} ({n})" for code, n in dropped.most_common(8))
+        print(f"  !! {len(dropped)} script codes had no Unicode script to map to: {listed}")
     return out
 
 
