@@ -177,7 +177,19 @@ h1 {
   gap: 30px 44px;
 }
 .paths .q { display: block; font-size: 17px; margin-bottom: 8px; }
-.paths .links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 8px; }
+/* A run of links is a list, and it has to look like one. Bare `.links` had no
+   rule at all, so four anchors joined by a space read as a single sentence:
+   "Lookups Glyphs Download Anek Malayalam ↗ Compare with another family". */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.links li { display: inline-flex; }
+.paths .links { margin-bottom: 8px; }
 
 /* An entity page opens with its name, a byline, the specimen and the facts. */
 .entity-head { padding-top: 40px; }

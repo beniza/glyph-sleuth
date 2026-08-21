@@ -1096,7 +1096,12 @@ def font_page(font, blocks):
     if font.get("url"):
         links.append(f'<a href="{esc(font["url"])}">Download {esc(name)} ↗</a>')
     links.append(f'<a href="{link("/compare/")}">Compare with another family</a>')
-    right.append('      <div class="links">' + " ".join(links) + '</div>')
+    # A list, because it is one. Four destinations joined by a plain space read
+    # as a sentence — "Download Anek Malayalam ↗ Compare with another family" —
+    # and a screen reader announced it as one too. Now it says "list, 4 items".
+    right.append('      <ul class="links">'
+                 + "".join(f"<li>{item}</li>" for item in links)
+                 + '</ul>')
     right.append(try_it(font, name))
 
     if parsed and font.get("features"):
@@ -2345,8 +2350,8 @@ def script_page(script, fonts, languages, chars_built):
     shown_langs, _langs_attrs, langs_note = capped(
         sorted(written_by, key=lambda l: l["name"].lower()), 60,
         "languages written in it", "alphabetical")
-    langs_html = " ".join(
-        f'<a href="{link("/lang/" + lang["id"] + "/")}">{esc(lang["name"])}</a>'
+    langs_html = "".join(
+        f'<li><a href="{link("/lang/" + lang["id"] + "/")}">{esc(lang["name"])}</a></li>'
         for lang in shown_langs)
 
     families = "\n".join(
@@ -2385,7 +2390,8 @@ def script_page(script, fonts, languages, chars_built):
 
     <section>
       <h2 class="eyebrow">Written by</h2>
-      <div class="links">{langs_html or '<span class="quiet">No language in the index is recorded as using it.</span>'}</div>
+      {f'<ul class="links">{langs_html}</ul>' if langs_html
+        else '<p class="quiet">No language in the index is recorded as using it.</p>'}
 {langs_note}
     </section>
 

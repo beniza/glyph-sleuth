@@ -509,6 +509,20 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert 'data-try="italic"' in render.font_page(both, BLOCKS)
 
 
+def test_a_run_of_links_is_marked_up_as_a_list():
+    # Four destinations joined by a plain space read as one sentence on the page
+    # — "Lookups Glyphs Download Anek Malayalam ↗ Compare with another family" —
+    # and a screen reader announced it as one too. `.links` had no CSS rule at
+    # all outside the home page.
+    html = render.font_page(MANJARI, BLOCKS)
+    assert '<ul class="links">' in html
+    links = re.search(r'<ul class="links">(.*?)</ul>', html, re.S).group(1)
+    # One item per anchor, however many the fixture happens to produce, and no
+    # two anchors adjacent — the adjacency is the bug, not the count.
+    assert links.count("<li>") == links.count("<a ") >= 2
+    assert "</a> <a" not in links and "</a><a" not in links
+
+
 def test_two_releases_of_one_family_show_where_they_differ():
     # Google and a foundry carry about thirty families in common. Only one used
     # to survive and it was Google's, so Charis SIL reported two faces where SIL
