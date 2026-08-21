@@ -916,6 +916,34 @@ def two_releases(font):
             '    </section>')
 
 
+def moved_language(language):
+    """Where a language went when it shed a qualifier it did not need.
+
+    `mal_chillus` is a UDHR file id meaning "the chillu-encoded translation".
+    It was the only Malayalam, so the qualifier contrasted with nothing, and
+    Malayalam sat at `/lang/mal_chillus/` while Hindi sat at `/lang/hin/`.
+
+    A page rather than nothing, for the same reason `/font/charis-sil/` is one:
+    no page here links the old id, so the site checker sees nothing wrong while
+    an outside link dies.
+    """
+    name, where = language["name"], link(f"/lang/{language['id']}/")
+    return page(
+        f"{name} has moved",
+        f'''    <section class="entity-head">
+      <h1>{esc(name)}</h1>
+      <p class="quiet">This page was at <span class="mono">{esc(language["was"])}</span>,
+         a UDHR file id carrying a qualifier that distinguished it from a translation
+         we do not have. {esc(name)} is now at
+         <a href="{where}">{esc(language["id"])}</a>, with the other languages.</p>
+      <p class="quiet">Taking you there now.</p>
+    </section>''',
+        kind="language", code=language["was"],
+        description=f"{name} has moved to /lang/{language['id']}/.",
+        extra_head=f'  <link rel="canonical" href="{where}">\n'
+                   f'  <meta http-equiv="refresh" content="2; url={where}">')
+
+
 def moved_slugs(font):
     """[(alternate, old slug)] for the URLs this family used to live at.
 
@@ -2996,9 +3024,19 @@ def main():
         wanted |= {cp for cp, _pieces in exemplar_needs(language.get("exemplars") or "")}
     coverage = {id(font): covered_subset(font, wanted) for font in fonts["fonts"]}
 
-    write_many(((f"/lang/{language['id']}/",
-                 lang_page(language, fonts["fonts"], scripts, chars_built, blocks, coverage))
-                for language in languages), "language pages")
+    def language_pages():
+        for language in languages:
+            yield (f"/lang/{language['id']}/",
+                   lang_page(language, fonts["fonts"], scripts, chars_built, blocks, coverage))
+            # A language that shed a pointless qualifier — Malayalam was at
+            # /lang/mal_chillus/ — keeps a page where it used to live. Nothing
+            # inside the site links the old id, so check_site.py would report
+            # clean while an outside link 404s, which is exactly how
+            # /font/charis-sil/ broke.
+            if language.get("was"):
+                yield (f"/lang/{language['was']}/", moved_language(language))
+
+    write_many(language_pages(), "language pages")
     write("/languages/", languages_index(languages))
     write("/compare/", compare_page(fonts["fonts"]))
     write("/inspect/", inspect_page())

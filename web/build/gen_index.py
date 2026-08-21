@@ -1640,6 +1640,28 @@ def disambiguate(languages):
         _, _, suffix = lang["id"].partition("_")
         named = suffix and (len(suffix) > 2 or not suffix.isdigit())
         lang["name"] += f" ({suffix.replace('_', ' ') if named else seen_name[lang['name']]})"
+
+    # A qualifier that distinguishes nothing. `mal_chillus` is a UDHR *file* id
+    # meaning "the chillu-encoded translation" — a real distinction, but the
+    # other Malayalam translation was dropped as identical, so the surviving id
+    # contrasted with nothing and Malayalam lived at /lang/mal_chillus/ while
+    # Hindi lived at /lang/hin/.
+    #
+    # Where a qualified id is the only translation of its language, it takes the
+    # bare ISO code. `azj_cyrl` and `azj_latn` keep theirs: two translations, two
+    # scripts, and the qualifier is the whole point. So do `cmn_hans` and
+    # `cmn_hant`.
+    #
+    # The old id is kept as `was` so the renderer can leave a page at the URL
+    # that used to work.
+    by_iso = collections.Counter(lang["iso"] for lang in kept)
+    taken = {lang["id"] for lang in kept}
+    for lang in kept:
+        iso = lang["iso"]
+        if "_" not in lang["id"] or by_iso[iso] != 1 or iso in taken or iso == "und":
+            continue
+        lang["was"], lang["id"] = lang["id"], iso
+        taken.add(iso)
     return sorted(kept, key=lambda l: l["name"])
 
 

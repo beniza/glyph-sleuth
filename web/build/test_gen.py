@@ -254,6 +254,51 @@ def test_the_scripts_cache_notices_the_composite_table_changing():
         "changing that table will silently reuse the old answer")
 
 
+def test_a_qualifier_that_distinguishes_nothing_is_dropped():
+    """Malayalam lived at /lang/mal_chillus/ while Hindi lived at /lang/hin/.
+
+    `mal_chillus` is a UDHR *file* id meaning "the chillu-encoded translation".
+    That is a real distinction — the chillu text needs characters the other does
+    not — but the other Malayalam translation was dropped as identical, so the
+    surviving id contrasted with nothing.
+    """
+    def lang(ident, iso, name, script="Mlym", sample=None):
+        return {"id": ident, "iso": iso, "name": name, "script": script,
+                "sample": sample or ident, "exemplars": ""}
+
+    # Sole survivor: takes the bare ISO code, and remembers what it was.
+    kept = gen_index.disambiguate([lang("mal_chillus", "mal", "Malayalam")])
+    assert kept[0]["id"] == "mal"
+    assert kept[0]["was"] == "mal_chillus"
+    assert kept[0]["name"] == "Malayalam"
+
+    # Two translations of one language: the qualifier is the whole point and both
+    # keep it. This is the case that must not regress.
+    two = gen_index.disambiguate([
+        lang("azj_cyrl", "azj", "Azerbaijani, North", "Cyrl", "one"),
+        lang("azj_latn", "azj", "Azerbaijani, North", "Latn", "two"),
+    ])
+    assert sorted(l["id"] for l in two) == ["azj_cyrl", "azj_latn"]
+    assert not any("was" in l for l in two)
+    # And they are told apart by name, not left as two identical rows.
+    assert len({l["name"] for l in two}) == 2
+
+    # A bare id already holding the ISO code is not renamed onto itself.
+    plain = gen_index.disambiguate([lang("hin", "hin", "Hindi", "Deva")])
+    assert plain[0]["id"] == "hin" and "was" not in plain[0]
+
+    # Never onto an id something else already holds.
+    clash = gen_index.disambiguate([
+        lang("mal", "mal", "Malayalam A", "Mlym", "a"),
+        lang("mal_chillus", "mal", "Malayalam B", "Mlym", "b"),
+    ])
+    assert sorted(l["id"] for l in clash) == ["mal", "mal_chillus"]
+
+    # `und` is not an identifier, it is the absence of one.
+    und = gen_index.disambiguate([lang("013_x", "und", "(Mijisa)", "Zyyy")])
+    assert und[0]["id"] == "013_x"
+
+
 def test_a_composite_script_code_is_expanded_not_dropped():
     """Japanese and Korean had no script page at all.
 

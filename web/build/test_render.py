@@ -652,6 +652,20 @@ def test_only_the_rows_that_differ_appear():
     assert "GSUB · GPOS lookups" in rows
 
 
+def test_a_renamed_language_keeps_its_old_url():
+    # Malayalam moved from /lang/mal_chillus/ to /lang/mal/. Nothing inside the
+    # site links the old id, so check_site.py reports clean while an outside link
+    # dies — the same way /font/charis-sil/ broke.
+    language = {"id": "mal", "was": "mal_chillus", "name": "Malayalam",
+                "iso": "mal", "tag": "ml", "scripts": ["Mlym"], "exemplars": "",
+                "text": ""}
+    html = render.moved_language(language)
+    assert "Malayalam" in html
+    assert "mal_chillus" in html, "does not say where it moved from"
+    assert 'rel="canonical"' in html
+    assert f'{render.BASE}/lang/mal/' in html
+
+
 def test_a_renamed_family_keeps_its_old_url():
     """Google calls SIL's Charis "Charis SIL" and its Gentium "Gentium Plus".
 
