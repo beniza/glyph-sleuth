@@ -1704,6 +1704,17 @@ COMPOSITES = {
 }
 
 
+def expand_scripts(codes):
+    """Composite codes replaced by their parts, order kept, duplicates dropped.
+
+    A function rather than three lines inline, because the last fix to this went
+    out green and did nothing — it lived in `main()` where no test could reach
+    it. Anything that decides what a page says should be callable from a test.
+    """
+    return list(dict.fromkeys(
+        part for code in codes for part in COMPOSITES.get(code, (code,))))
+
+
 def script_index(languages):
     """Every script SIL records a language for, with where it lives in Unicode.
 
@@ -1713,6 +1724,9 @@ def script_index(languages):
     names = script_names()
     used = collections.defaultdict(list)
     for lang in languages:
+        # Already expanded where the language got its scripts, so a composite
+        # should never reach here — but expanding again is free and means this
+        # function is correct whoever calls it.
         for code in lang.get("scripts", ()):
             for part in COMPOSITES.get(code, (code,)):
                 used[part].append(lang["id"])
@@ -1955,8 +1969,12 @@ def main():
     # only Mlym but also Arab (Arabi-Malayalam) and Brai.
     by_tag = scripts_for(langs.languages())
     for lang in languages:
-        lang["scripts"] = (by_tag.get(lang["tag"].split("-")[0])
-                           or by_tag.get(lang["iso"]) or [])
+        found = (by_tag.get(lang["tag"].split("-")[0])
+                 or by_tag.get(lang["iso"]) or [])
+        # Expanded here, not only in script_index, because the language's own
+        # page links these codes: /lang/jpn/ listed Jpan, which resolves to no
+        # script page, so Japanese linked Braille and Latin and nothing else.
+        lang["scripts"] = expand_scripts(found)
     write(os.path.join(OUT_DATA, "languages.json"),
           {"languages": languages, "count": len(languages)})
 
@@ -1966,8 +1984,18 @@ def main():
     # langtags script list moves, so it is keyed on both.
     codes = ",".join(sorted({code for lang in languages
                              for code in (lang.get("scripts") or [])}))
+    # COMPOSITES is in the key because it changes the *answer* for unchanged
+    # input. Keyed on the Unicode version and the codes alone, adding the
+    # composite expansion changed nothing at all: the codes were the same, the
+    # version was the same, and the build cheerfully served the cached result
+    # from before the fix. It deployed green and Hiragana was still missing.
+    #
+    # Third time this pattern has bitten — see `webfont_present` and
+    # `counted_glyphs`. A cache keyed only on its inputs is stale whenever the
+    # function changes, and only the function's author knows that happened.
+    shape = repr(sorted(COMPOSITES.items()))
     key = "scripts:%s:%s" % (ucd_module().UNICODE_VERSION,
-                             hashlib.sha1(codes.encode("utf-8")).hexdigest())
+                             hashlib.sha1((codes + shape).encode("utf-8")).hexdigest())
     scripts = cached(key)
     if scripts is None:
         scripts = remember(key, script_index(languages))

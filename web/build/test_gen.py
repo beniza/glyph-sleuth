@@ -234,6 +234,26 @@ def test_a_failed_download_keeps_a_webfont_that_is_still_on_disk():
     assert record["tier"] == "measured"
 
 
+def test_the_scripts_cache_notices_the_composite_table_changing():
+    """The fix for composites deployed green and changed nothing.
+
+    `write_scripts` caches on the Unicode version and a hash of the input codes.
+    Adding the expansion changed neither: the codes were identical, the version
+    was identical, and the build served the result computed before the fix.
+    Hiragana was still missing and CI was still green.
+
+    Third time this pattern has bitten — see `webfont_present` and
+    `counted_glyphs`. A cache keyed only on its inputs is stale whenever the
+    function changes, and only the author knows that happened.
+    """
+    source = io.open(gen_index.__file__, encoding="utf-8").read()
+    scripts_key = source[source.index('key = "scripts:%s:%s"') - 400:
+                         source.index('key = "scripts:%s:%s"') + 200]
+    assert "COMPOSITES" in scripts_key, (
+        "the scripts cache key does not depend on the composite table, so "
+        "changing that table will silently reuse the old answer")
+
+
 def test_a_composite_script_code_is_expanded_not_dropped():
     """Japanese and Korean had no script page at all.
 
@@ -261,6 +281,16 @@ def test_a_composite_script_code_is_expanded_not_dropped():
     assert names.get("Jpan") is None and names.get("Kore") is None
     assert names.get("Hrkt") == "Katakana_Or_Hiragana"
     assert not gen_index.script_blocks("Katakana_Or_Hiragana")
+
+    # The language's own page links these codes, so the expansion has to happen
+    # where the language gets them too — /lang/jpn/ listed Jpan, which resolves
+    # to no script page, and Japanese linked Braille and Latin and nothing else.
+    assert gen_index.expand_scripts(["Jpan", "Brai", "Latn"]) == [
+        "Hani", "Hira", "Kana", "Brai", "Latn"]
+    # Order kept, and Han not repeated when two composites both reach it.
+    assert gen_index.expand_scripts(["Kore", "Jpan"]) == [
+        "Hang", "Hani", "Hira", "Kana"]
+    assert gen_index.expand_scripts(["Mlym"]) == ["Mlym"]
 
     index = gen_index.script_index([
         {"id": "jpn", "scripts": ["Jpan"]},
