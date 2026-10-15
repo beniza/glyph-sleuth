@@ -76,14 +76,15 @@ const INVISIBLE = {
   0x00ad: "soft hyphen",
 };
 
-export async function start(field, reading, out, faceStyles) {
+export async function start(field, reading, out) {
   const core = await import(`${BASE}core.js`);
-  const [blocks, formulaic, props, sequences, faces] = await Promise.all([
+  const [blocks, formulaic, props, sequences, families, lazy] = await Promise.all([
     fetch(`${BASE}data/blocks.json`).then((r) => r.json()),
     fetch(`${BASE}data/names-formulaic.json`).then((r) => r.json()),
     fetch(`${BASE}data/props.json`).then((r) => r.json()),
     fetch(`${BASE}data/sequences.json`).then((r) => r.json()),
-    fetch(`${BASE}data/block-faces.json`).then((r) => r.json()),
+    fetch(`${BASE}data/families.json`).then((r) => r.json()),
+    import(`${BASE}lazyfaces.js`),
   ]);
   core.data.blocks = blocks.blocks;
   core.data.formulaic = formulaic;
@@ -193,56 +194,117 @@ export async function start(field, reading, out, faceStyles) {
             || "no features"}.</p>`).join("")}`;
   }
 
-  function drawnBy(subject, codepoints) {
+  // One file per block, fetched the first time a string touches that block. A
+  // 404 is an answer — the build writes no file for a block nobody covers — but
+  // a failed fetch is not, and must not be read as "no family has this".
+  const coverFiles = new Map();
+  const coverOf = (start) => {
+    if (!coverFiles.has(start)) {
+      coverFiles.set(start, fetch(`${BASE}data/cover/${hex(start)}.json`)
+        .then((r) => (r.ok ? r.json() : r.status === 404 ? [] : null))
+        .catch(() => null)
+        // Not remembered: the next keystroke asks again.
+        .then((entries) => (entries === null && coverFiles.delete(start), entries)));
+    }
+    return coverFiles.get(start);
+  };
+
+  let drawing = 0;
+  let stopWatching = () => {};
+
+  // Every family that has every codepoint of the text — the question a
+  // character page answers for one codepoint, asked of the whole string. This
+  // used to show eight families of ten per block, chosen for covering the
+  // *whole* block, so a family with the chillu but not every archaic sign was
+  // absent here while the chillu's own page listed it.
+  async function drawnBy(panel, subject, codepoints) {
+    const turn = ++drawing;
+    stopWatching();
+    const cps = codepoints.map((ch) => ch.codePointAt(0));
+    const starts = [...new Set(cps.map((cp) => core.blockAt(cp)).filter(Boolean)
+      .map((block) => block[0]))];
+    const files = await Promise.all(starts.map(coverOf));
+    if (turn !== drawing) return;
+    if (files.includes(null)) {
+      panel.innerHTML = `<h2 class="eyebrow">Drawn by every family that has it</h2>
+        <p class="quiet">The coverage tables did not load, so this cannot say which
+          families have this text. Nothing here means none do.</p>`;
+      return;
+    }
+    const { families: found, nobody, unknown } = core.coveringAll(
+      cps, new Map(starts.map((start, at) => [start, files[at]])));
+
+    // The block the text is mostly in, ignoring the Latin and punctuation that
+    // almost every face carries — families drawn for it come first.
     const counts = new Map();
-    for (const ch of codepoints) {
-      const block = core.blockOf(ch.codePointAt(0));
+    for (const cp of cps) {
+      const block = core.blockOf(cp);
       if (block) counts.set(block, (counts.get(block) || 0) + 1);
     }
-    // The block the text is mostly in, ignoring the Latin and punctuation that
-    // almost every face carries.
     const common = /^(Basic Latin|Latin-1|General Punctuation|Spacing Modifier)/;
     const ranked = [...counts].sort((a, b) => b[1] - a[1]);
-    const block = (ranked.find(([name]) => !common.test(name)) || ranked[0] || [])[0];
-    // Two caps used to stack here and neither said so: the served file holds ten
-    // families per block, and this then showed eight of those — out of 1,879 that
-    // cover Basic Latin. The block page lists every one, so this says what it is
-    // not showing and links there.
-    const entry = faces[block] || { faces: [], of: 0 };
-    const list = entry.faces.slice(0, 8);
-    if (!list.length) return "";
+    const main = (ranked.find(([name]) => !common.test(name)) || ranked[0] || [])[0];
 
-    const google = list.filter((face) => face.source === "google")
-      .map((face) => `family=${face.name.replace(/ /g, "+")}`).join("&");
-    faceStyles.innerHTML =
-      (google
-        ? `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${google}&display=swap">`
-        : "")
-      + list.filter((face) => face.source !== "google" && face.css)
-        .map((face) => `<link rel="stylesheet" href="${esc(face.css)}">`).join("")
-      + `<style>${list.map((face) =>
-        `.f-${face.slug}{font-family:"${face.name}",serif}`).join("")}</style>`;
+    const all = found.map((index) => families.families[index]);
+    const drawable = all.filter((face) => face.draw)
+      .sort((a, b) => (a.for !== main) - (b.for !== main)
+        || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    const undrawable = all.length - drawable.length;
+    const unmeasured = families.unmeasured
+      ? ` ${families.unmeasured.toLocaleString()} families have not been measured yet, so `
+        + "whether they have it is not known and they are not counted."
+      : "";
 
-    // A phrase is not a glyph. Eight tiles of a long word are eight columns of
-    // clipped text, so past a few characters the same families become rows and
-    // the text gets the full width to be read in.
+    const name = (cp) => `<a class="mono" href="${BASE}char/${hex(cp)}/">U+${hex(cp)}</a>`;
+    if (!drawable.length) {
+      const why = unknown.length
+        ? `${unknown.map(name).join(", ")} ${unknown.length === 1 ? "is" : "are"} outside every
+           Unicode block, so no family's coverage can be asked about it.`
+        : nobody.length
+          ? `No indexed family has ${nobody.map(name).join(", ")}.`
+          : `No indexed family has every codepoint of this text.`;
+      panel.innerHTML = `<h2 class="eyebrow">Drawn by every family that has it</h2>
+        <p class="quiet">${why}${undrawable
+          ? ` ${undrawable.toLocaleString()} ${undrawable === 1 ? "family has" : "families have"}
+             it but ${undrawable === 1 ? "publishes" : "publish"} no webfont we can load or
+             re-serve, so ${undrawable === 1 ? "it cannot" : "they cannot"} be drawn here.`
+          : ""}${unmeasured}</p>`;
+      return;
+    }
+
+    // A phrase is not a glyph. Tiles of a long word are columns of clipped
+    // text, so past a few characters the families become rows and the text
+    // gets the full width to be read in.
     const long = clusters(subject).length > 3 || subject.length > 8;
-    const tiles = list.map((face) =>
-      `<a class="draws${long ? " draws-row" : ""}" href="${BASE}font/${face.slug}/">`
-      + `<span class="draws-name">${esc(face.name)}${face.for ? " ·" : ""}</span>`
-      + `<span class="tile-glyph f-${face.slug}" data-face="${esc(face.name)}">${esc(subject)}</span>`
-      + "</a>").join("");
+    // Every tile asks for its face rather than claiming one: `data-family`, not
+    // `data-face`, until lazyfaces.js has the face in hand. Two thousand Latin
+    // families are two thousand webfonts, so they arrive as they are scrolled to.
+    const tiles = drawable.map((face) =>
+      `<a class="draws${long ? " draws-row" : ""}" href="${BASE}font/${esc(face.slug)}/">`
+      + `<span class="draws-name">${esc(face.name)}${face.for === main ? " ·" : ""}</span>`
+      + `<span class="tile-glyph" style="font-family:&quot;${esc(face.name)}&quot;,serif"`
+      + ` data-family="${esc(face.name)}"`
+      + (face.css ? ` data-css="${esc(face.css)}"` : "")
+      + (face.rule ? ` data-rule="${esc(face.rule)}"` : "")
+      + `>${esc(subject)}</span></a>`).join("");
 
-    return `<h2 class="eyebrow">Drawn by families that cover ${esc(block)}</h2>
+    const settled = `All ${drawable.length.toLocaleString()} indexed `
+      + `${drawable.length === 1 ? "family that has" : "families that have"} every codepoint `
+      + "of this text and can be loaded, families drawn for this script first."
+      + (undrawable
+        ? ` A further ${undrawable.toLocaleString()} have it but publish no webfont we can `
+          + "load or re-serve, so they cannot be drawn here."
+        : "")
+      + unmeasured;
+    panel.innerHTML = `<h2 class="eyebrow">Drawn by every family that has it</h2>
       <div class="${long ? "drawn-rows" : "drawn"}">${tiles}</div>
-      <p class="quiet">${list.length < entry.of
-        ? `Showing ${list.length} of ${entry.of.toLocaleString()} families that cover `
-          + `${esc(block)} — <a href="${BASE}block/${slug(block)}/">every one is on the `
-          + "block page</a>. "
-        : ""}The same codepoints, drawn by each family's own face. Where they differ,
-        the difference is the font's: which lookups it carries, and which sequences it was
-        built to handle. A dot marks a family drawn for this script rather than one that
-        merely covers it.</p>`;
+      <p class="quiet"><span data-drawn-note="${esc(settled)}">${esc(settled)}</span>
+        The same codepoints, drawn by each family's own face. Having every codepoint is not
+        the same as drawing them correctly together — where they differ, the difference is
+        the font's: which lookups it carries, and which sequences it was built to handle. A
+        dot marks a family drawn for this script rather than one that merely covers it.</p>`;
+    stopWatching = lazy.watch(panel.querySelectorAll("[data-family]"),
+      panel.querySelector("[data-drawn-note]"));
   }
 
   function warnings(subject, codepoints, parts) {
@@ -311,7 +373,8 @@ export async function start(field, reading, out, faceStyles) {
     if (!text) {
       out.innerHTML = "";
       reading.textContent = "";
-      faceStyles.innerHTML = "";
+      drawing += 1;
+      stopWatching();
       return;
     }
     const query = core.parse(text);
@@ -349,7 +412,8 @@ export async function start(field, reading, out, faceStyles) {
           ${elsewhere(subject, codepoints)}
         </div>
       </div>
-      ${drawnBy(subject, codepoints)}`;
+      <section id="drawn-by"></section>`;
+    drawnBy(out.querySelector("#drawn-by"), subject, codepoints);
   }
 
   // Copy buttons are app.js’s, for every page at once — see copy.js.

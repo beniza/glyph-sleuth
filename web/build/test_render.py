@@ -1233,6 +1233,51 @@ def test_every_drawn_face_names_itself():
     assert 'data-face="Manjari"' in cards
 
 
+def test_inspect_can_answer_for_every_codepoint_of_a_string():
+    """Inspect showed eight families of ten per block, chosen for covering the
+    *whole* block, while a character page listed every family that has the
+    character. What Inspect is asked is narrower and different: which families
+    have every codepoint of this text. That needs each family's ranges, served
+    per block so a string only fetches the blocks it touches."""
+    blocks = [[0x0020, 0x007F, "Basic Latin"], [0x0D00, 0x0D7F, "Malayalam"]]
+    def family(name, ranges, **extra):
+        return dict({"name": name, "slug": render.slug(name), "tier": "measured",
+                     "ranges": ranges}, **extra)
+    whole = family("Whole", [[0x0D00, 0x0D7F]], source="google")
+    # Covers the chillu and nothing else in the block: the old file dropped it,
+    # because it does not cover all of Malayalam.
+    partial = family("Partial", [[0x0020, 0x007E], [0x0D7A, 0x0D7F]],
+                     source="smc", css="https://example.org/partial.css")
+    # Has the codepoints, publishes no face we can load. Counted, never drawn.
+    unservable = family("Unservable", [[0x0D00, 0x0D7F]], source="x", licence="")
+    stub = {"name": "Stub", "slug": "stub", "tier": "stub", "source": "google"}
+    fonts = render.prepare_fonts([whole, partial, unservable, stub], blocks)
+
+    families, cover = render.inspect_coverage(fonts, blocks)
+
+    assert [f["name"] for f in families["families"]] == ["Whole", "Partial", "Unservable"]
+    # Unknown is not zero: the families never measured are said, not dropped.
+    assert families["unmeasured"] == 1
+    by_name = {f["name"]: f for f in families["families"]}
+    assert by_name["Whole"]["css"].startswith("https://fonts.googleapis.com/")
+    assert by_name["Partial"]["css"] == "https://example.org/partial.css"
+    assert by_name["Unservable"]["draw"] is False
+    assert by_name["Whole"]["draw"] is True
+    assert by_name["Whole"]["for"] == "Malayalam"
+
+    # Keyed by where the block starts, which blocks.json already says, so the
+    # browser needs no second slug function to find the file.
+    assert set(cover) == {0x0020, 0x0D00}
+    malayalam = dict((families["families"][i]["name"], ranges)
+                     for i, ranges in cover[0x0D00])
+    assert set(malayalam) == {"Whole", "Partial", "Unservable"}
+    # Ranges clipped to the block, so a family's Latin does not ride along in
+    # every script's file.
+    assert malayalam["Partial"] == [[0x0D7A, 0x0D7F]]
+    latin = dict((families["families"][i]["name"], ranges) for i, ranges in cover[0x0020])
+    assert latin == {"Partial": [[0x0020, 0x007E]]}
+
+
 tests = {name: fn for name, fn in sorted(globals().items()) if name.startswith("test_")}
 if __name__ == "__main__":
     for name, test in tests.items():

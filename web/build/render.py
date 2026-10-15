@@ -1631,46 +1631,52 @@ def compare_page(fonts):
                             "shaping verdicts disagree.")
 
 
-# How many faces one block's entry lists. Enough to see that families differ,
-# few enough that a page loading them is still a page.
-BLOCK_FACES = 10
+def inspect_coverage(fonts, blocks):
+    """What Inspect needs to name every family that has every codepoint of a string.
 
+    It used to get ten families per block, chosen for covering the *whole*
+    block, and showed eight. A character page meanwhile listed every family with
+    that character, so the two disagreed about the same text — and a family
+    with the chillu but not every archaic sign in the block was simply absent.
 
-def block_faces(fonts, blocks, assigned):
-    """{block: [faces that cover all of it]} — what Inspect draws a string in.
-
-    Per block rather than per string: shipping every family's ranges so the
-    browser could work it out itself is megabytes, and the useful answer for
-    "why do these two render differently" is a handful of families that all
-    cover the script, not an exhaustive list.
+    Returns (families, {block start: [[family index, ranges], ...]}). The family
+    table is shared; ranges are clipped to each block and served one file per
+    block, so a Malayalam string fetches Malayalam and never Basic Latin's two
+    thousand entries. Families never measured have no ranges to ask; they are
+    counted, so the page can say what it could not check.
     """
-    out = {}
-    for first, last, name in blocks:
-        total = len(assigned.get(name) or [])
-        if not total:
-            continue
-        faces = [font for font in fonts
-                 if font.get("tier") == "measured"
-                 and (font.get("_blocks") or {}).get(name, 0) >= total
-                 and (font.get("source") == "google" or font.get("css"))]
-        if not faces:
-            continue
-        # Families drawn for this script first: they are the ones whose
-        # differences are about the writing system rather than incidental.
-        faces.sort(key=lambda font: ((font.get("_dominant") or ("", 0, 0))[0] != name,
-                                     font["name"].lower()))
-        # The cap stays — uncapped this file is megabytes, and the docstring above
-        # says why — but the total ships with it so Inspect can say what it is not
-        # showing and point at the page that lists every one. Basic Latin is
-        # covered by 1,879 families; showing eight and saying nothing was the bug.
-        out[name] = {
-            "of": len(faces),
-            "faces": [{"name": font["name"], "slug": font["slug"],
-                       "source": font.get("source", ""), "css": font.get("css") or "",
-                       "for": (font.get("_dominant") or ("", 0, 0))[0] == name}
-                      for font in faces[:BLOCK_FACES]],
-        }
-    return out
+    import bisect
+
+    measured = [font for font in fonts if font.get("tier") == "measured"]
+    families = []
+    for font in measured:
+        css = face_css_of(font)
+        families.append({
+            "name": font["name"],
+            "slug": font.get("slug") or slug(font["name"]),
+            "css": css,
+            "rule": "" if css else face_rule(font),
+            "draw": can_draw(font),
+            "for": (font.get("_dominant") or ("", 0, 0))[0],
+        })
+
+    starts = [block[0] for block in blocks]
+    cover = collections.defaultdict(list)
+    for index, font in enumerate(measured):
+        clipped = collections.defaultdict(list)
+        for first, last in font.get("ranges") or []:
+            at = max(bisect.bisect_right(starts, first) - 1, 0)
+            for block_first, block_last, _name in blocks[at:]:
+                if block_first > last:
+                    break
+                low, high = max(block_first, first), min(block_last, last)
+                if low <= high:
+                    clipped[block_first].append([low, high])
+        for block_first, ranges in clipped.items():
+            cover[block_first].append([index, ranges])
+
+    return ({"families": families, "unmeasured": len(fonts) - len(measured)},
+            dict(cover))
 
 
 def inspect_page():
@@ -1703,7 +1709,6 @@ def inspect_page():
            <a href="{chars}">browse a block</a> to reach one.</p>
       </noscript>
       <div id="inspect-out"></div>
-      <div id="inspect-faces" hidden></div>
     </section>
 """
     return page("Inspect", body.replace("{chars}", link("/block/basic-latin/")),
@@ -2893,9 +2898,9 @@ def write_many(pages, label):
 
 def write_json(name, payload):
     """A data file the browser reads, beside the pages."""
-    out = os.path.join(OUT_SITE, "data")
-    os.makedirs(out, exist_ok=True)
-    with io.open(os.path.join(out, name), "w", encoding="utf-8") as handle:
+    path = os.path.join(OUT_SITE, "data", name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with io.open(path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -3045,9 +3050,12 @@ def main():
     # served: the block ranges, the formulaic name ranges, and the name
     # table itself, which is 1.4 MB and fetched only when a name is asked
     # for.
-    # What Inspect needs beyond the Unicode tables: which families cover each
-    # block, and the sequences we have authored notes and verdicts for.
-    write_json("block-faces.json", block_faces(fonts["fonts"], blocks, assigned))
+    # What Inspect needs beyond the Unicode tables: every family's ranges, one
+    # file per block, and the sequences we have authored notes and verdicts for.
+    families, cover = inspect_coverage(fonts["fonts"], blocks)
+    write_json("families.json", families)
+    for block_first, entries in cover.items():
+        write_json(f"cover/{block_first:04X}.json", entries)
     shutil.copyfile(os.path.join(ROOT, "web", "content", "sequences.json"),
                     os.path.join(OUT_SITE, "data", "sequences.json"))
     for table in ("blocks.json", "names.txt", "names-formulaic.json", "props.json"):

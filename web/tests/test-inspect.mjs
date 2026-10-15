@@ -20,7 +20,7 @@ core.data.blocks = JSON.parse(read("blocks.json")).blocks;
 core.data.formulaic = JSON.parse(read("names-formulaic.json"));
 const props = JSON.parse(read("props.json"));
 const sequences = JSON.parse(read("sequences.json"));
-const faces = JSON.parse(read("block-faces.json"));
+const families = JSON.parse(read("families.json"));
 
 // The same parse loadNames() does, against the same file it fetches.
 const names = new Map();
@@ -100,37 +100,41 @@ function test_authored_sequences_are_recognisable() {
   assert.ok(sameShape.some((entry) => entry.id === "nta"));
 }
 
-function test_faces_are_offered_per_block() {
-  // Inspect draws a string in families that cover its block. Shipping every
-  // family's ranges so the browser could work that out itself is megabytes.
-  const entry = faces.Malayalam;
-  if (!entry) {
-    console.log("      (no Malayalam faces in this build's data — skipped)");
+function test_every_family_with_the_text_is_offered() {
+  // Inspect named eight families of ten per block, while /char/0D7B/ listed
+  // every family with the chillu. Asked about one codepoint, the two must now
+  // give the same number — they read the same ranges.
+  const cover = (cp) => {
+    const block = core.blockAt(cp);
+    const file = new URL(`cover/${hex(block[0])}.json`, site);
+    return [block[0], fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : []];
+  };
+  const page = new URL("../char/0D7B/index.html", site);
+  if (!fs.existsSync(page)) {
+    console.log("      (no /char/0D7B/ in this build — skipped)");
     return;
   }
-  // The shape carries the total beside the sample, because the sample is capped
-  // and Inspect has to be able to say so. Eight families shown out of 1,879 that
-  // cover Basic Latin, with nothing said, was the bug this shape fixes.
-  assert.ok(Array.isArray(entry.faces), "faces must be under .faces now");
-  assert.ok(typeof entry.of === "number" && entry.of >= entry.faces.length,
-            `total ${entry.of} is less than the ${entry.faces.length} shown`);
-  const malayalam = entry.faces;
-  assert.ok(malayalam.length > 0);
-  for (const face of malayalam) {
+  const html = fs.readFileSync(page, "utf8");
+  const stated = html.match(/<span class="value">([\d,]+)<\/span><span class="label">families with it/);
+  assert.ok(stated, "the character page no longer states its family count");
+  const { families: found } = core.coveringAll([0x0d7b], new Map([cover(0x0d7b)]));
+  assert.equal(found.length, Number(stated[1].replace(/,/g, "")),
+               "Inspect and the character page disagree about who has U+0D7B");
+
+  // Every family it can name has somewhere to be drawn from, or says it has none.
+  for (const index of found) {
+    const face = families.families[index];
     assert.ok(face.name && face.slug, JSON.stringify(face));
-    // Each has somewhere the browser can actually get the face from.
-    assert.ok(face.source === "google" || face.css, `${face.name} has no stylesheet`);
+    assert.equal(typeof face.draw, "boolean");
+    if (face.draw) assert.ok(face.css || face.rule, `${face.name} draws from nowhere`);
   }
-  // Families drawn for the script come first, so the comparison is between
-  // faces whose differences are about the writing system.
-  const dedicated = malayalam.findIndex((face) => face.for);
-  const generic = malayalam.findIndex((face) => !face.for);
-  if (dedicated !== -1 && generic !== -1) assert.ok(dedicated < generic);
+  // Unknown is not zero: the page needs the count of families it could not ask.
+  assert.equal(typeof families.unmeasured, "number");
 }
 
 const tests = { test_tables_are_readable, test_the_readings_hold_against_real_tables,
                 test_clusters_are_not_codepoints, test_props_explain_what_a_codepoint_does,
-                test_authored_sequences_are_recognisable, test_faces_are_offered_per_block };
+                test_authored_sequences_are_recognisable, test_every_family_with_the_text_is_offered };
 for (const [name, test] of Object.entries(tests)) {
   test();
   console.log(`  ok  ${name}`);

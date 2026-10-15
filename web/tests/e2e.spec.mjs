@@ -96,18 +96,55 @@ test.describe("Inspect", () => {
     expect(spills, "a drawing spills out of its own box").toBe(0);
   });
 
-  test("says how many families it is not showing", async ({ page }) => {
-    // Two caps used to stack silently: the served file holds ten families per
-    // block and the panel then showed eight of those — out of 1,879 covering
-    // Basic Latin. The block page lists every one, so the panel points there.
-    await page.goto(`${BASE}/inspect/?t=A`);
-    const note = page.locator("#inspect-out .quiet", { hasText: "families that cover" });
-    await expect(note).toBeVisible();
-    await expect(note).toContainText("Showing");
-    // And the link it offers actually goes to the page with the full answer.
-    const href = await note.locator("a").getAttribute("href");
-    expect(href).toContain("/block/basic-latin/");
-    expect((await page.request.get(href)).status()).toBe(200);
+  test("offers every family the character page does", async ({ page }) => {
+    // Inspect showed eight families of ten per block while /char/0D7B/ listed
+    // every family with the chillu. Asked about the same codepoint, the two
+    // pages must now offer the same families.
+    await page.goto(`${BASE}/char/0D7B/`);
+    const onChar = await page.locator(".drawn .draws-name").allTextContents();
+    await page.goto(`${BASE}/inspect/?t=U%2B0D7B`);
+    await page.locator("#drawn-by .draws").first().waitFor();
+    const onInspect = await page.locator("#drawn-by .draws-name").allTextContents();
+    const bare = (names) => names.map((name) => name.replace(/ ·$/, "")).sort();
+    expect(bare(onInspect)).toEqual(bare(onChar));
+    // And it says it is all of them, rather than leaving a count to be guessed.
+    await expect(page.locator("#drawn-by")).toContainText(`All ${onChar.length}`);
+  });
+
+  test("a family missing one codepoint of the text is not offered", async ({ page }) => {
+    // ഞ്ഞ് is NYA and the virama, twice. The families offered are exactly those
+    // on both characters' own pages — no fewer, as under the old cap of eight,
+    // and none that has only one of the two.
+    const familiesOf = async (path) => {
+      await page.goto(`${BASE}${path}`);
+      return new Set(await page.locator(".drawn .draws-name").allTextContents());
+    };
+    const nya = await familiesOf("/char/0D1E/");
+    const virama = await familiesOf("/char/0D4D/");
+    const both = [...nya].filter((name) => virama.has(name)).sort();
+
+    await page.goto(`${BASE}/inspect/?t=%E0%B4%9E%E0%B5%8D%E0%B4%9E%E0%B5%8D`);
+    await page.locator("#drawn-by .draws").first().waitFor();
+    const offered = (await page.locator("#drawn-by .draws-name").allTextContents())
+      .map((name) => name.replace(/ ·$/, "")).sort();
+    expect(offered).toEqual(both);
+  });
+
+  test("a slow foundry stylesheet is waited for, not reported missing", async ({ page }) => {
+    // Every Inspect tile loads its face lazily. lazyfaces.js appended a foundry's
+    // <link> and checked the face on `document.fonts.ready`, which knows nothing
+    // of a stylesheet still in flight — so when SMC's server was slow, all of
+    // its families were marked as not drawing text they drew. Make it slow.
+    await page.route(/smc\.org\.in\/.*\.css/, async (route) => {
+      await new Promise((settle) => setTimeout(settle, 2500));
+      await route.continue();
+    });
+    await page.goto(`${BASE}/inspect/?t=%E0%B4%9E%E0%B5%8D%E0%B4%9E%E0%B5%8D`);
+    const smc = page.locator('#drawn-by .tile-glyph[data-face="Manjari"]');
+    await smc.waitFor({ timeout: 15_000 });
+    // The check runs after promotion; a negative has to be given time to fail.
+    await page.waitForTimeout(2000);
+    await expect(page.locator("#drawn-by .tile-glyph.fallback")).toHaveCount(0);
   });
 
   test("copy hands over what it shows", async ({ page, context }) => {

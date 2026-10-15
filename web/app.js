@@ -246,7 +246,6 @@ if (inspectField) {
     inspectField,
     document.getElementById("inspect-reading"),
     document.getElementById("inspect-out"),
-    document.getElementById("inspect-faces"),
   ));
 }
 

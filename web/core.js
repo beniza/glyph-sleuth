@@ -371,14 +371,51 @@ export function stripFormatting(text) {
 // ------------------------------------------------------------- blocks
 
 export function blockOf(cp) {
+  const block = blockAt(cp);
+  return block ? block[2] : null;
+}
+
+/** [first, last, name] of the block holding cp, or null. */
+export function blockAt(cp) {
   let lo = 0, hi = data.blocks.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     if (cp < data.blocks[mid][0]) hi = mid - 1;
     else if (cp > data.blocks[mid][1]) lo = mid + 1;
-    else return data.blocks[mid][2];
+    else return data.blocks[mid];
   }
   return null;
+}
+
+/** Families that have every codepoint of `cps`, from per-block coverage.
+ *
+ *  `coverByStart` maps a block's first codepoint to that block's served entries,
+ *  `[[family index, [[first, last], ...]], ...]`. Returns the family indices and,
+ *  for the reader whose text no family has, the codepoints nobody covers. A
+ *  codepoint outside every block cannot be asked about at all, so it is
+ *  `unknown`, never a zero. */
+export function coveringAll(cps, coverByStart) {
+  const distinct = [...new Set(cps)];
+  const unknown = [];
+  const counts = new Map();
+  for (const cp of distinct) {
+    const block = blockAt(cp);
+    if (!block) {
+      unknown.push(cp);
+      continue;
+    }
+    for (const [index, ranges] of coverByStart.get(block[0]) || []) {
+      if (ranges.some(([first, last]) => cp >= first && cp <= last)) {
+        counts.set(index, (counts.get(index) || 0) + 1);
+      }
+    }
+  }
+  const asked = distinct.length - unknown.length;
+  const families = asked && !unknown.length ? [...counts].filter(([, n]) => n === asked).map(([i]) => i) : [];
+  const nobody = distinct.filter((cp) => blockAt(cp)
+    && !(coverByStart.get(blockAt(cp)[0]) || []).some(([, ranges]) =>
+      ranges.some(([first, last]) => cp >= first && cp <= last)));
+  return { families, nobody, unknown };
 }
 
 export function blockRange(name) {

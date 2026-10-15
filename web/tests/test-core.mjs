@@ -350,7 +350,35 @@ function test_font_shorthand() {
 }
 
 
-const tests = { test_parse, test_codepoint_conversion, test_coverage, test_ranking,
+function test_covering_every_codepoint() {
+  // Inspect names the families that have *every* codepoint of the text — the
+  // same question a character page answers for one, asked of a string.
+  const cover = new Map([
+    [0x0000, [[0, [[0x20, 0x7e]]], [2, [[0x41, 0x41]]]]],
+    [0x0d00, [[0, [[0x0d00, 0x0d7a]]], [1, [[0x0d1e, 0x0d1e], [0x0d4d, 0x0d4d]]],
+              [2, [[0x0d1e, 0x0d1e]]]]],
+  ]);
+  const cps = (text) => [...text].map((ch) => ch.codePointAt(0));
+
+  // ഞ്ഞ് is two codepoints, each twice: a family needs both, not four.
+  assert.deepEqual(core.coveringAll(cps("ഞ്ഞ്"), cover).families.sort(), [0, 1]);
+  // Across blocks: the space rules out the family with Malayalam alone.
+  assert.deepEqual(core.coveringAll(cps("ഞ് ഞ്"), cover).families, [0]);
+
+  // Nobody has U+0D7B here, and the page should be able to say which codepoint
+  // it was rather than just "none".
+  const none = core.coveringAll(cps("ൻA"), cover);
+  assert.deepEqual(none.families, []);
+  assert.deepEqual(none.nobody, [0x0d7b]);
+
+  // Outside every block nothing can be asked, so nothing is claimed — not even
+  // the families that cover the rest.
+  const lost = core.coveringAll([0x0d1e, 0x0e80], cover);
+  assert.deepEqual(lost.families, []);
+  assert.deepEqual(lost.unknown, [0x0e80]);
+}
+
+const tests = { test_covering_every_codepoint, test_parse, test_codepoint_conversion, test_coverage, test_ranking,
                 test_range_coverage, test_dominant_block, test_specimen_text,
                 test_scripts, test_script_of_text, test_reading_on,
                 test_taking_it_away, test_use_it_snippet, test_properties, test_blocks,
