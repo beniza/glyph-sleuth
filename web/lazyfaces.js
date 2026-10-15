@@ -16,56 +16,65 @@
 // DRAWN_LIMIT tiles have their faces in the markup, and the rest are a list of
 // family names, each a link to a page that draws it.
 
-// Any panel that asked for its faces later — the character grid's tiles and the
-// language page's cards both do, and anything else that adopts `data-family`
-// gets this for free.
-const pending = [...document.querySelectorAll("[data-family]")];
+// Any panel that asked for its faces later — the character grid's tiles, the
+// language page's cards, and Inspect's tiles, which it builds after the page
+// has loaded and so hands over itself. Asked-for families are remembered across
+// calls: Inspect redraws on every keystroke and must not fetch a face twice.
+const head = document.head;
+// family -> settles once its stylesheet has arrived or failed. Not a Set: a
+// family asked for by an earlier redraw may still be on its way, and a tile
+// waiting on it must wait too.
+const asked = new Map();
 
-if (pending.length) {
-  const head = document.head;
-  const asked = new Set();
+/** Append a stylesheet and settle when it has loaded or failed. */
+const sheet = (href) => new Promise((settle) => {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  link.onload = link.onerror = () => settle();
+  head.append(link);
+});
 
-  // Google takes every family in one request, which is the difference between
-  // forty stylesheets and two. Batched, not one-per-tile.
-  const BATCH = 20;
+// Google takes every family in one request, which is the difference between
+// forty stylesheets and two. Batched, not one-per-tile.
+const BATCH = 20;
+
+/** Load faces for `tiles` as they are scrolled to, and keep `note` honest about
+ *  how many have been drawn. Returns a function that stops watching. */
+export function watch(tiles, note) {
+  const pending = [...tiles];
+  if (!pending.length) return () => {};
 
   const load = (tiles) => {
     const google = [];
-    const rules = [];
+    const waits = [];
     for (const tile of tiles) {
       const family = tile.dataset.family;
-      if (!family || asked.has(family)) continue;
-      asked.add(family);
+      if (!family) continue;
+      if (asked.has(family)) {
+        waits.push(asked.get(family));
+        continue;
+      }
       const css = tile.dataset.css;
       if (css && css.includes("fonts.googleapis.com")) {
-        google.push(family.replace(/ /g, "+"));
+        google.push(family);
       } else if (css) {
-        rules.push({ link: css });
+        asked.set(family, sheet(css));
       } else if (tile.dataset.rule) {
-        rules.push({ rule: tile.dataset.rule });
+        const style = document.createElement("style");
+        style.textContent = tile.dataset.rule;
+        head.append(style);
+        asked.set(family, Promise.resolve());
       }
+      if (asked.has(family)) waits.push(asked.get(family));
     }
 
-    if (google.length) {
-      for (let at = 0; at < google.length; at += BATCH) {
-        const query = google.slice(at, at + BATCH).map((f) => `family=${f}`).join("&");
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = `https://fonts.googleapis.com/css2?${query}&display=swap`;
-        head.append(link);
-      }
-    }
-    for (const each of rules) {
-      if (each.link) {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = each.link;
-        head.append(link);
-      } else {
-        const style = document.createElement("style");
-        style.textContent = each.rule;
-        head.append(style);
-      }
+    for (let at = 0; at < google.length; at += BATCH) {
+      const batch = google.slice(at, at + BATCH);
+      const query = batch.map((f) => `family=${f.replace(/ /g, "+")}`).join("&");
+      const arrived = sheet(`https://fonts.googleapis.com/css2?${query}&display=swap`);
+      for (const family of batch) asked.set(family, arrived);
+      waits.push(arrived);
     }
 
     // The claim is made only now, and only after the face has had its chance to
@@ -74,7 +83,12 @@ if (pending.length) {
     // them without checking left a lazily-loaded face that failed to arrive
     // silently presented as a drawing, which is the exact bug the eager path has
     // a test for.
-    document.fonts.ready.then(async () => {
+    //
+    // Waiting on the stylesheets first is not optional. `document.fonts.ready`
+    // knows nothing of a <link> still in flight, so it settled at once, the
+    // check found no @font-face for the family, and every lazily-loaded foundry
+    // family — all of SMC's — was marked as not drawing a text it drew.
+    Promise.all(waits).then(() => document.fonts.ready).then(async () => {
       const promoted = [];
       for (const tile of tiles) {
         if (!tile.dataset.family) continue;
@@ -90,7 +104,6 @@ if (pending.length) {
     });
   };
 
-  const note = document.querySelector("[data-drawn-note]");
   const total = pending.length;
   let done = 0;
   const counted = () => {
@@ -115,4 +128,5 @@ if (pending.length) {
   }, { rootMargin: "400px" });
 
   for (const tile of pending) watcher.observe(tile);
+  return () => watcher.disconnect();
 }

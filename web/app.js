@@ -11,7 +11,11 @@ if (document.querySelector(".try")) import("./tryit.js");
 
 // Character and language pages carry every family that fits. Only the first
 // batch arrives with its faces; the rest ask for theirs on scroll.
-if (document.querySelector("[data-family]")) import("./lazyfaces.js");
+if (document.querySelector("[data-family]")) {
+  import("./lazyfaces.js").then(({ watch }) => watch(
+    document.querySelectorAll("[data-family]"),
+    document.querySelector("[data-drawn-note]")));
+}
 
 // --------------------------------------------------------------- the index
 //
