@@ -995,6 +995,18 @@ def test_a_broken_expected_form_is_not_the_yardstick():
                            expected="ൻ്റ")["verdict"] == "fail"
 
 
+def test_a_verdict_says_whether_it_holds_without_the_language():
+    """Amita fails the eyelash ra as Marathi and joins it untagged. A browser
+    that does not apply the page's language draws the untagged result, so an
+    example meant to show the failure showed nothing wrong. Each row records the
+    untagged verdict beside the tagged one, so a page can choose an example that
+    is broken either way."""
+    blob = sample_font(codepoints=(0x0D7B, 0x0D4D, 0x0D31))
+    rows = gen_index.shape_all(blob, "test.ttf", "Mlym")
+    assert rows["nta"]["hb"]["verdict"] == "fail"
+    assert rows["nta"]["hb"]["untagged"] == "fail"
+
+
 def test_a_verdict_carries_the_language_it_was_shaped_in():
     # Kadwa joins the eyelash ra as Hindi and not as Marathi. A verdict is only
     # true for the language it was shaped with, so the language travels with it.

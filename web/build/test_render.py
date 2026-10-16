@@ -164,6 +164,26 @@ def test_home_cases_are_the_data():
     assert f'class="try-text f-{render.slug("Both Join")}" lang="ml"' in html
 
 
+def test_a_broken_example_is_broken_in_every_browser():
+    """Amita fails the eyelash ra in Marathi and joins it untagged. In a browser
+    that does not apply the page's language it drew a perfect eyelash ra under
+    "not joined in Marathi", and the example showed nothing. The broken example
+    is one that fails either way, and its label says so plainly."""
+    def eyelash(name, tagged, untagged):
+        family = shaped_family(name, "Deva", {"eyelash": (tagged, "")})
+        family["results"]["Deva"]["eyelash"]["hb"]["untagged"] = untagged
+        return family
+    fonts = [eyelash("Aa Joins", "clean", "clean"),
+             eyelash("Ab Marathi Only", "fail", "clean"),       # sorts first of the two
+             eyelash("Ac Everywhere", "fail", "fail")]
+    blocks = sorted(FULL_BLOCKS)
+    html = render.home(render.prepare_fonts(fonts, blocks), scripts=[], languages=[],
+                       blocks=blocks)
+    assert 'data-face="Ac Everywhere"' in html
+    assert "Ab Marathi Only" not in html
+    assert ">not joined<" in html
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

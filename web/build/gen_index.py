@@ -1420,8 +1420,8 @@ def as_sfnt(blob):
 # The cache keys on the file's URL, so without this a fixed check would never
 # reach a family that was already measured: 2 is #96, the conjunct check; 3
 # adds Latin, and the ink check for accents that collide or stand beside their
-# letter.
-SHAPING = 3
+# letter; 4 records each verdict untagged as well.
+SHAPING = 4
 
 ZWJ, ZWNJ = 0x200D, 0x200C
 
@@ -1804,6 +1804,15 @@ def shape_all(blob, filename, script="Mlym"):
             hb_result["trace"] = []
         if script in UNTESTED_WHEN_UNCOVERED and ".notdef" in hb_result.get("note", ""):
             continue                     # not offered, which coverage already says
+        # The same sequence with no language at all: what a browser draws when it
+        # does not apply the page's language. Amita fails the eyelash ra as
+        # Marathi and joins it untagged, so an example meant to show the failure
+        # showed nothing wrong there.
+        try:
+            hb_result["untagged"] = shape(blob, entry["codes"], entry.get("needs"),
+                                          None, script, expected=entry.get("out"))["verdict"]
+        except Exception:
+            hb_result["untagged"] = None
         hb_result["command"] = hb_shape_command(
             filename, entry["codes"], entry.get("needs") or [],
             (entry.get("langs") or "ml").split(",")[0].strip(), script)

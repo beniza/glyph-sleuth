@@ -210,6 +210,25 @@ def rows_of(font, script):
     return (font.get("results") or {}).get(script) or {}
 
 
+def passes(row):
+    """(with the page's language, without it). A browser that does not apply
+    the page's language draws the second. Rows from before the untagged
+    verdict was recorded say nothing about it, so it is read as the first."""
+    hb_row = row.get("hb") or {}
+    tagged = hb_row.get("verdict") in ("clean", "caveat")
+    untagged = hb_row.get("untagged")
+    return tagged, (tagged if untagged is None else untagged in ("clean", "caveat"))
+
+
+def first(fonts, *tests):
+    """The first family passing the strictest test that any family passes."""
+    for test in tests:
+        found = next((font for font in fonts if test(font)), None)
+        if found:
+            return found
+    return None
+
+
 def nta_case(fonts, blocks):
     """എന്റെ, "my", in the two spellings we test: Unicode's recommendation and the
     one school keyboards taught. Counted over the families that are for
@@ -219,8 +238,11 @@ def nta_case(fonts, blocks):
 
     def word(row):
         hb_row = row.get("hb") or {}
-        if hb_row.get("verdict") in ("clean", "caveat"):
+        tagged, untagged = passes(row)
+        if tagged:
             return "joined", "clean"
+        if untagged:
+            return "not joined in Malayalam text", "fail"
         if "not joined" in hb_row.get("note", ""):
             return "not joined", "fail"
         return "can’t draw it", "fail"
@@ -234,9 +256,15 @@ def nta_case(fonts, blocks):
     older_only = sum(1 for font in family if joins(rows_of(font, "Mlym")["ntaLegacy"])
                      and not joins(rows_of(font, "Mlym")["nta"]))
     ready = drawable_first(family)
-    good = next((font for font in ready if joins(rows_of(font, "Mlym")["nta"])
-                 and joins(rows_of(font, "Mlym")["ntaLegacy"])), None)
-    bad = next((font for font in ready if not joins(rows_of(font, "Mlym")["nta"])), None)
+    # Examples that look the same whether or not the browser applies the page's
+    # language: Baloo Chettan 2 fails the school spelling only when it does, so
+    # in a browser that does not it drew a joined nta under "not joined".
+    nta = lambda font: passes(rows_of(font, "Mlym")["nta"])
+    old = lambda font: passes(rows_of(font, "Mlym")["ntaLegacy"])
+    good = first(ready, lambda f: all(nta(f)) and all(old(f)),
+                 lambda f: nta(f)[0] and old(f)[0])
+    bad = first(ready, lambda f: not any(nta(f)) and all(old(f)),
+                lambda f: not any(nta(f)), lambda f: not nta(f)[0])
     shown = [font for font in (good, bad) if font]
 
     spellings = [("Unicode’s recommendation", "0D7B 0D4D 0D31", "nta",
@@ -282,21 +310,30 @@ def eyelash_case(fonts, blocks):
     if not family:
         return None, [], None
     ready = drawable_first(family)
-    good = next((f for f in ready if joins(f)), None)
-    shown = [font for font in (good, next((f for f in ready if not joins(f)), None)) if font]
+    both = lambda font: passes(rows_of(font, "Deva")["eyelash"])
+    # Amita fails it only as Marathi, and in a browser that does not apply the
+    # page's language it drew a perfect eyelash ra under "not joined".
+    good = first(ready, lambda f: all(both(f)), lambda f: both(f)[0])
+    bad = first(ready, lambda f: not any(both(f)), lambda f: not both(f)[0])
+    shown = [font for font in (good, bad) if font]
     missing = sum(1 for font in family if not joins(font))
+
+    def said(font):
+        tagged, untagged = both(font)
+        if tagged:
+            return '<span class="clean">joined</span>'
+        return ('<span class="fail">not joined in Marathi text</span>' if untagged
+                else '<span class="fail">not joined</span>')
+
     tiles = "".join(
         f'<div class="case-tile"><span lang="mr" class="case-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
         f'{face_attrs(font, True)}>&#x0930;&#x093C;&#x094D;&#x0939;</span>'
-        f'<span>{esc(font["name"])}</span>'
-        + ('<span class="clean">joined</span>' if joins(font)
-           else '<span class="fail">not joined in Marathi</span>')
-        + "</div>" for font in shown)
+        f'<span>{esc(font["name"])}</span>' + said(font) + "</div>" for font in shown)
     html = f"""      <article class="case">
         <h3>The Marathi “eyelash” ra</h3>
         <p>Marathi writes this <em>ra</em> as a small eyelash-shaped stroke joined to the next
-           letter. Some fonts join it in Hindi text and not when the page says it is
-           Marathi, which is exactly where it is needed.</p>
+           letter. Some fonts never join it, and some join it in Hindi text but not when the
+           page says it is Marathi, which is exactly where it is needed.</p>
         <div class="case-tiles">{tiles}</div>
         <p class="quiet">Drawn as a Marathi page draws them. Of {plural(len(family), "Devanagari font", "Devanagari fonts")} we checked,
            {missing:,} {"doesn’t" if missing == 1 else "don’t"} join it in Marathi text.</p>
@@ -322,8 +359,10 @@ def accents_case(fonts):
     if not family:
         return None, [], None
     ready = drawable_first(family)
-    good = next((f for f in ready if word(f)[1] == "clean"), None)
-    shown = [font for font in (good, next((f for f in ready if word(f)[1] == "fail"), None)) if font]
+    both = lambda font: passes(rows_of(font, "Latn")["vietStack"])
+    good = first(ready, lambda f: all(both(f)), lambda f: both(f)[0])
+    bad = first(ready, lambda f: not any(both(f)), lambda f: not both(f)[0])
+    shown = [font for font in (good, bad) if font]
     stacked = sum(1 for font in family if word(font)[1] == "clean")
     tiles = "".join(
         f'<div class="case-tile"><span lang="vi" class="case-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
