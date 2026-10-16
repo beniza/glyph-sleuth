@@ -231,7 +231,7 @@ def first(fonts, *tests):
 
 def nta_case(fonts, blocks):
     """എന്റെ, "my", in the two spellings we test: Unicode's recommendation and the
-    one school keyboards taught. Counted over the families that are for
+    one legacy keyboards produce. Counted over the families that are for
     Malayalam; drawn in one that joins both and one that joins only the older."""
     def joins(row):
         return (row.get("hb") or {}).get("verdict") in ("clean", "caveat")
@@ -257,7 +257,7 @@ def nta_case(fonts, blocks):
                      and not joins(rows_of(font, "Mlym")["nta"]))
     ready = drawable_first(family)
     # Examples that look the same whether or not the browser applies the page's
-    # language: Baloo Chettan 2 fails the school spelling only when it does, so
+    # language: Baloo Chettan 2 fails the legacy spelling only when it does, so
     # in a browser that does not it drew a joined nta under "not joined".
     nta = lambda font: passes(rows_of(font, "Mlym")["nta"])
     old = lambda font: passes(rows_of(font, "Mlym")["ntaLegacy"])
@@ -269,7 +269,7 @@ def nta_case(fonts, blocks):
 
     spellings = [("Unicode’s recommendation", "0D7B 0D4D 0D31", "nta",
                   "&#x0D0E;&#x0D7B;&#x0D4D;&#x0D31;&#x0D46;"),
-                 ("school keyboards", "0D28 0D4D 0D31", "ntaLegacy",
+                 ("legacy keyboards", "0D28 0D4D 0D31", "ntaLegacy",
                   "&#x0D0E;&#x0D28;&#x0D4D;&#x0D31;&#x0D46;")]
     head = "".join(f'<div class="case-head">{esc(font["name"])}</div>' for font in shown)
     body = ""
@@ -287,13 +287,13 @@ def nta_case(fonts, blocks):
     html = f"""      <article class="case">
         <h3>A common Malayalam word, typed two ways</h3>
         <p>എന്റെ means “my”. The <em>nta</em> in the middle should be one joined shape, and
-           it can be typed several ways. Unicode recommends one; school keyboards taught
+           it can be typed several ways. Unicode recommends one; legacy keyboards produce
            another; Windows’ default font once needed a third, so people typed that too.
            A font may join one spelling and not another, so the same word can look right
            on one screen and broken on the next.</p>
 {grid}
         <p class="quiet">Drawn as a Malayalam page draws them. Of {plural(len(family), "Malayalam font", "Malayalam fonts")} we checked,
-           {recommended:,} {"joins" if recommended == 1 else "join"} Unicode’s recommended spelling and {legacy:,} {"joins" if legacy == 1 else "join"} the school-keyboard one.
+           {recommended:,} {"joins" if recommended == 1 else "join"} Unicode’s recommended spelling and {legacy:,} {"joins" if legacy == 1 else "join"} the legacy-keyboard one.
            {older_only:,} {"joins" if older_only == 1 else "join"} only the older spelling.</p>
       </article>"""
     return html, shown, good

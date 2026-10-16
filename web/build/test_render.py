@@ -152,7 +152,7 @@ def test_home_cases_are_the_data():
     assert "Same text, different results" in html
     read = re.sub(r"\s+", " ", html)                 # as a reader sees it
     assert ("Of 3 Malayalam fonts we checked, 1 joins Unicode’s recommended spelling "
-            "and 3 join the school-keyboard one. 2 join only the older spelling.") in read
+            "and 3 join the legacy-keyboard one. 2 join only the older spelling.") in read
     # Examples: one that joins both, one that joins only the older spelling, and
     # both loadable. The family we cannot load is counted, never drawn.
     assert 'data-face="Both Join"' in html and 'data-face="Older Only"' in html
