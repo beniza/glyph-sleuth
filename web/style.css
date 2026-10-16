@@ -231,6 +231,9 @@ h1 {
 /* The facts strip: mono value over a small-caps label, the value carrying the
    link when the fact leads somewhere. */
 .facts { border-top: 1px solid var(--rule); padding-top: 14px; }
+/* Under a section heading the heading's own rule is the divider; a second one
+   a few pixels below it read as a printing fault. */
+.eyebrow + .facts { border-top: 0; padding-top: 0; }
 .fact { display: flex; flex-direction: column; gap: 3px; border: none; }
 a.fact .value { color: var(--proof); }
 a.fact:hover .value { color: var(--ink); }

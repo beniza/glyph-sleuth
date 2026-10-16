@@ -13,6 +13,7 @@ import collections
 import hashlib
 import html as html_module
 import io
+import itertools
 import json
 import os
 import re
@@ -195,17 +196,36 @@ def counts(fonts):
     return len(fonts), measured
 
 
-def home(fonts, scripts, languages):
+def home(fonts, scripts, languages, shaped=()):
+    """The front page. `shaped` is the scripts we have authored sequences for.
+
+    Its lists used to be the first twelve of each, alphabetically — ABeeZee
+    answering "which font can set this?", Adlam to Chakma for scripts, and ten
+    bracketed UDHR names for languages. They lead now with what the site has the
+    most evidence for: scripts with shaping verdicts, then the scripts the most
+    languages are written in. Chosen by the data, never by naming a script.
+    """
     total, measured = counts(fonts)
+    ranked_scripts = sorted(scripts, key=lambda s: (s["code"] not in shaped,
+                                                    -len(s.get("languages") or []),
+                                                    name_key(s["name"])))
+    # A language leads when its own script has shaping evidence, taken in turn
+    # from each such script: UDHR has far more Devanagari translations than
+    # Malayalam ones, and alphabetically they alone filled every place. One with
+    # no script we could link sorts last, since its page has least to show.
+    by_name = sorted(languages, key=lambda l: name_key(l["name"]))
+    main = lambda l: (l.get("scripts") or [None])[0]
+    queues = [[l for l in by_name if main(l) == code] for code in sorted(shaped)]
+    leading = [l for turn in itertools.zip_longest(*queues) for l in turn if l]
+    ranked_languages = leading + sorted(
+        (l for l in by_name if main(l) not in shaped),
+        key=lambda l: (not l.get("scripts"), name_key(l["name"])))
     script_links = "\n".join(
         f'          <a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>'
-        for s in scripts[:12])
+        for s in ranked_scripts[:12])
     language_links = "\n".join(
         f'          <a href="{link("/lang/" + l["id"] + "/")}">{esc(l["name"])}</a>'
-        for l in languages[:12])
-    family_links = "\n".join(
-        f'          <a href="{font_href(f)}">{esc(f["name"])}</a>'
-        for f in fonts[:12])
+        for l in ranked_languages[:12])
 
     body = f"""    <section class="claim">
       <h1>Glyph Sleuth</h1>
@@ -214,7 +234,6 @@ def home(fonts, scripts, languages):
       <p>Glyph Sleuth reports both, and the evidence behind both: every family
          checked against the characters and the sequences a language actually
          writes.</p>
-      <p class="quiet">Read-only. Nothing you type leaves the browser.</p>
     </section>
 
     <section>
@@ -238,8 +257,11 @@ def home(fonts, scripts, languages):
         <div>
           <span class="q">Which font can set this?</span>
           <div class="links">
-{family_links or '          <span class="quiet">Nothing indexed yet — run the generator.</span>'}
+            <a href="{link("/languages/")}">Pick a language</a>
+            <a href="{link("/scripts/")}">Pick a script</a>
           </div>
+          <p class="quiet">Each one lists the families that cover the characters it is
+             written in, and where we test its sequences, how each family shapes them.</p>
         </div>
         <div>
           <span class="q">What is this character?</span>
@@ -266,6 +288,8 @@ def home(fonts, scripts, languages):
       <div class="paths">
         <div>
           <span class="q">Scripts</span>
+          <p class="quiet">Those with shaping verdicts first, then by how many
+             languages are written in them.</p>
           <div class="links">
 {script_links or '          <span class="quiet">None yet.</span>'}
           </div>
@@ -273,6 +297,7 @@ def home(fonts, scripts, languages):
         </div>
         <div>
           <span class="q">Languages</span>
+          <p class="quiet">Those written in a script with shaping verdicts first.</p>
           <div class="links">
 {language_links or '          <span class="quiet">None yet.</span>'}
           </div>
@@ -280,6 +305,8 @@ def home(fonts, scripts, languages):
         </div>
         <div>
           <span class="q">Font families</span>
+          <p class="quiet">Filter by the blocks a family covers and the OpenType script
+             tags it declares — the second is the one coverage does not tell you.</p>
           <div><a href="{link("/fonts/")}">All {total:,} indexed families</a></div>
         </div>
       </div>
@@ -2968,7 +2995,10 @@ def main():
     # page would be 33,000 pages times 1,885 families of range walking.
     covering_fonts = coverage_index(fonts["fonts"], chars_built)
 
-    write("/", home(fonts["fonts"], scripts, languages))
+    with io.open(os.path.join(ROOT, "web", "content", "sequences.json"),
+                 encoding="utf-8") as handle:
+        shaped = {script for script in json.load(handle) if not script.startswith("_")}
+    write("/", home(fonts["fonts"], scripts, languages, shaped))
     print("  wrote home")
 
     # Assign every slug up front, so a collision is resolved before anything

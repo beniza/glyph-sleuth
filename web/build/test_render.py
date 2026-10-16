@@ -137,6 +137,49 @@ def test_a_bracketed_name_sorts_by_its_letters():
     assert index.index("Abkhaz") < index.index("(Bataknese)") < index.index("Czech")
 
 
+def test_home_lists_lead_with_what_the_site_has_evidence_for():
+    """The home page's lists were the first twelve of each, alphabetically: ABeeZee
+    answering "which font can set this?", Adlam to Chakma for scripts. Lead with
+    the scripts we have shaping evidence for — chosen by the data, never by name,
+    since no script is the site's default subject — then by how many languages
+    use each."""
+    scripts = [{"code": "Adlm", "name": "Adlam", "chars": 88, "languages": ["ful"]},
+               {"code": "Latn", "name": "Latin", "chars": 1000,
+                "languages": ["eng", "fra", "deu"]},
+               {"code": "Deva", "name": "Devanagari", "chars": 160, "languages": ["hin"]}]
+    languages = [{"id": "050", "name": "(Bataknese)", "tag": "und", "scripts": []},
+                 {"id": "abk", "name": "Abkhaz", "tag": "ab", "scripts": ["Cyrl"]},
+                 {"id": "hin", "name": "Hindi", "tag": "hi", "scripts": ["Deva"]}]
+    html = render.home([{"name": "ABeeZee", "tier": "measured", "ranges": []}],
+                       scripts, languages, shaped={"Deva"})
+
+    browse = html[html.index("Browse the index"):]
+    assert browse.index("Devanagari") < browse.index("Latin") < browse.index("Adlam")
+    assert browse.index("Hindi") < browse.index("Abkhaz") < browse.index("(Bataknese)")
+
+    # "Which font can set this?" is answered by a language or a script, which is
+    # where the fitting families are listed — not by the start of the alphabet.
+    question = html[html.index("Which font can set this?"):html.index("What is this character?")]
+    assert "ABeeZee" not in question
+    assert f'href="{render.link("/languages/")}"' in question
+
+
+def test_one_shaped_script_cannot_crowd_out_another():
+    # UDHR has far more Devanagari translations than Malayalam ones. Twelve
+    # Devanagari languages that sort before "Malayalam" took every place.
+    languages = ([{"id": f"d{n:02}", "name": f"Aa{n:02}", "tag": "x", "scripts": ["Deva"]}
+                  for n in range(20)]
+                 + [{"id": "mal", "name": "Malayalam", "tag": "ml", "scripts": ["Mlym"]}])
+    html = render.home([], scripts=[], languages=languages, shaped={"Deva", "Mlym"})
+    assert "Malayalam" in html[html.index("Browse the index"):]
+
+
+def test_home_says_each_thing_once():
+    html = render.home([], scripts=[], languages=[])
+    # The colophon already says it on every page, the home page included.
+    assert html.count("Nothing you type leaves the browser.") == 1
+
+
 def test_no_script_is_the_default_subject():
     """Malayalam was how the tiers got built, not what the site is about.
 
@@ -928,14 +971,10 @@ ALLOWED_SLICES = {
     "ordered[:DRAWN_LIMIT]": "how many faces load eagerly, not how many tiles exist",
     "fits[:CARDS_LIMIT]": "how many faces load eagerly, not how many cards exist",
     "rows[:limit]": "capped() itself",
-    # Deliberate, and disclosed: uncapped this file is megabytes. The true
-    # total ships beside the faces as "of", Inspect says what it is not
-    # showing, and the block page lists every family.
-    "faces[:BLOCK_FACES]": "the Inspect payload, capped with its total alongside",
     "hexdigest()[:8]": "a slug's hash suffix, not a list of anything",
-    'for s in scripts[:12])': "the home page's featured scripts, not an answer to a question",
-    'for l in languages[:12])': "the home page's featured languages",
-    'for f in fonts[:12])': "the home page's featured families",
+    # Each sits directly above "All scripts, with counts" / "All languages".
+    'for s in ranked_scripts[:12])': "the home page's featured scripts, not an answer",
+    'for l in ranked_languages[:12])': "the home page's featured languages",
     'if word][:3]': "the first three words of a specimen line",
     "if not ch.isspace()][:8]": "the first letters of an exemplar set, as a sample",
     'join(gaps[:12])': "a sample of the characters a family is missing, inside one cell",
