@@ -355,7 +355,9 @@ def test_fonts_index_controls():
         {"name": "RIT Panmana", "slug": "rit-panmana", "source": "rit", "tier": "stub",
          "ranges": [], "licence": "", "url": "x", "css": None},
     ]
-    html = render.fonts_index(fonts)
+    for font in fonts:
+        font.pop("_dominant", None)
+    html = render.fonts_index(fonts, sorted(FULL_BLOCKS))
 
     # A text filter, and the facets the design calls for, each carrying its own
     # count so the number is visible before you click it. No script-specific
@@ -498,6 +500,33 @@ def test_a_verdict_says_the_language_it_was_shaped_in():
 
     # A verdict cached before the language was recorded claims nothing about it.
     assert "Shaped as" not in render.font_page(MANJARI, BLOCKS)
+
+
+def test_a_family_is_judged_on_its_own_script():
+    """Malini is a Malayalam family carrying a handful of Devanagari characters.
+    Every Devanagari sequence fails on it for want of glyphs, and the index
+    listed it as one that "breaks". One word for a family has to be about the
+    script it is for; the other scripts stay on its page, row by row."""
+    clean = {"hb": {"verdict": "clean"}}
+    fail = {"hb": {"verdict": "fail"}}
+    malini = {"name": "Malini", "tier": "measured",
+              "ranges": [[0x0D00, 0x0D7F], [0x0964, 0x0965]],
+              "results": {"Mlym": {"nta": clean}, "Deva": {"kssa": fail}}}
+    blocks = sorted(FULL_BLOCKS)
+    render.prepare_fonts([malini], blocks)
+    assert render.verdict_of(malini, blocks) == "clean"
+
+    # A family for a script we do not shape has no verdict of its own, however
+    # its incidental Devanagari went.
+    arabic = {"name": "Arabic Face", "tier": "measured",
+              "ranges": [[0x0600, 0x06FF], [0x0964, 0x0965]],
+              "results": {"Deva": {"kssa": fail}}}
+    render.prepare_fonts([arabic], blocks)
+    assert render.verdict_of(arabic, blocks) == "none"
+
+    # And the index says the same.
+    index = render.fonts_index([malini, arabic], blocks)
+    assert re.search(r'data-name="malini"[^>]*data-verdict="clean"', index)
 
 
 def test_matrix_says_not_tested_rather_than_nothing():

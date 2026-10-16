@@ -1238,13 +1238,35 @@ def font_page(font, blocks):
                 extra_head=head)
 
 
-def verdict_of(font):
-    """One word for how a family shapes, across every sequence we ran on it.
+def own_script(font, blocks):
+    """The shaped script a family is for, or None if it is for one we don't shape.
+
+    Its dominant block decides. A family with no dominant block outside Latin and
+    punctuation is a Latin family.
+    """
+    dominant = dominant_block(font, blocks) if blocks else font.get("_dominant")
+    if not dominant:
+        return "Latn"
+    first = next((block[0] for block in blocks if block[2] == dominant[0]), None)
+    for script, ranges in gen.SHAPED_SCRIPTS.items():
+        if first is not None and any(lo <= first <= hi for lo, hi in ranges):
+            return script
+    return None
+
+
+def verdict_of(font, blocks=()):
+    """One word for how a family shapes the script it is for.
 
     A family nothing was run against gets "none", not a pass — untested and
     clean are different answers, which is the argument the site is making.
+
+    Only its own script counts. Malini is a Malayalam family carrying a few
+    Devanagari characters; every Devanagari sequence fails on it for want of
+    glyphs, and the index called it one that "breaks". The other scripts stay
+    on the family's page, row by row, where they say what they are.
     """
-    rows = [row for rows in (font.get("results") or {}).values() for row in rows.values()]
+    script = own_script(font, blocks)
+    rows = list(((font.get("results") or {}).get(script) or {}).values()) if script else []
     if not rows:
         return "none"
     verdicts = {(row.get("hb") or {}).get("verdict") for row in rows}
@@ -1293,8 +1315,8 @@ def fonts_index(fonts, blocks=()):
     facets = [("all", "all", total),
               ("measured", "measured", measured),
               ("not measured yet", "not measured yet", total - measured),
-              ("clean", "shapes cleanly", sum(1 for f in ordered if verdict_of(f) == "clean")),
-              ("fail", "breaks", sum(1 for f in ordered if verdict_of(f) == "fail"))]
+              ("clean", "shapes cleanly", sum(1 for f in ordered if verdict_of(f, blocks) == "clean")),
+              ("fail", "breaks", sum(1 for f in ordered if verdict_of(f, blocks) == "fail"))]
     chips = "\n".join(
         f'        <button class="facet{" on" if key == "all" else ""}" data-facet="{key}"'
         f' data-count="{count}"><span>{esc(label)}</span>'
@@ -1310,7 +1332,7 @@ def fonts_index(fonts, blocks=()):
     rows = []
     for font in ordered:
         covered = count_in_range(font.get("ranges") or [], 0, 0x10FFFF)
-        verdict = verdict_of(font)
+        verdict = verdict_of(font, blocks)
         tags = font.get("tags") or []
         names = covered_by[id(font)]
         dominant = dominant_block(font, blocks) if blocks else None
