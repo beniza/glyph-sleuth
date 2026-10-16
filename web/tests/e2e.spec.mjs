@@ -68,6 +68,27 @@ test.describe("the nav", () => {
   });
 });
 
+test.describe("Home", () => {
+  test("the box on the home page opens Inspect with what was typed", async ({ page }) => {
+    // A plain GET form, so it works before any script has run.
+    await page.goto(`${BASE}/`);
+    await page.locator("#ask-t").fill("U+0D7B");
+    await page.locator(".ask button").click();
+    await expect(page).toHaveURL(/\/inspect\/\?t=U%2B0D7B/);
+    await expect(page.locator("#inspect-out")).toContainText("MALAYALAM LETTER CHILLU N");
+  });
+
+  test("every example on the home page is drawn by the face it names", async ({ page }) => {
+    // The cases name a family under each drawing; the chips name none and are
+    // set in the family that draws them correctly. A face that did not arrive
+    // would leave the browser drawing a broken example under a good verdict.
+    await page.goto(`${BASE}/`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(1500);
+    await expect(page.locator(".case-glyph.fallback")).toHaveCount(0);
+  });
+});
+
 test.describe("Inspect", () => {
   test("reads a sequence and names it", async ({ page }) => {
     await page.goto(`${BASE}/inspect/?t=%E0%B4%A8%E0%B5%8D%E0%B4%B1`);   // ന്റ, legacy nta

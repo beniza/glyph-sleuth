@@ -78,7 +78,10 @@ def test_page_needs_no_javascript():
         assert "defer" in script or "type=\"module\"" in script, script
 
 
-def test_home_says_what_it_measured():
+def test_home_says_what_the_site_is_for():
+    """A first-time visitor gets the purpose in their own words, an input on the
+    first screen, and the counts in one plain sentence — not a facts strip about
+    cmap and GSUB, which belongs on a family's page."""
     fonts = [
         {"name": "Manjari", "source": "smc", "tier": "measured",
          "ranges": [[0x0D00, 0x0D7F]], "licence": "OFL"},
@@ -89,27 +92,22 @@ def test_home_says_what_it_measured():
     ]
     html = render.home(fonts, scripts=[], languages=[])
 
-    # Exactly one h1 on a real page.
     assert len(re.findall(r"<h1", html)) == 1
+    assert re.search(r"<h1[^>]*>Does your font draw your language correctly\?</h1>", html)
 
-    # The claim, verbatim — it is the product in one sentence.
-    assert "Coverage says a font contains the character." in html
-    assert "It does not say the font will draw it." in html
-    assert "Nothing you type leaves the browser." in html
+    # The input is a real form, so it goes somewhere with JavaScript off.
+    form = re.search(r'<form[^>]*action="([^"]+)"[^>]*method="get"', html)
+    assert form and form.group(1) == render.link("/inspect/")
+    assert re.search(r'<input[^>]*name="t"', html)
+    assert "Paste any text to see what it" in html
 
-    # The counts are real, and indexed is reported separately from measured:
-    # an index of 1,900 families where 40 carry real numbers is two facts, and
-    # giving only the first is the claim this site exists to argue against.
-    # The prototype's authored 1,885 is gone.
+    # Real counts, indexed reported apart from checked: an index where most
+    # families carried no measurement would otherwise read as fully measured.
     assert "1,885" not in html
-    facts = re.search(r'<dl class="facts">(.+?)</dl>', html, re.S).group(1)
-    assert re.search(r"Families indexed.*?<dd[^>]*>3</dd>", facts, re.S)
-    assert re.search(r"Measured from a release.*?<dd[^>]*>2</dd>", facts, re.S)
-    assert re.search(r"Not measured yet.*?<dd[^>]*>1</dd>", facts, re.S)
+    assert "2 of 3 families checked from the font file itself" in html
+    assert "1 not checked yet" in html
 
-    # Every link on the page goes to a route the build actually writes. The
-    # prototype's inert "picture of it" promise is gone; so is the temptation to
-    # link Identify before it exists, which would be the same fault with a href.
+    # Nothing promised that is not built.
     for href in re.findall(r'href="([^"]+)"', html):
         if href.startswith(("http://", "https://")):
             continue
@@ -122,8 +120,53 @@ def test_home_links_are_real_paths():
     # Hash routes were a prototype artefact. A generated page needs a real URL
     # or there is nothing for a crawler to follow.
     assert "#/" not in html
-    assert f'href="{render.link("/script/Mlym/")}"' in html
-    assert f'href="{render.link("/lang/mal/")}"' in html
+    for path in ("/inspect/", "/languages/", "/scripts/", "/fonts/", "/compare/"):
+        assert f'href="{render.link(path)}"' in html, path
+
+
+def shaped_family(name, script, rows, source="google", css=None, ranges=None):
+    # No slug: the home page is written before the build assigns them, and a
+    # card that reached for one crashed the real build while this test passed.
+    return {"name": name, "source": source, "css": css,
+            "tier": "measured", "licence": "OFL",
+            "ranges": ranges or {"Mlym": [[0x0D00, 0x0D7F]], "Deva": [[0x0900, 0x097F]],
+                                 "Latn": [[0x20, 0x7E], [0x300, 0x36F]]}[script],
+            "results": {script: {sid: {"hb": {"verdict": verdict, "note": note}}
+                                 for sid, (verdict, note) in rows.items()}}}
+
+
+def test_home_cases_are_the_data():
+    """The "same text, different results" cards are counted from the verdicts at
+    build time, and their examples are chosen from them. A number typed into the
+    page would go stale with the next release of any one font; an example the
+    browser cannot load would be drawn in some other face under its name."""
+    joined, loose = ("clean", ""), ("fail", "not joined: …")
+    both = shaped_family("Both Join", "Mlym", {"nta": joined, "ntaLegacy": joined})
+    older = shaped_family("Older Only", "Mlym", {"nta": loose, "ntaLegacy": joined})
+    hidden = shaped_family("Cannot Load", "Mlym", {"nta": loose, "ntaLegacy": joined},
+                           source="x")
+    blocks = sorted(FULL_BLOCKS)
+    fonts = render.prepare_fonts([both, older, hidden], blocks)
+    html = render.home(fonts, scripts=[], languages=[], blocks=blocks)
+
+    assert "Same text, different results" in html
+    read = re.sub(r"\s+", " ", html)                 # as a reader sees it
+    assert ("Of 3 Malayalam fonts we checked, 1 joins Unicode’s recommended spelling "
+            "and 3 join the school-keyboard one. 2 join only the older spelling.") in read
+    # Examples: one that joins both, one that joins only the older spelling, and
+    # both loadable. The family we cannot load is counted, never drawn.
+    assert 'data-face="Both Join"' in html and 'data-face="Older Only"' in html
+    assert "Cannot Load" not in html
+    # Drawn as a Malayalam page draws it, which is how the verdict was measured.
+    assert 'lang="ml"' in html
+    # The "Or try" chip is drawn by the family that joins it, not left to a
+    # system fallback that showed the home page's own example broken.
+    assert f'class="try-text f-{render.slug("Both Join")}" lang="ml"' in html
+
+
+def test_a_case_with_no_data_is_left_out():
+    html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
+    assert "Same text, different results" not in html
 
 
 def test_a_bracketed_name_sorts_by_its_letters():
@@ -135,49 +178,6 @@ def test_a_bracketed_name_sorts_by_its_letters():
                  {"id": "ces", "name": "Czech", "tag": "cs"}]
     index = render.languages_index(languages)
     assert index.index("Abkhaz") < index.index("(Bataknese)") < index.index("Czech")
-
-
-def test_home_lists_lead_with_what_the_site_has_evidence_for():
-    """The home page's lists were the first twelve of each, alphabetically: ABeeZee
-    answering "which font can set this?", Adlam to Chakma for scripts. Lead with
-    the scripts we have shaping evidence for — chosen by the data, never by name,
-    since no script is the site's default subject — then by how many languages
-    use each."""
-    scripts = [{"code": "Adlm", "name": "Adlam", "chars": 88, "languages": ["ful"]},
-               {"code": "Latn", "name": "Latin", "chars": 1000,
-                "languages": ["eng", "fra", "deu"]},
-               {"code": "Deva", "name": "Devanagari", "chars": 160, "languages": ["hin"]}]
-    languages = [{"id": "050", "name": "(Bataknese)", "tag": "und", "scripts": []},
-                 {"id": "abk", "name": "Abkhaz", "tag": "ab", "scripts": ["Cyrl"]},
-                 {"id": "hin", "name": "Hindi", "tag": "hi", "scripts": ["Deva"]}]
-    html = render.home([{"name": "ABeeZee", "tier": "measured", "ranges": []}],
-                       scripts, languages, shaped={"Deva"})
-
-    browse = html[html.index("Browse the index"):]
-    assert browse.index("Devanagari") < browse.index("Latin") < browse.index("Adlam")
-    assert browse.index("Hindi") < browse.index("Abkhaz") < browse.index("(Bataknese)")
-
-    # "Which font can set this?" is answered by a language or a script, which is
-    # where the fitting families are listed — not by the start of the alphabet.
-    question = html[html.index("Which font can set this?"):html.index("What is this character?")]
-    assert "ABeeZee" not in question
-    assert f'href="{render.link("/languages/")}"' in question
-
-
-def test_one_shaped_script_cannot_crowd_out_another():
-    # UDHR has far more Devanagari translations than Malayalam ones. Twelve
-    # Devanagari languages that sort before "Malayalam" took every place.
-    languages = ([{"id": f"d{n:02}", "name": f"Aa{n:02}", "tag": "x", "scripts": ["Deva"]}
-                  for n in range(20)]
-                 + [{"id": "mal", "name": "Malayalam", "tag": "ml", "scripts": ["Mlym"]}])
-    html = render.home([], scripts=[], languages=languages, shaped={"Deva", "Mlym"})
-    assert "Malayalam" in html[html.index("Browse the index"):]
-
-
-def test_home_says_each_thing_once():
-    html = render.home([], scripts=[], languages=[])
-    # The colophon already says it on every page, the home page included.
-    assert html.count("Nothing you type leaves the browser.") == 1
 
 
 def test_no_script_is_the_default_subject():

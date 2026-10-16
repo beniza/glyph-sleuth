@@ -196,126 +196,277 @@ def counts(fonts):
     return len(fonts), measured
 
 
-def home(fonts, scripts, languages, shaped=()):
-    """The front page. `shaped` is the scripts we have authored sequences for.
+def plural(count, one, many):
+    return f"{count:,} {one if count == 1 else many}"
 
-    Its lists used to be the first twelve of each, alphabetically — ABeeZee
-    answering "which font can set this?", Adlam to Chakma for scripts, and ten
-    bracketed UDHR names for languages. They lead now with what the site has the
-    most evidence for: scripts with shaping verdicts, then the scripts the most
-    languages are written in. Chosen by the data, never by naming a script.
+
+def drawable_first(fonts):
+    """Families a browser can load, Google's first — one request draws several."""
+    return sorted((font for font in fonts if can_draw(font)),
+                  key=lambda font: (font.get("source") != "google", font["name"].lower()))
+
+
+def rows_of(font, script):
+    return (font.get("results") or {}).get(script) or {}
+
+
+def nta_case(fonts, blocks):
+    """എന്റെ, "my", in the two spellings we test: Unicode's recommendation and the
+    one school keyboards taught. Counted over the families that are for
+    Malayalam; drawn in one that joins both and one that joins only the older."""
+    def joins(row):
+        return (row.get("hb") or {}).get("verdict") in ("clean", "caveat")
+
+    def word(row):
+        hb_row = row.get("hb") or {}
+        if hb_row.get("verdict") in ("clean", "caveat"):
+            return "joined", "clean"
+        if "not joined" in hb_row.get("note", ""):
+            return "not joined", "fail"
+        return "can’t draw it", "fail"
+
+    family = [font for font in fonts if own_script(font, blocks) == "Mlym"
+              and {"nta", "ntaLegacy"} <= set(rows_of(font, "Mlym"))]
+    if not family:
+        return None, [], None
+    recommended = sum(1 for font in family if joins(rows_of(font, "Mlym")["nta"]))
+    legacy = sum(1 for font in family if joins(rows_of(font, "Mlym")["ntaLegacy"]))
+    older_only = sum(1 for font in family if joins(rows_of(font, "Mlym")["ntaLegacy"])
+                     and not joins(rows_of(font, "Mlym")["nta"]))
+    ready = drawable_first(family)
+    good = next((font for font in ready if joins(rows_of(font, "Mlym")["nta"])
+                 and joins(rows_of(font, "Mlym")["ntaLegacy"])), None)
+    bad = next((font for font in ready if not joins(rows_of(font, "Mlym")["nta"])), None)
+    shown = [font for font in (good, bad) if font]
+
+    spellings = [("Unicode’s recommendation", "0D7B 0D4D 0D31", "nta",
+                  "&#x0D0E;&#x0D7B;&#x0D4D;&#x0D31;&#x0D46;"),
+                 ("school keyboards", "0D28 0D4D 0D31", "ntaLegacy",
+                  "&#x0D0E;&#x0D28;&#x0D4D;&#x0D31;&#x0D46;")]
+    head = "".join(f'<div class="case-head">{esc(font["name"])}</div>' for font in shown)
+    body = ""
+    for label, codes, sid, text in spellings:
+        body += (f'<div class="case-label">{esc(label)}'
+                 f'<span class="mono">{codes}</span></div>')
+        for font in shown:
+            said, tone = word(rows_of(font, "Mlym")[sid])
+            body += (f'<div class="case-cell"><span lang="ml" class="case-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
+                     f'{face_attrs(font, True)}>{text}</span>'
+                     f'<span class="{tone}">{esc(said)}</span></div>')
+    grid = (f'<div class="case-grid" style="--columns: {len(shown)}">'
+            f'<div class="case-head"><span class="quiet">typed as</span></div>{head}{body}</div>'
+            if shown else "")
+    html = f"""      <article class="case">
+        <h3>A common Malayalam word, typed two ways</h3>
+        <p>എന്റെ means “my”. The <em>nta</em> in the middle should be one joined shape, and
+           it can be typed several ways. Unicode recommends one; school keyboards taught
+           another; Windows’ default font once needed a third, so people typed that too.
+           A font may join one spelling and not another, so the same word can look right
+           on one screen and broken on the next.</p>
+{grid}
+        <p class="quiet">Drawn as a Malayalam page draws them. Of {plural(len(family), "Malayalam font", "Malayalam fonts")} we checked,
+           {recommended:,} {"joins" if recommended == 1 else "join"} Unicode’s recommended spelling and {legacy:,} {"joins" if legacy == 1 else "join"} the school-keyboard one.
+           {older_only:,} {"joins" if older_only == 1 else "join"} only the older spelling.</p>
+      </article>"""
+    return html, shown, good
+
+
+def eyelash_case(fonts, blocks):
+    """The Marathi eyelash ra, shaped as Marathi. Counted over the families that
+    are for Devanagari."""
+    def joins(font):
+        return (rows_of(font, "Deva")["eyelash"].get("hb") or {}).get("verdict") in ("clean", "caveat")
+
+    family = [font for font in fonts if own_script(font, blocks) == "Deva"
+              and "eyelash" in rows_of(font, "Deva")]
+    if not family:
+        return None, [], None
+    ready = drawable_first(family)
+    good = next((f for f in ready if joins(f)), None)
+    shown = [font for font in (good, next((f for f in ready if not joins(f)), None)) if font]
+    missing = sum(1 for font in family if not joins(font))
+    tiles = "".join(
+        f'<div class="case-tile"><span lang="mr" class="case-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
+        f'{face_attrs(font, True)}>&#x0930;&#x093C;&#x094D;&#x0939;</span>'
+        f'<span>{esc(font["name"])}</span>'
+        + ('<span class="clean">joined</span>' if joins(font)
+           else '<span class="fail">not joined in Marathi</span>')
+        + "</div>" for font in shown)
+    html = f"""      <article class="case">
+        <h3>The Marathi “eyelash” ra</h3>
+        <p>Marathi writes this <em>ra</em> as a small eyelash-shaped stroke joined to the next
+           letter. Some fonts join it in Hindi text and not when the page says it is
+           Marathi, which is exactly where it is needed.</p>
+        <div class="case-tiles">{tiles}</div>
+        <p class="quiet">Drawn as a Marathi page draws them. Of {plural(len(family), "Devanagari font", "Devanagari fonts")} we checked,
+           {missing:,} {"doesn’t" if missing == 1 else "don’t"} join it in Marathi text.</p>
+      </article>"""
+    return html, shown, good
+
+
+def accents_case(fonts):
+    """Vietnamese ế as e + circumflex + acute, over every family that can reach
+    it: the composed letter, or the marks to build it from."""
+    def word(font):
+        hb_row = rows_of(font, "Latn")["vietStack"].get("hb") or {}
+        note = hb_row.get("note", "")
+        if hb_row.get("verdict") in ("clean", "caveat"):
+            return "stacks the accents", "clean"
+        if note.startswith("accents overlap"):
+            return "accents collide", "fail"
+        if "not over its letter" in note:
+            return "accent beside the letter", "fail"
+        return "can’t draw it", "fail"
+
+    family = [font for font in fonts if "vietStack" in rows_of(font, "Latn")]
+    if not family:
+        return None, [], None
+    ready = drawable_first(family)
+    good = next((f for f in ready if word(f)[1] == "clean"), None)
+    shown = [font for font in (good, next((f for f in ready if word(f)[1] == "fail"), None)) if font]
+    stacked = sum(1 for font in family if word(font)[1] == "clean")
+    tiles = "".join(
+        f'<div class="case-tile"><span lang="vi" class="case-glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
+        f'{face_attrs(font, True)}>Tie&#x0302;&#x0301;ng</span>'
+        f'<span>{esc(font["name"])}</span>'
+        f'<span class="{word(font)[1]}">{esc(word(font)[0])}</span></div>' for font in shown)
+    html = f"""      <article class="case case-wide">
+        <div>
+          <h3>One Vietnamese word, two ways to store it</h3>
+          <p><em>Tiếng</em> can be stored with <em>ế</em> as a single character, or as a plain
+             <em>e</em> followed by two separate accents. Both are correct, and they should
+             look the same.</p>
+          <p>A font without the single character has to stack the two accents itself, and
+             not every font can. Because the stored characters differ, search treats the two
+             as different words too.</p>
+        </div>
+        <div>
+          <div class="case-tiles">{tiles}</div>
+          <p class="quiet">Typed as <span class="mono">0065 0302 0301</span>, e and two
+             accents. Of {plural(len(family), "font", "fonts")} we checked that have these accents,
+             {stacked:,} {"stacks" if stacked == 1 else "stack"} them and {len(family) - stacked:,} {"doesn’t" if len(family) - stacked == 1 else "don’t"}.</p>
+        </div>
+      </article>"""
+    return html, shown, good
+
+
+def home(fonts, scripts, languages, blocks=()):
+    """The front page: what the site is for, in a first-time visitor's words.
+
+    The ranked script and language lists it carried were the index restated;
+    the counts link to the indexes instead. What the page has room for is the
+    argument made visible — the same text drawn differently — and every number
+    and every example on it is taken from the verdicts at build time, so the
+    next release of any font cannot leave it saying something untrue.
     """
     total, measured = counts(fonts)
-    ranked_scripts = sorted(scripts, key=lambda s: (s["code"] not in shaped,
-                                                    -len(s.get("languages") or []),
-                                                    name_key(s["name"])))
-    # A language leads when its own script has shaping evidence, taken in turn
-    # from each such script: UDHR has far more Devanagari translations than
-    # Malayalam ones, and alphabetically they alone filled every place. One with
-    # no script we could link sorts last, since its page has least to show.
-    by_name = sorted(languages, key=lambda l: name_key(l["name"]))
-    main = lambda l: (l.get("scripts") or [None])[0]
-    queues = [[l for l in by_name if main(l) == code] for code in sorted(shaped)]
-    leading = [l for turn in itertools.zip_longest(*queues) for l in turn if l]
-    ranked_languages = leading + sorted(
-        (l for l in by_name if main(l) not in shaped),
-        key=lambda l: (not l.get("scripts"), name_key(l["name"])))
-    script_links = "\n".join(
-        f'          <a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>'
-        for s in ranked_scripts[:12])
-    language_links = "\n".join(
-        f'          <a href="{link("/lang/" + l["id"] + "/")}">{esc(l["name"])}</a>'
-        for l in ranked_languages[:12])
+    cases, shown, writes = [], [], {}
+    for lang, (html, families, good) in (("vi", accents_case(fonts)),
+                                         ("ml", nta_case(fonts, blocks)),
+                                         ("mr", eyelash_case(fonts, blocks))):
+        if html:
+            cases.append(html)
+            shown += [font for font in families if font not in shown]
+        if good:
+            writes[lang] = good
+    wide, narrow = (cases[0], cases[1:]) if cases and "case-wide" in cases[0] else ("", cases)
+    same_text = ("""    <section>
+      <h2 class="eyebrow">Same text, different results</h2>
+""" + wide + ("\n      <div class=\"cases\">\n" + "\n".join(narrow) + "\n      </div>" if narrow else "")
+                 + "\n    </section>\n") if cases else ""
+
+    def chip(query, text, label, lang=""):
+        # A chip names no font, so it may be drawn in any — and it must be drawn
+        # in one that gets it right. The page font fell back to a system face
+        # that left the Malayalam and Marathi examples unjoined: the home page
+        # showing broken text as its invitation. The family that joins it in
+        # its own case below draws it here too, already loaded for that case.
+        face = writes.get(lang)
+        setting = (f' class="try-text f-{esc(face.get("slug") or slug(face["name"]))}"'
+                   if face else ' class="try-text"')
+        return (f'          <a class="try-chip" href="{link("/inspect/")}?t={query}">'
+                f'<span{setting}{f" lang={chr(34)}{lang}{chr(34)}" if lang else ""}>{text}</span>'
+                f'<span class="quiet">{esc(label)}</span></a>')
 
     body = f"""    <section class="claim">
-      <h1>Glyph Sleuth</h1>
-      <p class="lede">Coverage says a font contains the character.
-         It does not say the font will draw it.</p>
-      <p>Glyph Sleuth reports both, and the evidence behind both: every family
-         checked against the characters and the sequences a language actually
-         writes.</p>
-    </section>
+      <h1>Does your font draw your language correctly?</h1>
+      <p class="lede-plain">A font can contain every letter of a language and still draw its
+         words wrong. Glyph Sleuth checks {total:,} font families against the letters
+         <em>and the letter combinations</em> real languages use, and shows you what each one
+         actually draws.</p>
 
-    <section>
-      <h2 class="eyebrow">What is indexed</h2>
-      <dl class="facts">
-        <div><dt>Families indexed</dt><dd class="mono">{total:,}</dd></div>
-        <div><dt>Measured from a release</dt><dd class="mono">{measured:,}</dd></div>
-        <div><dt>Not measured yet</dt><dd class="mono">{total - measured:,}</dd></div>
-      </dl>
-      <p class="quiet">A family is <em>measured</em> when we have read its own
-         released font file: coverage from <span class="mono">cmap</span>, the
-         script tags it declares from <span class="mono">GSUB</span> and
-         <span class="mono">GPOS</span>, and a shaping verdict per sequence.
-         The rest are indexed and findable, and say so rather than implying a
-         number nobody computed.</p>
-    </section>
-
-    <section>
-      <h2 class="eyebrow">Start with a question</h2>
-      <div class="paths">
-        <div>
-          <span class="q">Which font can set this?</span>
-          <div class="links">
-            <a href="{link("/languages/")}">Pick a language</a>
-            <a href="{link("/scripts/")}">Pick a script</a>
-          </div>
-          <p class="quiet">Each one lists the families that cover the characters it is
-             written in, and where we test its sequences, how each family shapes them.</p>
+      <form class="ask" action="{link("/inspect/")}" method="get">
+        <label for="ask-t">Paste any text to see what it’s made of</label>
+        <p class="quiet">Every character inside it, named, and the text drawn by each font that
+           can draw it.</p>
+        <div class="ask-row">
+          <input id="ask-t" name="t" type="search" autocomplete="off"
+                 placeholder="a word, a letter, or U+1EC7">
+          <button type="submit">Look inside</button>
         </div>
-        <div>
-          <span class="q">What is this character?</span>
-          <div class="links">
-            <a href="{link("/inspect/")}">Paste or type anything</a>
-            <a href="{link("/block/basic-latin/")}">Browse a block</a>
-          </div>
-          <p class="quiet">Read in your browser, against the same Unicode tables
-             the rest of the site is built from.</p>
-        </div>
-        <div>
-          <span class="q">How does a font build this shape?</span>
-          <div class="links">
-            <a href="{link("/compare/")}">Compare two families, lookup by lookup</a>
-          </div>
-          <p class="quiet">Every measured family also lists its lookups and its glyphs,
-             including the glyphs no rule can reach.</p>
-        </div>
+      </form>
+      <div class="tries">
+        <span class="quiet">Or try</span>
+{chip("Tie%CC%82%CC%81ng", "Tie&#x0302;&#x0301;ng", "Vietnamese", "vi")}
+{chip("%E0%B4%8E%E0%B4%A8%E0%B5%8D%E0%B4%B1%E0%B5%86", "&#x0D0E;&#x0D28;&#x0D4D;&#x0D31;&#x0D46;", "Malayalam", "ml")}
+{chip("%E0%A4%B0%E0%A4%BC%E0%A5%8D%E0%A4%B9", "&#x0930;&#x093C;&#x094D;&#x0939;", "Marathi", "mr")}
+{chip("U%2B1EC7", '<span class="mono">U+1EC7</span>', "a code")}
       </div>
     </section>
 
     <section>
-      <h2 class="eyebrow">Browse the index</h2>
-      <div class="paths">
+      <h2 class="eyebrow">What you can find out</h2>
+      <div class="finds">
         <div>
-          <span class="q">Scripts</span>
-          <p class="quiet">Those with shaping verdicts first, then by how many
-             languages are written in them.</p>
-          <div class="links">
-{script_links or '          <span class="quiet">None yet.</span>'}
-          </div>
-          <div><a href="{link("/scripts/")}">All scripts, with counts</a></div>
+          <h3>Which fonts can write your language</h3>
+          <p>Not just the ones that claim to. Pick a language and see every family that has
+             its letters, and how each handles the hard combinations.</p>
+          <a href="{link("/languages/")}">Pick from {plural(len(languages), "language", "languages")}</a>
         </div>
         <div>
-          <span class="q">Languages</span>
-          <p class="quiet">Those written in a script with shaping verdicts first.</p>
-          <div class="links">
-{language_links or '          <span class="quiet">None yet.</span>'}
-          </div>
-          <div><a href="{link("/languages/")}">All languages, filterable</a></div>
+          <h3>What your text is really made of</h3>
+          <p>Two words can look identical and be stored differently, which is why search
+             misses them and fonts disagree. See every character, including the invisible
+             ones.</p>
+          <a href="{link("/inspect/")}">Look inside some text</a>
         </div>
         <div>
-          <span class="q">Font families</span>
-          <p class="quiet">Filter by the blocks a family covers and the OpenType script
-             tags it declares — the second is the one coverage does not tell you.</p>
-          <div><a href="{link("/fonts/")}">All {total:,} indexed families</a></div>
+          <h3>Why two fonts draw it differently</h3>
+          <p>Put two families side by side and see exactly where they part ways, down to the
+             rule inside the font that decides the shape.</p>
+          <a href="{link("/compare/")}">Compare two fonts</a>
         </div>
       </div>
+    </section>
+
+{same_text}
+    <section>
+      <h2 class="eyebrow">How we check a font</h2>
+      <ol class="steps">
+        <li><span class="mono quiet">1</span><h3>Does it have the letters?</h3>
+          <p>Every character a language needs, read from the font file itself.</p></li>
+        <li><span class="mono quiet">2</span><h3>Does it say it supports the script?</h3>
+          <p>A font can have every letter and still not tell your computer how to join
+             them.</p></li>
+        <li><span class="mono quiet">3</span><h3>Does it draw the combinations?</h3>
+          <p>We run the tricky letter combinations through the shaping engine most browsers
+             use, and check what comes out.</p></li>
+      </ol>
+      <p class="quiet">{measured:,} of {plural(total, "family", "families")} checked from the font file itself.
+         {total - measured:,} not checked yet, and {"its page says" if total - measured == 1 else "their pages say"} so.</p>
+    </section>
+
+    <section class="browse">
+      <a href="{link("/languages/")}">{plural(len(languages), "language", "languages")}</a>
+      <a href="{link("/scripts/")}">{plural(len(scripts), "script", "scripts")}</a>
+      <a href="{link("/fonts/")}">{plural(total, "font family", "font families")}</a>
     </section>
 """
     return page("Glyph Sleuth", body,
-                description="Coverage says a font contains the character. It does not "
-                            "say the font will draw it. Glyph Sleuth reports both, with "
-                            "the evidence behind both.")
+                description="Does your font draw your language correctly? Glyph Sleuth checks "
+                            f"{total:,} font families against the letters and letter "
+                            "combinations real languages use, and shows what each one draws.",
+                extra_head=face_styles(shown) if shown else "")
 
 
 def count_in_range(ranges, first, last):
@@ -3024,10 +3175,7 @@ def main():
     # page would be 33,000 pages times 1,885 families of range walking.
     covering_fonts = coverage_index(fonts["fonts"], chars_built)
 
-    with io.open(os.path.join(ROOT, "web", "content", "sequences.json"),
-                 encoding="utf-8") as handle:
-        shaped = {script for script in json.load(handle) if not script.startswith("_")}
-    write("/", home(fonts["fonts"], scripts, languages, shaped))
+    write("/", home(fonts["fonts"], scripts, languages, blocks))
     print("  wrote home")
 
     # Assign every slug up front, so a collision is resolved before anything
