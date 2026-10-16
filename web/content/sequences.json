@@ -17,5 +17,10 @@
     { "id": "nukta", "codes": "0915 093C", "needs": ["nukt"], "langs": "hi", "out": "क़", "note": "nukta below the base; a font may draw it clear of the descender or on top of it" },
     { "id": "eyelash", "codes": "0930 093C 094D 0939", "needs": ["rphf", "blwf"], "langs": "mr", "out": "ऱ्ह", "note": "the Marathi eyelash ra, which Hindi-only fonts routinely get wrong" },
     { "id": "iMatra", "codes": "0915 093F", "needs": ["pres"], "langs": "hi", "out": "कि", "note": "the i-matra is stored after its consonant and drawn before it — the reordering every Indic shaper has to do" }
+  ],
+  "Latn": [
+    { "id": "vietStack", "codes": "0065 0302 0301", "needs": ["mark", "mkmk"], "langs": "vi", "out": "ế", "note": "Vietnamese ế typed as e, circumflex and acute: two accents above one letter, which must stack rather than collide" },
+    { "id": "vietAboveBelow", "codes": "0065 0323 0302", "needs": ["mark"], "langs": "vi", "out": "ệ", "note": "Vietnamese ệ typed as e, dot below and circumflex: one accent under the letter and one over it" },
+    { "id": "yoruba", "codes": "0065 0323 0301", "needs": ["mark"], "langs": "yo", "out": "ẹ́", "note": "Yoruba ẹ́ has no single character in Unicode, so it is always a letter and two accents" }
   ]
 }

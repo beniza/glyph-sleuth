@@ -1012,6 +1012,121 @@ def test_a_cached_verdict_from_an_older_check_is_shaped_again():
     assert gen_index.shaping_current({"ranges": []})
 
 
+def mark_font(stacks=True, beside=False, precomposed=False):
+    """e, a combining circumflex and a combining acute, each a solid box, with
+    real mark positioning: both marks hang from one anchor above the e. With
+    `stacks` an mkmk anchor lifts the acute clear of the circumflex; without it
+    the two land on the same spot, which is Noto Sans Cherokee's ế. With
+    `beside` the base anchor sits past the right edge of the e, which is
+    Bodoni Moda's: the accent drawn next to its letter."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    def box(x0, y0, x1, y1):
+        pen = TTGlyphPen(None)
+        pen.moveTo((x0, y0)); pen.lineTo((x0, y1)); pen.lineTo((x1, y1)); pen.lineTo((x1, y0))
+        pen.closePath()
+        return pen.glyph()
+
+    names = [".notdef", "e", "circ", "acute", "dot"] + (["ecirc"] if precomposed else [])
+    cmap = {0x65: "e", 0x302: "circ", 0x301: "acute", 0x323: "dot"}
+    glyf = {".notdef": TTGlyphPen(None).glyph(), "e": box(50, 0, 450, 500),
+            "circ": box(-150, 0, 150, 100), "acute": box(-100, 0, 100, 120),
+            "dot": box(-50, -150, 50, -50)}
+    metrics = {".notdef": (500, 0), "e": (500, 50), "circ": (0, -150),
+               "acute": (0, -100), "dot": (0, -50)}
+    if precomposed:
+        # A font with ê and without ệ: the case where a font-blind comparison
+        # of two spellings of one text measured HarfBuzz instead of the font.
+        cmap[0xEA] = "ecirc"
+        glyf["ecirc"] = box(50, 0, 450, 660)
+        metrics["ecirc"] = (500, 50)
+    builder = FontBuilder(1000, isTTF=True)
+    builder.setupGlyphOrder(names)
+    builder.setupCharacterMap(cmap)
+    builder.setupGlyf(glyf)
+    builder.setupHorizontalMetrics(metrics)
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": "Marks", "styleName": "Regular"})
+    builder.setupOS2()
+    builder.setupPost()
+    anchor_x = 700 if beside else 250
+    fea = f"""
+        languagesystem DFLT dflt; languagesystem latn dflt;
+        markClass circ <anchor 0 0> @TOP;
+        markClass acute <anchor 0 0> @TOP;
+        markClass dot <anchor 0 0> @BOTTOM;
+        feature mark {{
+            pos base e <anchor {anchor_x} 560> mark @TOP <anchor 250 0> mark @BOTTOM;
+            {"pos base ecirc <anchor 250 0> mark @BOTTOM;" if precomposed else ""}
+        }} mark;
+        table GDEF {{ GlyphClassDef [e {"ecirc" if precomposed else ""}], , [circ acute dot], ; }} GDEF;
+    """
+    if stacks:
+        fea += "feature mkmk { pos mark circ <anchor 0 140> mark @TOP; } mkmk;"
+    addOpenTypeFeaturesFromString(builder.font, fea)
+    out = io.BytesIO()
+    builder.save(out)
+    return out.getvalue()
+
+
+def test_stacked_accents_are_judged_by_their_ink():
+    """Vietnamese ế typed as e + circumflex + acute. Two marks above one letter
+    must stack. Neither a .notdef nor a dotted circle says when they don't: the
+    font draws every glyph and the accents simply land on each other. What the
+    reader sees is ink, so the check is the ink, at the positions HarfBuzz gives
+    it — the same positions a browser uses."""
+    seq = "0065 0302 0301"
+    assert gen_index.shape(mark_font(stacks=True), seq, language="vi",
+                           script="Latn")["verdict"] == "clean"
+
+    collide = gen_index.shape(mark_font(stacks=False), seq, language="vi", script="Latn")
+    assert collide["verdict"] == "fail"
+    assert "overlap" in collide["note"]
+
+    beside = gen_index.shape(mark_font(beside=True), seq, language="vi", script="Latn")
+    assert beside["verdict"] == "fail"
+    assert "not over its letter" in beside["note"]
+
+
+def test_the_same_text_spelled_twice_is_not_a_caveat():
+    """ệ and e + dot below + circumflex are the same text to Unicode. A font
+    without a precomposed ệ drew the second as three glyphs and the expected ệ
+    as whatever HarfBuzz's decomposition produced, and nearly every such font
+    got a caveat for a difference in normalisation, not in the font. The
+    comparison is for different spellings — legacy against recommended — and a
+    canonically equivalent pair is not that."""
+    blob = mark_font(stacks=True, precomposed=True)
+    result = gen_index.shape(blob, "0065 0323 0302", language="vi", script="Latn",
+                             expected="ệ")
+    assert result["verdict"] == "clean", result["note"]
+
+
+def test_latin_is_measured_where_a_family_can_reach_it():
+    """1,203 indexed families carry some combining mark; 96 carry the two that
+    ế needs. Shaping Latin for every family with a mark would have failed eleven
+    hundred of them on .notdef — for Vietnamese they never offered, which their
+    coverage already says. A family is shaped for Latin when it can reach a
+    sequence: with the marks themselves, or with the composed letters."""
+    basic = [[0x20, 0x7E]]
+    assert not gen_index.reaches(basic, "Latn")
+    assert gen_index.reaches(basic + [[0x301, 0x302]], "Latn")         # the marks
+    assert gen_index.reaches(basic + [[0x1EBF, 0x1EBF]], "Latn")       # ế composed
+    # Malayalam and Devanagari keep the block gate: those sequences are what a
+    # family for the script is for.
+    assert gen_index.reaches([[0x0D00, 0x0D7F]], "Mlym")
+
+
+def test_a_latin_sequence_out_of_reach_is_not_tested_rather_than_failed():
+    blob = sample_font(codepoints=(0x65, 0x302, 0x301))
+    results = gen_index.shape_all(blob, "test.ttf", "Latn")
+    assert "vietStack" in results                       # the marks it has
+    assert "yoruba" not in results                      # needs a dot below it lacks
+    for row in results.values():
+        assert ".notdef" not in row["hb"]["note"]
+
+
 def test_devanagari_sequences():
     # A second script, to prove the depth is not Malayalam-shaped: same file,
     # same fields, and the dev2/deva split is the same trap as mlm2/mlym.

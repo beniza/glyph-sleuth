@@ -142,10 +142,12 @@ def measure_and_shape(blob, url, label, ranges=None):
     if hit is not None and counted_glyphs(hit) and shaping_current(hit):
         return hit
     facts = measure(blob)
-    for script, script_blocks in SHAPED_SCRIPTS.items():
+    for script in SHAPED_SCRIPTS:
         against = ranges if ranges is not None else facts["ranges"]
-        if any(countInRange(against, first, last) for first, last in script_blocks):
-            facts.setdefault("results", {})[script] = shape_all(blob, label, script)
+        if reaches(against, script):
+            rows = shape_all(blob, label, script)
+            if rows:
+                facts.setdefault("results", {})[script] = rows
     if facts.get("results"):
         facts["shaping"] = SHAPING
     return remember(url, facts)
@@ -319,8 +321,7 @@ def worth_parsing(font):
     and slow, and tiers 2 and 3 say nothing about a face the script never
     reaches.
     """
-    return any(countInRange(font.get("ranges") or [], first, last)
-               for blocks in SHAPED_SCRIPTS.values() for first, last in blocks)
+    return any(reaches(font.get("ranges") or [], script) for script in SHAPED_SCRIPTS)
 
 
 def measure_google_face(font):
@@ -1315,7 +1316,42 @@ CONTENT = os.path.join(ROOT, "web", "content")
 SHAPED_SCRIPTS = {
     "Mlym": [(0x0D00, 0x0D7F)],
     "Deva": [(0x0900, 0x097F), (0xA8E0, 0xA8FF), (0x11B00, 0x11B5F)],
+    # Basic Latin to Latin Extended-B, IPA, the combining marks and Latin
+    # Extended Additional. Not the gate for Latin — see reaches() — but how a
+    # family's dominant block is known to be Latin.
+    "Latn": [(0x0000, 0x036F), (0x1E00, 0x1EFF)],
 }
+
+# Scripts whose sequences test something a family may simply not offer. A Latin
+# family without Vietnamese accents is not failing at Vietnamese: its coverage
+# already says it has none, and 1,100 families would have "failed" for it. A
+# Malayalam sequence is different — it is what a Malayalam family is for, and a
+# missing glyph there is the failure.
+UNTESTED_WHEN_UNCOVERED = {"Latn"}
+
+
+def reaches(ranges, script):
+    """Should this family be shaped for this script?
+
+    By block for the scripts whose sequences define what a family for them must
+    do. By sequence for the rest: a family reaches one when it has every
+    character of it, or of its composed form.
+    """
+    import unicodedata
+
+    if script not in UNTESTED_WHEN_UNCOVERED:
+        return any(countInRange(ranges or [], first, last)
+                   for first, last in SHAPED_SCRIPTS[script])
+
+    def has(cp):
+        return countInRange(ranges or [], cp, cp) > 0
+
+    for entry in sequences(script):
+        typed = "".join(chr(cp) for cp in codepoints_of(entry["codes"]))
+        for form in (typed, unicodedata.normalize("NFC", typed)):
+            if all(has(ord(ch)) for ch in form):
+                return True
+    return False
 
 
 def countInRange(ranges, first, last):
@@ -1382,8 +1418,10 @@ def as_sfnt(blob):
 
 # Bumped whenever the verdict a sequence gets can change for the same font file.
 # The cache keys on the file's URL, so without this a fixed check would never
-# reach a family that was already measured: 2 is #96, the conjunct check.
-SHAPING = 2
+# reach a family that was already measured: 2 is #96, the conjunct check; 3
+# adds Latin, and the ink check for accents that collide or stand beside their
+# letter.
+SHAPING = 3
 
 ZWJ, ZWNJ = 0x200D, 0x200C
 
@@ -1416,6 +1454,142 @@ def blocked(codes):
     return " ".join(f"{cp:04X}" for cp in out) if refused else None
 
 
+# Canonical combining classes of the diacritics that sit above (230) and below
+# (220) a letter: the accents a stacking check is about. Viramas (9) and nuktas
+# (7) attach by design and are left to the conjunct check.
+ATTACHED_ABOVE_BELOW = (220, 230)
+# Pixels per em when ink is compared. Enough to see one accent land on another.
+INK_PPEM = 200
+# How much of an accent's ink may touch other ink before it is a collision, so
+# antialiasing at an outline's edge is not mistaken for one.
+INK_OVERLAP = 0.05
+
+
+def ink_problem(sfnt, font, codes, language, features):
+    """Why the accents in this run do not read, or "" when they do.
+
+    Vietnamese ế typed as e + circumflex + acute is two marks over one letter.
+    When a font cannot stack them nothing fails in the run: no .notdef, no
+    dotted circle. The accents land on each other (Noto Sans Cherokee), or
+    beside the letter (Bodoni Moda). What a reader sees is ink, so this
+    compares ink — each glyph's own outline at the position HarfBuzz gives it,
+    which is the position a browser draws it at.
+    """
+    import unicodedata
+    import uharfbuzz as hb
+    from PIL import Image, ImageChops, ImageDraw
+    from fontTools.pens.basePen import BasePen
+    from fontTools.ttLib import TTFont
+
+    cps = codepoints_of(codes)
+    if not any(unicodedata.combining(chr(cp)) in ATTACHED_ABOVE_BELOW for cp in cps):
+        return ""
+
+    run = hb.Buffer()
+    run.add_codepoints(cps)
+    run.guess_segment_properties()
+    if language:
+        run.language = language
+    hb.shape(font, run, {feature: True for feature in (features or [])})
+    if len(run.glyph_infos) < 2:
+        return ""                        # composed into one designed glyph
+
+    ttfont = TTFont(io.BytesIO(sfnt), lazy=True)
+    order = ttfont.getGlyphOrder()
+    # Which glyphs are accents, by the font's own account. Not by cluster: once
+    # e + acute composes to eacute, the dot below reports the e's cluster too.
+    classes = {}
+    if "GDEF" in ttfont and ttfont["GDEF"].table.GlyphClassDef:
+        classes = ttfont["GDEF"].table.GlyphClassDef.classDefs
+    glyphs = ttfont.getGlyphSet()
+    scale = INK_PPEM / ttfont["head"].unitsPerEm
+    size = INK_PPEM * 4                  # room for several advances and tall stacks
+
+    class Contours(BasePen):
+        def __init__(self, glyph_set, dx, dy):
+            super().__init__(glyph_set)
+            self.dx, self.dy, self.contours, self.points = dx, dy, [], []
+
+        def at(self, point):
+            x, y = point
+            return ((x + self.dx) * scale + INK_PPEM, size - ((y + self.dy) * scale + INK_PPEM))
+
+        def _moveTo(self, p):
+            self.points = [self.at(p)]
+
+        def _lineTo(self, p):
+            self.points.append(self.at(p))
+
+        def _curveToOne(self, p1, p2, p3):
+            (x0, y0) = self._getCurrentPoint()
+            for step in range(1, 9):
+                t = step / 8
+                u = 1 - t
+                self.points.append(self.at((
+                    u**3 * x0 + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
+                    u**3 * y0 + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1])))
+
+        def _qCurveToOne(self, p1, p2):
+            (x0, y0) = self._getCurrentPoint()
+            for step in range(1, 9):
+                t = step / 8
+                u = 1 - t
+                self.points.append(self.at((u * u * x0 + 2 * u * t * p1[0] + t * t * p2[0],
+                                            u * u * y0 + 2 * u * t * p1[1] + t * t * p2[1])))
+
+        def _closePath(self):
+            if len(self.points) > 2:
+                self.contours.append(self.points)
+            self.points = []
+
+        _endPath = _closePath
+
+    def ink(name, dx, dy):
+        # Contours XORed, so a counter stays a hole whichever way it winds.
+        mask = Image.new("1", (size, size), 0)
+        pen = Contours(glyphs, dx, dy)
+        glyphs[name].draw(pen)
+        for contour in pen.contours:
+            layer = Image.new("1", (size, size), 0)
+            ImageDraw.Draw(layer).polygon(contour, fill=1)
+            mask = ImageChops.logical_xor(mask, layer)
+        return mask
+
+    drawn, pen_x = [], 0
+    for index, (info, pos) in enumerate(zip(run.glyph_infos, run.glyph_positions)):
+        name = order[info.codepoint]
+        # GDEF class 3 is a mark; a font without GDEF is read by the zero
+        # advance HarfBuzz gives an attached mark.
+        is_mark = index > 0 and (classes.get(name) == 3
+                                 if classes else pos.x_advance == 0)
+        drawn.append((name, is_mark, ink(name, pen_x + pos.x_offset, pos.y_offset)))
+        pen_x += pos.x_advance
+
+    base_name, _, base_ink = drawn[0]
+    base_box = base_ink.getbbox()
+    for index, (name, is_mark, mask) in enumerate(drawn):
+        if not is_mark:
+            continue
+        box = mask.getbbox()
+        if not box:
+            continue
+        if base_box and not (base_box[0] <= (box[0] + box[2]) / 2 <= base_box[2]):
+            return (f"{name} is not over its letter: it is drawn beside {base_name} "
+                    "rather than above or below it")
+        others = Image.new("1", (size, size), 0)
+        for other_index, (_, _, other) in enumerate(drawn):
+            if other_index != index:
+                others = ImageChops.logical_or(others, other)
+        touching = ImageChops.logical_and(mask, others).histogram()[-1]
+        if touching > INK_OVERLAP * mask.histogram()[-1]:
+            hit = [other_name for other_index, (other_name, _, other) in enumerate(drawn)
+                   if other_index != index
+                   and ImageChops.logical_and(mask, other).histogram()[-1]]
+            return (f"accents overlap: {name} is drawn into {' and '.join(hit)}, "
+                    "so the marks collide instead of stacking")
+    return ""
+
+
 def shape(blob, codes, features=None, language="ml", script="Mlym", expected=None):
     """Shape one sequence with HarfBuzz and judge the result.
 
@@ -1427,7 +1601,8 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
     """
     import uharfbuzz as hb
 
-    face = hb.Face(as_sfnt(blob))
+    sfnt = as_sfnt(blob)
+    face = hb.Face(sfnt)
     font = hb.Font(face)
     buffer = hb.Buffer()
     buffer.add_codepoints(codepoints_of(codes))
@@ -1456,6 +1631,13 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
     elif any("dotted" in name.lower() or name == "uni25CC" for name in names):
         verdict, note = "fail", "a dotted circle survived: the shaper gave up on the cluster"
 
+    # Accents that every glyph of which exists can still be drawn on top of each
+    # other, or beside their letter. Only the ink says so.
+    if verdict == "clean":
+        problem = ink_problem(sfnt, font, codes, language, features)
+        if problem:
+            verdict, note = "fail", problem
+
     def quiet_run(text_codes):
         # Default ignorables removed, so the ZWNJ that refuses a conjunct leaves
         # no glyph of its own to make two otherwise identical runs differ.
@@ -1478,6 +1660,16 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
         note = (f"not joined: {' '.join(names)} is exactly what the font draws when "
                 "joining is refused (ZWNJ after the virama), so the conjunct was "
                 "never formed")
+
+    # The comparison is between spellings — legacy nta against recommended — and
+    # two canonically equivalent sequences are one text to Unicode. ệ against
+    # e + dot below + circumflex measured HarfBuzz's normalisation, not the font.
+    import unicodedata
+
+    typed = "".join(chr(cp) for cp in codepoints_of(codes))
+    if expected and (unicodedata.normalize("NFD", expected)
+                     == unicodedata.normalize("NFD", typed)):
+        expected = None
 
     # A yardstick the font itself cannot draw is no yardstick. Rachana joins the
     # legacy nta and not the recommended one, and the legacy spelling was a
@@ -1610,6 +1802,8 @@ def shape_all(blob, filename, script="Mlym"):
                 (entry.get("langs") or "ml").split(",")[0].strip())
         except Exception:
             hb_result["trace"] = []
+        if script in UNTESTED_WHEN_UNCOVERED and ".notdef" in hb_result.get("note", ""):
+            continue                     # not offered, which coverage already says
         hb_result["command"] = hb_shape_command(
             filename, entry["codes"], entry.get("needs") or [],
             (entry.get("langs") or "ml").split(",")[0].strip(), script)

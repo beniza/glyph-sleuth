@@ -524,6 +524,16 @@ def test_a_family_is_judged_on_its_own_script():
     render.prepare_fonts([arabic], blocks)
     assert render.verdict_of(arabic, blocks) == "none"
 
+    # A Vietnamese family can have Latin Extended Additional as its dominant
+    # block. It is still a Latin family.
+    viet_blocks = sorted(blocks + [[0x1E00, 0x1EFF, "Latin Extended Additional"]])
+    vietnamese = {"name": "Viet Face", "tier": "measured",
+                  "ranges": [[0x20, 0x7E], [0x1EA0, 0x1EF9]],
+                  "results": {"Latn": {"vietStack": clean}}}
+    render.prepare_fonts([vietnamese], viet_blocks)
+    assert render.own_script(vietnamese, viet_blocks) == "Latn"
+    assert render.verdict_of(vietnamese, viet_blocks) == "clean"
+
     # And the index says the same.
     index = render.fonts_index([malini, arabic], blocks)
     assert re.search(r'data-name="malini"[^>]*data-verdict="clean"', index)
