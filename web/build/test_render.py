@@ -487,6 +487,19 @@ def test_font_page_shows_its_evidence():
     assert "sha256:ffdb7aac" in html
 
 
+def test_a_verdict_says_the_language_it_was_shaped_in():
+    """#96. Baloo Chettan 2 joins the nta with no language tag and not as
+    Malayalam; Kadwa joins the eyelash ra as Hindi and not as Marathi. A verdict
+    is true for one language, so the row says which, in words."""
+    font = dict(MANJARI, results={"Mlym": {"nta": {"hb": dict(
+        MANJARI["results"]["Mlym"]["nta"]["hb"], language="ml")}}})
+    html = render.font_page(font, BLOCKS)
+    assert re.search(r'Shaped as <span class="mono">ml</span>', html)
+
+    # A verdict cached before the language was recorded claims nothing about it.
+    assert "Shaped as" not in render.font_page(MANJARI, BLOCKS)
+
+
 def test_matrix_says_not_tested_rather_than_nothing():
     """The three treatments, and the reason the matrix exists.
 

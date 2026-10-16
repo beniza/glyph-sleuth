@@ -139,13 +139,15 @@ def remember(url, facts):
 def measure_and_shape(blob, url, label, ranges=None):
     """Everything we read from one font file, cached against that file's URL."""
     hit = cached(url)
-    if hit is not None and counted_glyphs(hit):
+    if hit is not None and counted_glyphs(hit) and shaping_current(hit):
         return hit
     facts = measure(blob)
     for script, script_blocks in SHAPED_SCRIPTS.items():
         against = ranges if ranges is not None else facts["ranges"]
         if any(countInRange(against, first, last) for first, last in script_blocks):
             facts.setdefault("results", {})[script] = shape_all(blob, label, script)
+    if facts.get("results"):
+        facts["shaping"] = SHAPING
     return remember(url, facts)
 
 
@@ -337,7 +339,7 @@ def measure_google_face(font):
         # Ask the cache before the network: the stylesheet is a few hundred bytes
         # and names the exact file, so a cache hit costs one cheap fetch.
         facts = cached(url)
-        if facts is None or not counted_glyphs(facts):
+        if facts is None or not counted_glyphs(facts) or not shaping_current(facts):
             facts = measure_and_shape(fetch(url), url, label, font["ranges"])
     except Exception as error:
         print(f"  !! {font['name']}: {error}")
@@ -940,7 +942,8 @@ def foundry_family(source, project, token=None):
     # The probe was cheap; the download only happens on a cache miss — or when
     # the cache remembers a webfont that is no longer on disk.
     facts = cached(key)
-    if facts is None or not webfont_present(facts) or not counted_glyphs(facts):
+    if (facts is None or not webfont_present(facts) or not counted_glyphs(facts)
+            or not shaping_current(facts)):
         try:
             found, members = faces()
             if not found:
@@ -1377,6 +1380,42 @@ def as_sfnt(blob):
     return out.getvalue()
 
 
+# Bumped whenever the verdict a sequence gets can change for the same font file.
+# The cache keys on the file's URL, so without this a fixed check would never
+# reach a family that was already measured: 2 is #96, the conjunct check.
+SHAPING = 2
+
+ZWJ, ZWNJ = 0x200D, 0x200C
+
+
+def shaping_current(facts):
+    """Were these verdicts reached by the check as it stands now?"""
+    return not facts.get("results") or facts.get("shaping") == SHAPING
+
+
+def blocked(codes):
+    """The same text with every conjunct refused, or None when there is none to
+    refuse: ZWNJ after each virama that is not the last character and not
+    already followed by a joiner. A virama followed by ZWJ asks for a particular
+    form on purpose, and is left alone.
+
+    Viramas are found by canonical combining class 9 rather than by listing
+    them, so a script added to sequences.json is covered without a change here.
+    """
+    import unicodedata
+
+    cps = codepoints_of(codes)
+    out, refused = [], False
+    for index, cp in enumerate(cps):
+        out.append(cp)
+        following = cps[index + 1] if index + 1 < len(cps) else None
+        if (unicodedata.combining(chr(cp)) == 9 and following is not None
+                and following not in (ZWJ, ZWNJ)):
+            out.append(ZWNJ)
+            refused = True
+    return " ".join(f"{cp:04X}" for cp in out) if refused else None
+
+
 def shape(blob, codes, features=None, language="ml", script="Mlym", expected=None):
     """Shape one sequence with HarfBuzz and judge the result.
 
@@ -1417,6 +1456,40 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
     elif any("dotted" in name.lower() or name == "uni25CC" for name in names):
         verdict, note = "fail", "a dotted circle survived: the shaper gave up on the cluster"
 
+    def quiet_run(text_codes):
+        # Default ignorables removed, so the ZWNJ that refuses a conjunct leaves
+        # no glyph of its own to make two otherwise identical runs differ.
+        run = hb.Buffer()
+        run.add_codepoints(codepoints_of(text_codes))
+        run.guess_segment_properties()
+        if language:
+            run.language = language
+        run.flags = hb.BufferFlags.REMOVE_DEFAULT_IGNORABLES
+        hb.shape(font, run, {feature: True for feature in (features or [])})
+        return [info.codepoint for info in run.glyph_infos]
+
+    # #96: did the font join anything at all? Comparing with the expected form
+    # cannot say, because for the recommended nta the expected form is the same
+    # codepoints and the comparison could never fail. Refusing the conjunct and
+    # getting the identical run back can: the font drew it as loose pieces.
+    refused = blocked(codes) if verdict == "clean" else None
+    if refused and quiet_run(codes) == quiet_run(refused):
+        verdict = "fail"
+        note = (f"not joined: {' '.join(names)} is exactly what the font draws when "
+                "joining is refused (ZWNJ after the virama), so the conjunct was "
+                "never formed")
+
+    # A yardstick the font itself cannot draw is no yardstick. Rachana joins the
+    # legacy nta and not the recommended one, and the legacy spelling was a
+    # caveat for differing from the broken run.
+    expected_codes = " ".join(f"{ord(ch):04X}" for ch in expected) if expected else ""
+    expected_refused = blocked(expected_codes) if expected_codes else None
+    if (verdict == "clean" and expected_refused and expected_codes != codes
+            and quiet_run(expected_codes) == quiet_run(expected_refused)):
+        note = (f"joined, and not compared with the expected form {expected}: this "
+                "font does not join that form itself, so it is no measure of this one")
+        expected = None
+
     # "It shaped something" is not "it shaped the right thing". Shaping the
     # expected text through the same font and comparing glyph runs is the only
     # font-independent check available: glyph *names* differ per foundry, so
@@ -1425,6 +1498,11 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
         wanted = hb.Buffer()
         wanted.add_str(expected)
         wanted.guess_segment_properties()
+        # In the same language as the input. It was shaped with none, so a font
+        # whose Malayalam or Marathi lookups differ from its default ones was
+        # compared against a form no page in that language would show.
+        if language:
+            wanted.language = language
         hb.shape(font, wanted, {feature: True for feature in (features or [])})
         wanted_gids = [info.codepoint for info in wanted.glyph_infos]
         if wanted_gids and wanted_gids != gids:
@@ -1443,8 +1521,11 @@ def shape(blob, codes, features=None, language="ml", script="Mlym", expected=Non
                     "can draw the same shape, so this is worth looking at rather "
                     "than proof of a fault.")
 
+    # The language travels with the verdict: Kadwa joins the eyelash ra as Hindi
+    # and not as Marathi, so a verdict is only true for the language it was
+    # shaped in.
     return {"verdict": verdict, "glyphs": names, "gids": gids, "note": note,
-            "shaper": "hb", "version": hb.version_string()}
+            "shaper": "hb", "version": hb.version_string(), "language": language}
 
 
 LOOKUP_END = re.compile(r"^end lookup (\d+) feature '(\w+)'")

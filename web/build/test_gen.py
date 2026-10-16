@@ -945,6 +945,73 @@ def test_expected_output_is_checked():
     assert gen_index.shape(blob, "0D15 0D7B", expected="ക")["verdict"] == "fail"
 
 
+def test_a_conjunct_the_font_never_forms_is_not_clean():
+    """#96. The recommended nta is its own expected form, so comparing the run
+    with the run of `out` compared it with itself, and it could never fail.
+    Baloo Chettan 2 draws it as chillu-n, a visible virama and rra — not joined
+    — and its page said it shaped cleanly.
+
+    The check that does not depend on the font: shape the same text with joining
+    blocked (ZWNJ after the virama). If the font's run is identical, the
+    conjunct was never formed.
+    """
+    nta = "0D7B 0D4D 0D31"
+    codepoints = (0x0D7B, 0x0D4D, 0x0D31)
+    joins = sample_font(codepoints=codepoints, extra_glyphs=("nta",), fea="""
+        languagesystem mlm2 dflt;
+        feature pres { sub g0D7B g0D4D g0D31 by nta; } pres;
+    """)
+    loose = sample_font(codepoints=codepoints)
+
+    assert gen_index.shape(joins, nta, expected="ൻ്റ")["verdict"] == "clean"
+
+    broken = gen_index.shape(loose, nta, expected="ൻ്റ")
+    assert broken["verdict"] == "fail"
+    assert "not joined" in broken["note"]
+
+    # Nothing to join, nothing to check: a lone chillu has no virama, and a
+    # virama followed by ZWJ is asking for a particular form on purpose.
+    assert gen_index.shape(loose, "0D7B")["verdict"] == "clean"
+    assert gen_index.blocked("0D28 0D4D 200D") is None
+    assert gen_index.blocked(nta) == "0D7B 0D4D 200C 0D31"
+
+
+def test_a_broken_expected_form_is_not_the_yardstick():
+    """Rachana, Meera and AnjaliOldLipi join the legacy nta (n1rh) and not the
+    recommended one (n1cil xx rh). The legacy spelling was a caveat for differing
+    from the recommended spelling's run — which is the broken one. A form the
+    font does not join itself cannot be what a correct run is measured against.
+    """
+    joins_legacy = sample_font(codepoints=(0x0D28, 0x0D4D, 0x0D31, 0x0D7B),
+                               extra_glyphs=("nta",), fea="""
+        languagesystem mlm2 dflt;
+        feature pres { sub g0D28 g0D4D g0D31 by nta; } pres;
+    """)
+    legacy = gen_index.shape(joins_legacy, "0D28 0D4D 0D31", expected="ൻ്റ")
+    assert legacy["verdict"] == "clean", legacy["note"]
+    assert "not compared" in legacy["note"]
+    # And the recommended spelling in the same font is the one that fails.
+    assert gen_index.shape(joins_legacy, "0D7B 0D4D 0D31",
+                           expected="ൻ്റ")["verdict"] == "fail"
+
+
+def test_a_verdict_carries_the_language_it_was_shaped_in():
+    # Kadwa joins the eyelash ra as Hindi and not as Marathi. A verdict is only
+    # true for the language it was shaped with, so the language travels with it.
+    blob = sample_font(codepoints=(0x0D15,))
+    assert gen_index.shape(blob, "0D15", language="ml")["language"] == "ml"
+
+
+def test_a_cached_verdict_from_an_older_check_is_shaped_again():
+    # The cache keys on the font file's URL, so a fixed check would otherwise
+    # never reach a family that was already measured.
+    assert not gen_index.shaping_current({"results": {"Mlym": {}}})
+    assert gen_index.shaping_current({"results": {"Mlym": {}},
+                                      "shaping": gen_index.SHAPING})
+    # A family with nothing shaped has nothing to redo.
+    assert gen_index.shaping_current({"ranges": []})
+
+
 def test_devanagari_sequences():
     # A second script, to prove the depth is not Malayalam-shaped: same file,
     # same fields, and the dev2/deva split is the same trap as mlm2/mlym.

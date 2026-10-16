@@ -530,6 +530,12 @@ def evidence_rows(font, script="Mlym"):
             cells.append(f"<td>{verdict_cell(result.get(key), applicable)}</td>")
         note = result.get("hb", {}).get("note") or entry.get("note") or ""
         command = result.get("hb", {}).get("command", "")
+        # #96: a font can join a sequence in one language and not another, so
+        # the verdict is only true for the language it was shaped in.
+        language = result.get("hb", {}).get("language")
+        shaped_as = (f'<div class="quiet">Shaped as <span class="mono">{esc(language)}</span>.'
+                     " A page in another language can be drawn differently.</div>"
+                     if language else "")
         rows.append(
             '      <tr><th scope="row">'
             + (f'<span class="specimen-inline">{esc(entry["out"])}</span>' if drawn else "")
@@ -537,6 +543,7 @@ def evidence_rows(font, script="Mlym"):
             + "".join(cells) + "</tr>\n"
             f'      <tr class="detail"><td colspan="5"><code class="mono">{esc(command)}</code>'
             + (f'<div class="quiet">{esc(note)}</div>' if note else "")
+            + shaped_as
             + trace_block(result.get("hb", {}).get("trace") or [])
             + "</td></tr>")
     return rows
