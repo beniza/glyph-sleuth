@@ -543,7 +543,7 @@ test.describe("with JavaScript off", () => {
 test.describe("at 380px, which the brief requires", () => {
   test.use({ viewport: { width: 380, height: 800 } });
 
-  for (const path of ["/", "/fonts/", "/font/manjari/", "/char/0D15/", "/inspect/?t=%E0%B4%95"]) {
+  for (const path of ["/", "/fonts/", "/feature/", "/font/manjari/", "/char/0D15/", "/inspect/?t=%E0%B4%95"]) {
     test(`${path} does not scroll sideways`, async ({ page }) => {
       // domcontentloaded, not load. A character page links twelve stylesheets
       // from one foundry host and pulls a font behind each; browsers allow about

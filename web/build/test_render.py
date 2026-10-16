@@ -120,7 +120,7 @@ def test_home_links_are_real_paths():
     # Hash routes were a prototype artefact. A generated page needs a real URL
     # or there is nothing for a crawler to follow.
     assert "#/" not in html
-    for path in ("/inspect/", "/languages/", "/scripts/", "/fonts/", "/compare/"):
+    for path in ("/inspect/", "/languages/", "/scripts/", "/fonts/", "/compare/", "/feature/"):
         assert f'href="{render.link(path)}"' in html, path
 
 
@@ -185,6 +185,35 @@ def test_a_broken_example_is_broken_in_every_browser():
     assert 'data-face="Ac Everywhere"' in html
     assert "Ab Marathi Only" not in html
     assert ">not joined<" in html
+
+
+def test_the_features_have_an_index():
+    """#97. 186 feature pages, and /feature/ was a 404: the only way to one was
+    a tag chip on a font page. The index lists every tag the build writes a
+    page for, grouped as a reader looks for them, with how many families run
+    each and whether we have written about it."""
+    def table(feature, n=5):
+        return {"feature": feature, "type": "Single", "index": 0, "flag": 0, "n": n,
+                "rules": []}
+    fonts = [{"name": "One", "tables": {"gsub": [table("akhn"), table("liga")],
+                                        "gpos": [table("kern"), table("mark")]}},
+             {"name": "Two", "tables": {"gsub": [table("akhn")], "gpos": [table("kern")]}}]
+    content = {"stages": ["nukt", "akhn", "pres", "mark", "kern"],
+               "features": {"akhn": {"name": "Akhand ligatures", "prose": ["…"]}}}
+    tags = ["akhn", "kern", "liga", "mark", "nukt", "pres"]
+    html = render.features_index(tags, content, fonts)
+
+    for tag in tags:
+        assert f'href="{render.link(f"/feature/{tag}/")}"' in html, tag
+    # Grouped, and the shaping stages in the order a shaper runs them.
+    assert html.index("Shaping") < html.index("Positioning") < html.index("Typographic")
+    shaping = html[html.index("Shaping"):html.index("Positioning")]
+    assert shaping.index("nukt") < shaping.index("akhn") < shaping.index("pres")
+    # How many families run it, from the tables — and a tag nobody runs says 0.
+    assert re.search(r'akhn</a>.*?<td class="mono">2</td>', html, re.S)
+    assert re.search(r'nukt</a>.*?<td class="mono">0</td>', html, re.S)
+    # Which ones we have written about.
+    assert "written up" in html
 
 
 def test_a_case_with_no_data_is_left_out():

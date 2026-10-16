@@ -505,6 +505,7 @@ def home(fonts, scripts, languages, blocks=()):
       <a href="{link("/languages/")}">{plural(len(languages), "language", "languages")}</a>
       <a href="{link("/scripts/")}">{plural(len(scripts), "script", "scripts")}</a>
       <a href="{link("/fonts/")}">{plural(total, "font family", "font families")}</a>
+      <a href="{link("/feature/")}">OpenType features</a>
     </section>
 """
     return page("Glyph Sleuth", body,
@@ -2218,6 +2219,78 @@ REGISTERED = {
 }
 
 
+# Positioning features, for a tag no indexed family carries — otherwise where a
+# feature lives is read from the fonts that run it.
+GPOS_TAGS = {"kern", "mark", "mkmk", "dist", "abvm", "blwm", "curs", "cpsp", "halt",
+             "palt", "vkrn", "vpal", "vhal", "opbd", "lfbd", "rtbd", "size"}
+
+
+def features_index(tags, content, fonts):
+    """#97. Every feature with a page, grouped the way a reader looks for one.
+
+    /feature/ was a 404 while 186 pages sat behind it, reachable only through
+    the tag chips on font pages. Shaping stages come in the order a shaper runs
+    them, because that order is half of what they mean.
+    """
+    runs, where = collections.Counter(), collections.defaultdict(set)
+    for font in fonts:
+        seen = set()
+        for table in ("gsub", "gpos"):
+            for row in (font.get("tables") or {}).get(table, []):
+                where[row["feature"]].add(table.upper())
+                seen.add(row["feature"])
+        runs.update(seen)
+
+    def table_of(tag):
+        return " ".join(sorted(where[tag])) or ("GPOS" if tag in GPOS_TAGS else "GSUB")
+
+    stages = [tag for tag in content.get("stages") or [] if tag in tags]
+    written = content.get("features") or {}
+    positioning = [tag for tag in stages if "GPOS" in table_of(tag)] + sorted(
+        tag for tag in tags if tag not in stages and "GPOS" in table_of(tag))
+    shaping = [tag for tag in stages if tag not in positioning]
+    rest = sorted(tag for tag in tags if tag not in shaping and tag not in positioning)
+
+    def group(title, note, group_tags):
+        if not group_tags:
+            return ""
+        rows = "\n".join(
+            f'      <tr><th scope="row"><a class="mono" href="{link(f"/feature/{tag}/")}">'
+            f'{esc(tag)}</a></th>'
+            f'<td>{esc((written.get(tag) or {}).get("name") or REGISTERED.get(tag) or "")}</td>'
+            f'<td class="mono quiet">{esc(table_of(tag))}</td>'
+            f'<td class="mono">{runs[tag]:,}</td>'
+            f'<td class="quiet">{"written up" if (written.get(tag) or {}).get("prose") else ""}</td></tr>'
+            for tag in group_tags)
+        return f"""    <section>
+      <h2 class="eyebrow">{esc(title)}</h2>
+      <p class="quiet">{note}</p>
+      <table class="matrix">
+        <thead><tr><th>Feature</th><th>Name</th><th>Table</th><th>Families</th><th></th></tr></thead>
+        <tbody>
+{rows}
+        </tbody>
+      </table>
+    </section>
+"""
+
+    measured = sum(1 for font in fonts if font.get("tables"))
+    body = f"""    <section class="entity-head">
+      <h1>Features</h1>
+      <p class="quiet">The OpenType features the indexed families run: the rules inside a
+         font that turn typed characters into the shapes you read. Each page says what a
+         feature does, where it runs, and which families carry it. Family counts are
+         from the {plural(measured, "family", "families")} whose tables we have read.</p>
+    </section>
+
+{group("Shaping", "Substitutions that build a script’s clusters, in the order a shaper applies them. An early mistake is the stubborn kind: a later feature cannot undo it.", shaping)}
+{group("Positioning", "Where glyphs sit once they are chosen: accents over letters, marks over marks, the space between pairs.", positioning)}
+{group("Typographic and other", "Everything else a family carries, from ligatures and figures to localised forms and stylistic sets.", rest)}"""
+    return page("Features", body, kind="index", code=f"{len(tags):,} features",
+                description="Every OpenType feature the indexed font families run, grouped "
+                            "by what it does, with how many families carry each.")
+
+
 def feature_content():
     path = os.path.join(ROOT, "web", "content", "features.json")
     with io.open(path, encoding="utf-8") as handle:
@@ -2314,6 +2387,7 @@ def feature_page(tag, content, fonts):
       <h1>{esc(tag)}</h1>
       <p class="byline">{esc(name)}
          {"· " + esc(detail["table"]) if detail.get("table") else ""}</p>
+      <p class="quiet"><a href="{link("/feature/")}">All features</a></p>
     </section>
 
     <section>
@@ -3256,6 +3330,7 @@ def main():
     tags |= set(content.get("stages") or [])
     write_many(((f"/feature/{tag}/", feature_page(tag, content, fonts["fonts"]))
                 for tag in sorted(tags)), "feature pages")
+    write("/feature/", features_index(sorted(tags), content, fonts["fonts"]))
 
     import bisect
     import unicodedata
