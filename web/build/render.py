@@ -99,6 +99,16 @@ def unique_slug(name, taken):
     return candidate
 
 
+def name_key(name):
+    """How a name sorts for a reader: by its letters.
+
+    UDHR names a translation that has no language code in brackets —
+    "(Bataknese)", "(Minjiang, spoken)" — and a bracket sorts before every
+    letter, so ten of them opened every list of languages.
+    """
+    return re.sub(r"^\W+", "", name).casefold()
+
+
 def font_href(font):
     """Where a family's page lives. The slug is assigned once, in the build, so
     the link and the file agree even when disambiguation changed it."""
@@ -2813,7 +2823,7 @@ def scripts_index(scripts, fonts):
 
 def languages_index(languages):
     rows = []
-    for language in sorted(languages, key=lambda l: l["name"].lower()):
+    for language in sorted(languages, key=lambda l: name_key(l["name"])):
         exemplars = [c for c in (language.get("exemplars") or "") if not c.isspace()]
         rows.append(
             f'      <tr data-name="{esc(language["name"].lower())}">'

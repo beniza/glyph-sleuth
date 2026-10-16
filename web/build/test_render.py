@@ -126,6 +126,17 @@ def test_home_links_are_real_paths():
     assert f'href="{render.link("/lang/mal/")}"' in html
 
 
+def test_a_bracketed_name_sorts_by_its_letters():
+    """UDHR names a translation with no language code in brackets — "(Bataknese)"
+    — and a bracket sorts before every letter. So the first ten languages on the
+    home page and in the index were all bracketed, and the list looked broken."""
+    languages = [{"id": "050", "name": "(Bataknese)", "tag": "und"},
+                 {"id": "abk", "name": "Abkhaz", "tag": "ab"},
+                 {"id": "ces", "name": "Czech", "tag": "cs"}]
+    index = render.languages_index(languages)
+    assert index.index("Abkhaz") < index.index("(Bataknese)") < index.index("Czech")
+
+
 def test_no_script_is_the_default_subject():
     """Malayalam was how the tiers got built, not what the site is about.
 
