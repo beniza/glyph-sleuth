@@ -2335,21 +2335,50 @@ def feature_page(tag, content, fonts):
                     'matters: a feature cannot undo what an earlier one did, which is why '
                     'an error early in the list is the stubborn kind.</p>\n    </section>')
 
-    examples = ""
-    if detail.get("examples"):
-        rows = "\n".join(
-            f'      <tr><th scope="row" class="mono">{esc(ex["codes"])}</th>'
-            f'<td><span class="glyph">{esc(ex["on"])}</span></td>'
-            f'<td><span class="glyph">{esc(ex["off"])}</span></td>'
-            f'<td class="quiet">{esc(ex["note"])}</td></tr>'
-            for ex in detail["examples"])
+    # #98. These were hand-typed strings in the visitor's fallback face, and
+    # "not applied" was the text with a ZWNJ in it: joining refused, not the
+    # feature off. Now each row is a family the build saw draw its text
+    # differently with this feature and without, and the browser draws it both
+    # ways in that family's face, switching only this feature.
+    showing = drawable_first([font for font in fonts
+                              if ((font.get("demos") or {}).get(tag) or {}).get("text")])
+    shown_demos, demo_attrs, demo_note = capped(
+        showing, 3, "families with an example", "each one is a webfont")
+    face_head = face_styles(shown_demos) if shown_demos else ""
+    if shown_demos:
+        def drawing(font, switch):
+            demo = font["demos"][tag]
+            style = f' style="font-feature-settings: \'{esc(tag)}\' {switch}"' if switch is not None else ""
+            lang = f' lang="{esc(demo["lang"])}"' if demo.get("lang") else ""
+            return (f'<span class="glyph f-{esc(font.get("slug") or slug(font["name"]))}"'
+                    f'{lang}{style}{face_attrs(font, True)}>{esc(demo["text"])}</span>')
+
+        rows = []
+        for font in shown_demos:
+            demo = font["demos"][tag]
+            # A feature on by default is shown switched off; one off by default,
+            # switched on. Either way "with" is the left column.
+            with_it, without = ((None, 0) if demo["mode"] == "off" else (1, None))
+            rows.append(
+                f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a>'
+                + (f'<div class="quiet">as <span class="mono">{esc(demo["lang"])}</span> text</div>'
+                   if demo.get("lang") else "")
+                + f'</th><td>{drawing(font, with_it)}</td><td>{drawing(font, without)}</td></tr>')
+        examples = (f'    <section>\n      <h2 class="eyebrow">With it, and without</h2>\n'
+                    f'      <table class="feature-demo"{demo_attrs}>\n'
+                    f'        <thead><tr><th>Family</th><th>With {esc(tag)}</th>'
+                    f'<th>Without</th></tr></thead>\n'
+                    '      <tbody>\n' + "\n".join(rows) + '\n      </tbody>\n      </table>\n'
+                    + (demo_note + "\n" if demo_note else "")
+                    + '      <p class="quiet">Each family draws the same text twice in your '
+                    f'browser: as it normally does, and with only {esc(tag)} switched by '
+                    '<span class="mono">font-feature-settings</span>. The build shaped both '
+                    'and kept only texts where the two differ.</p>\n    </section>')
+    else:
         examples = ('    <section>\n      <h2 class="eyebrow">With it, and without</h2>\n'
-                    '      <table>\n        <thead><tr><th>Sequence</th><th>Applied</th>'
-                    '<th>Not applied</th><th></th></tr></thead>\n'
-                    f'      <tbody>\n{rows}\n      </tbody>\n      </table>\n'
-                    '      <p class="quiet">Both columns are set in your browser\'s own '
-                    'fallback face for the script, so they show what the sequence means '
-                    'rather than how any one family draws it.</p>\n    </section>')
+                    f'      <p class="quiet">No example yet: none of the families whose '
+                    f'tables we have read draws any of our sample texts differently with '
+                    f'{esc(tag)} and without it.</p>\n    </section>')
 
     # Supporting evidence rather than the answer to "which fonts do this", so a
     # stated cap is right here where removing it would not be. It is bounded by
@@ -2400,7 +2429,8 @@ def feature_page(tag, content, fonts):
 """
     return page(f"{tag} — {name}", body, kind="opentype feature", code=tag,
                 description=f"{tag}, {name}: what the feature does, where it runs in the "
-                            f"shaping order, and which families implement it.")
+                            f"shaping order, and which families implement it.",
+                extra_head=face_head)
 
 
 # --------------------------------------------------------------- characters

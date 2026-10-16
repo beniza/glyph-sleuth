@@ -1,5 +1,5 @@
 {
-  "_note": "Authored, not generated. What each OpenType feature does and why it matters, carried across from the design prototype. The registered feature names for everything else come from the OpenType spec; only these carry prose, and a feature with no entry shows its name and nothing invented.",
+  "_note": "Authored, not generated. What each OpenType feature does and why it matters, carried across from the design prototype. The registered feature names for everything else come from the OpenType spec; only these carry prose, and a feature with no entry shows its name and nothing invented. `samples` are candidate texts for each feature's example, never examples themselves: the generator keeps one only where a real font draws it differently with the feature and without it, and \"*\" is tried for every feature after its own.",
   "stages": [
     "ccmp",
     "nukt",
@@ -33,20 +33,6 @@
         "akhn forms the conjuncts that have to be treated as single units whatever surrounds them. In Malayalam that means ക്ഷ and ജ്ഞ, the two clusters a reader recognises as one letter rather than as a consonant carrying another.",
         "It runs first in the substitution order, before half forms or below-base forms can decompose the cluster, and nothing later can undo what it makes. A font that maps the wrong sequence here produces a conjunct no subsequent rule corrects, which is why akhn errors are stubborn: the same wrong glyph appears in every context.",
         "ksha. Asked not to join, the cluster falls back to an explicit virama form."
-      ],
-      "examples": [
-        {
-          "codes": "0D15 0D4D 0D37",
-          "on": "ക്ഷ",
-          "off": "ക്‌ഷ",
-          "note": "ksha. Asked not to join, the cluster falls back to an explicit virama form."
-        },
-        {
-          "codes": "0D1C 0D4D 0D1E",
-          "on": "ജ്ഞ",
-          "off": "ജ്‌ഞ",
-          "note": "jña."
-        }
       ]
     },
     "blwf": {
@@ -55,20 +41,6 @@
       "prose": [
         "blwf substitutes the below-base form of a consonant that follows a virama. Malayalam uses it for ya, va and la, which lose their full shape and sit beneath the preceding consonant.",
         "The lookup is usually set with IgnoreMarks, so a vowel sign between the consonants does not stop it matching. Fonts that omit the flag fail on exactly the sequences where a mark intervenes, which makes the failure look intermittent."
-      ],
-      "examples": [
-        {
-          "codes": "0D15 0D4D 0D2F",
-          "on": "ക്യ",
-          "off": "ക്‌യ",
-          "note": "ya below ka."
-        },
-        {
-          "codes": "0D15 0D4D 0D35",
-          "on": "ക്വ",
-          "off": "ക്‌വ",
-          "note": "va below ka."
-        }
       ]
     },
     "half": {
@@ -77,14 +49,6 @@
       "prose": [
         "half substitutes the half form of a consonant before a virama — the form that keeps its shape but drops its inherent vowel.",
         "Malayalam barely uses it. It appears in loan orthographies and in typesetting conventions borrowed from Devanagari, and a Malayalam font can omit the lookup entirely without failing any exemplar set."
-      ],
-      "examples": [
-        {
-          "codes": "0D28 0D4D",
-          "on": "ന്",
-          "off": "ന്‌",
-          "note": "na with a visible chandrakkala."
-        }
       ]
     },
     "pres": {
@@ -93,26 +57,6 @@
       "prose": [
         "pres is where most Malayalam conjuncts are actually made. It is the largest lookup in every family in the index, and it handles the geminates, the three-consonant stacks, and the ൻ്റ sequence.",
         "It runs after the mandatory ordering features, so it sees whatever they left behind. A font whose pres rules assume a cluster that akhn already ligated will miss, and the reader gets a sequence that is neither the conjunct nor a clean fallback."
-      ],
-      "examples": [
-        {
-          "codes": "0D15 0D4D 0D15",
-          "on": "ക്ക",
-          "off": "ക്‌ക",
-          "note": "geminate ka."
-        },
-        {
-          "codes": "0D7B 0D4D 0D31",
-          "on": "ൻ്റ",
-          "off": "ൻ്‌റ",
-          "note": "nta. The sequence fonts and engines most often disagree on."
-        },
-        {
-          "codes": "0D38 0D4D 0D24 0D4D 0D30 0D40",
-          "on": "സ്ത്രീ",
-          "off": "സ്‌ത്‌രീ",
-          "note": "Three consonants and a vowel sign in one cluster."
-        }
       ]
     },
     "abvs": {
@@ -122,8 +66,7 @@
         "abvs substitutes forms that sit above the base, including the dot reph — the raised mark that stands for a syllable-final ra.",
         "It is the lookup Malayalam fonts most often omit. Without it the dot reph stays a separate glyph at its own advance width, and any combining mark that should have moved out of its way collides with it.",
         "Dot reph before ka. A family without abvs leaves the mark at its own advance width instead of over the consonant."
-      ],
-      "examples": []
+      ]
     },
     "haln": {
       "name": "Halant forms",
@@ -132,8 +75,7 @@
         "haln provides the explicit halant form used when no conjunct exists for a pair, or when the writer wants the virama visible.",
         "It is the graceful fallback. A font with haln and no rule for a given cluster produces a legible sequence with a visible chandrakkala; a font without it produces a dotted circle.",
         "ka with a visible chandrakkala, word-final. This output is itself the fallback, so there is no unjoined form to set beside it."
-      ],
-      "examples": []
+      ]
     },
     "mark": {
       "name": "Mark to base attachment",
@@ -141,8 +83,7 @@
       "prose": [
         "mark attaches a combining mark to an anchor on its base glyph rather than letting it sit at its own advance width. In Malayalam it positions the above-base vowel signs, the anusvara and the dot reph.",
         "It is the largest GPOS lookup in every family here, several hundred anchor pairs, and its absence is immediately visible: marks drift right of the letters they belong to."
-      ],
-      "examples": []
+      ]
     },
     "mkmk": {
       "name": "Mark to mark attachment",
@@ -150,8 +91,7 @@
       "prose": [
         "mkmk attaches a mark to a preceding mark instead of to the base, so stacks build upward rather than collapsing onto the same point.",
         "Malayalam needs it wherever a vowel sign lands on a conjunct that already carries one. Fonts that implement mark but not mkmk look correct on single syllables and collide on clusters."
-      ],
-      "examples": []
+      ]
     },
     "kern": {
       "name": "Pair kerning",
@@ -159,8 +99,150 @@
       "prose": [
         "kern adjusts the space between specific pairs. Malayalam kerns little — the letters are built to sit at even widths — so most of the pairs in a Malayalam font are Latin.",
         "It matters here mainly for mixed-script text, where an unkerned Latin quotation inside Malayalam prose is the visible defect."
-      ],
-      "examples": []
+      ]
     }
+  },
+  "samples": {
+    "liga": [
+      {
+        "text": "fi fl ffi ffl"
+      }
+    ],
+    "dlig": [
+      {
+        "text": "ct st sp Th"
+      }
+    ],
+    "hlig": [
+      {
+        "text": "ct st long s"
+      }
+    ],
+    "kern": [
+      {
+        "text": "AVATAR To Ty Wa"
+      }
+    ],
+    "smcp": [
+      {
+        "text": "Small Caps"
+      }
+    ],
+    "c2sc": [
+      {
+        "text": "SMALL CAPS"
+      }
+    ],
+    "pcap": [
+      {
+        "text": "Petite Caps"
+      }
+    ],
+    "case": [
+      {
+        "text": "(H-O) [A] {B}"
+      }
+    ],
+    "onum": [
+      {
+        "text": "1234567890"
+      }
+    ],
+    "lnum": [
+      {
+        "text": "1234567890"
+      }
+    ],
+    "pnum": [
+      {
+        "text": "1111 0000"
+      }
+    ],
+    "tnum": [
+      {
+        "text": "1111 0000"
+      }
+    ],
+    "frac": [
+      {
+        "text": "1/2 3/4"
+      }
+    ],
+    "afrc": [
+      {
+        "text": "1/2 3/4"
+      }
+    ],
+    "zero": [
+      {
+        "text": "0 O"
+      }
+    ],
+    "sups": [
+      {
+        "text": "x2 y3"
+      }
+    ],
+    "subs": [
+      {
+        "text": "H2O CO2"
+      }
+    ],
+    "sinf": [
+      {
+        "text": "H2O CO2"
+      }
+    ],
+    "numr": [
+      {
+        "text": "123"
+      }
+    ],
+    "dnom": [
+      {
+        "text": "123"
+      }
+    ],
+    "ordn": [
+      {
+        "text": "1a 2o No"
+      }
+    ],
+    "locl": [
+      {
+        "text": "бгдпт",
+        "lang": "sr"
+      },
+      {
+        "text": "бгдпт",
+        "lang": "bg"
+      },
+      {
+        "text": "şţ ŞŢ",
+        "lang": "ro"
+      },
+      {
+        "text": "ŁÓŚĆŃ",
+        "lang": "pl"
+      },
+      {
+        "text": "ij IJ",
+        "lang": "nl"
+      },
+      {
+        "text": "fi",
+        "lang": "tr"
+      }
+    ],
+    "calt": [
+      {
+        "text": "The quick brown fox jumps over the lazy dog"
+      }
+    ],
+    "*": [
+      {
+        "text": "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789"
+      }
+    ]
   }
 }

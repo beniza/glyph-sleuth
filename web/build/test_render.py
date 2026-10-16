@@ -216,6 +216,32 @@ def test_the_features_have_an_index():
     assert "written up" in html
 
 
+def test_a_feature_example_is_drawn_by_real_families():
+    """#98. A feature's example was hand-typed text in the visitor's fallback
+    face, and "not applied" was the text with a ZWNJ in it. Now each example is
+    a family the build saw draw the text differently with the feature and
+    without; the browser draws it both ways in that family's face, switching
+    only the feature."""
+    demo = {"text": "бгдпт", "lang": "sr", "mode": "off"}
+    shows = {"name": "Shows It", "source": "google", "tier": "measured",
+             "ranges": [[0x400, 0x4FF]], "demos": {"locl": demo}}
+    hidden = {"name": "Cannot Load", "source": "x", "tier": "measured",
+              "ranges": [[0x400, 0x4FF]], "demos": {"locl": demo}}
+    html = render.feature_page("locl", {"features": {}, "stages": []}, [shows, hidden])
+
+    assert 'data-face="Shows It"' in html and "Cannot Load" not in html
+    # Drawn as usual, and with only this feature switched off — and in the
+    # language the difference was found in.
+    assert "font-feature-settings: &#x27;locl&#x27; 0" in html or "font-feature-settings: 'locl' 0" in html
+    assert 'lang="sr"' in html
+    # The hand-typed ZWNJ "not applied" column is gone for good.
+    assert "‌" not in html
+
+    # With no family to show it, the page says so rather than inventing one.
+    bare = render.feature_page("swsh", {"features": {}, "stages": []}, [shows])
+    assert "No example yet" in bare
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

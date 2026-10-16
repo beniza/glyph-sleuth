@@ -578,6 +578,10 @@ tr.detail code { color: var(--muted); font-size: 12px; word-break: break-all; }
 
 /* A character page leads with the character, big. */
 .glyph-large { font-size: 92px; line-height: 1; }
+/* A feature drawn with it and without it. Large enough to see a kern or a
+   ligature change; a long sample wraps rather than pushing the page sideways. */
+.feature-demo .glyph { font-size: 34px; line-height: 1.35; overflow-wrap: anywhere; }
+.feature-demo td { width: 40%; }
 .glyph-small { font-size: 20px; }
 .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
 .tile {

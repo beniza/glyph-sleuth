@@ -1020,8 +1020,38 @@ def test_a_cached_verdict_from_an_older_check_is_shaped_again():
     assert not gen_index.shaping_current({"results": {"Mlym": {}}})
     assert gen_index.shaping_current({"results": {"Mlym": {}},
                                       "shaping": gen_index.SHAPING})
-    # A family with nothing shaped has nothing to redo.
-    assert gen_index.shaping_current({"ranges": []})
+    # Any file we opened is read again: feature examples belong to every family
+    # whose tables we read, not only those with a shaped script.
+    assert not gen_index.shaping_current({"features": ["liga"]})
+    # A record of a file we never opened has nothing to redo.
+    assert gen_index.shaping_current({"licence": ""})
+
+
+def test_a_feature_example_is_one_the_font_really_shows():
+    """#98. The feature pages showed hand-typed text in the visitor's fallback
+    face, and "not applied" was the text with a ZWNJ in it — joining refused,
+    not the feature off. An example is now a text this font draws differently
+    with the feature and without it, shaped both ways here; the page then asks
+    the browser for the same with font-feature-settings."""
+    fea = ("languagesystem DFLT dflt; languagesystem latn dflt;\n"
+           "feature liga { sub g0066 g0069 by f_i; } liga;\n"
+           "feature smcp { sub g0069 by i.sc; } smcp;")
+    blob = sample_font(codepoints=(0x66, 0x69), extra_glyphs=("f_i", "i.sc"), fea=fea)
+    ranges = [[0x66, 0x66], [0x69, 0x69]]
+    # smcp gets "i" alone: the ligature lookup runs first, and in "fi" there is
+    # no i left for small caps to change.
+    samples = {"liga": [{"text": "fi"}], "smcp": [{"text": "i"}], "kern": [{"text": "fi"}]}
+    demos = gen_index.feature_demos(blob, ["liga", "smcp", "kern"], ranges, samples=samples)
+
+    # On by default: the example shows it switched off.
+    assert demos["liga"] == {"text": "fi", "lang": None, "mode": "off"}
+    # Off by default: the example shows it switched on.
+    assert demos["smcp"] == {"text": "i", "lang": None, "mode": "on"}
+    # Declared, or asked about, and changing nothing in any sample: no example.
+    assert "kern" not in demos
+    # A sample the font cannot draw is never the example.
+    assert gen_index.feature_demos(blob, ["liga"], ranges,
+                                   samples={"liga": [{"text": "fl"}]}) == {}
 
 
 def mark_font(stacks=True, beside=False, precomposed=False):

@@ -148,8 +148,12 @@ def measure_and_shape(blob, url, label, ranges=None):
             rows = shape_all(blob, label, script)
             if rows:
                 facts.setdefault("results", {})[script] = rows
-    if facts.get("results"):
-        facts["shaping"] = SHAPING
+    try:
+        facts["demos"] = feature_demos(blob, facts.get("features") or [],
+                                       ranges if ranges is not None else facts["ranges"])
+    except Exception as error:
+        print(f"  !! {label}: feature examples: {error}")
+    facts["shaping"] = SHAPING
     return remember(url, facts)
 
 
@@ -1420,15 +1424,86 @@ def as_sfnt(blob):
 # The cache keys on the file's URL, so without this a fixed check would never
 # reach a family that was already measured: 2 is #96, the conjunct check; 3
 # adds Latin, and the ink check for accents that collide or stand beside their
-# letter; 4 records each verdict untagged as well.
-SHAPING = 4
+# letter; 4 records each verdict untagged as well; 5 adds feature examples.
+SHAPING = 5
 
 ZWJ, ZWNJ = 0x200D, 0x200C
 
 
 def shaping_current(facts):
-    """Were these verdicts reached by the check as it stands now?"""
-    return not facts.get("results") or facts.get("shaping") == SHAPING
+    """Were these verdicts and examples reached by the check as it stands now?
+
+    Any file we opened answers to it — feature examples belong to every family
+    whose tables we read — and a record of a file we never opened has nothing
+    to redo.
+    """
+    opened = bool(facts.get("results")) or "features" in facts
+    return not opened or facts.get("shaping") == SHAPING
+
+
+def feature_samples():
+    with io.open(os.path.join(CONTENT, "features.json"), encoding="utf-8") as handle:
+        return json.load(handle).get("samples") or {}
+
+
+def feature_demos(blob, tags, ranges, samples=None):
+    """{tag: {"text", "lang", "mode"}}: for each feature, a text this font draws
+    differently with the feature and without it.
+
+    #98. The feature pages showed hand-typed text in the visitor's fallback face,
+    and "not applied" was the same text with a ZWNJ in it — joining refused, not
+    the feature off. Here each candidate is shaped with the font's defaults and
+    with the one feature switched: off for a feature on by default ("off"), on
+    for one that is not ("on"). Only a pair whose glyphs or positions differ is
+    kept, and the page asks the browser for exactly that with
+    font-feature-settings — HarfBuzz either way.
+
+    Candidates, in order: the samples written for the tag; the samples written
+    for any feature ("*"); then the authored sequences of every script this
+    family reaches, in their own language. Typographic features show on the
+    alphabet; an Indic stage changes nothing there and reaches its script's own
+    sequences. A text the font cannot draw is never the example.
+    """
+    import uharfbuzz as hb
+
+    samples = feature_samples() if samples is None else samples
+    font = hb.Font(hb.Face(as_sfnt(blob)))
+
+    def drawable(text):
+        return all(ch.isspace() or countInRange(ranges or [], ord(ch), ord(ch))
+                   for ch in text)
+
+    def run(text, lang, features):
+        buffer = hb.Buffer()
+        buffer.add_str(text)
+        buffer.guess_segment_properties()
+        if lang:
+            buffer.language = lang
+        hb.shape(font, buffer, features)
+        return [(info.codepoint, pos.x_advance, pos.x_offset, pos.y_offset)
+                for info, pos in zip(buffer.glyph_infos, buffer.glyph_positions)]
+
+    shaped = []
+    for script in SHAPED_SCRIPTS:
+        if reaches(ranges or [], script):
+            for entry in sequences(script):
+                shaped.append({"text": "".join(chr(cp) for cp in codepoints_of(entry["codes"])),
+                               "lang": (entry.get("langs") or "").split(",")[0].strip() or None})
+
+    demos = {}
+    for tag in tags:
+        for sample in (samples.get(tag) or []) + (samples.get("*") or []) + shaped:
+            text, lang = sample["text"], sample.get("lang")
+            if not drawable(text):
+                continue
+            usual = run(text, lang, {})
+            for mode, value in (("off", False), ("on", True)):
+                if run(text, lang, {tag: value}) != usual:
+                    demos[tag] = {"text": text, "lang": lang, "mode": mode}
+                    break
+            if tag in demos:
+                break
+    return demos
 
 
 def blocked(codes):
