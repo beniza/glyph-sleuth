@@ -162,6 +162,9 @@ def test_home_cases_are_the_data():
     # The "Or try" chip is drawn by the family that joins it, not left to a
     # system fallback that showed the home page's own example broken.
     assert f'class="try-text f-{render.slug("Both Join")}" lang="ml"' in html
+    # So is the word the case's own paragraph opens with: in the page font it
+    # fell back to a system face, and the card's first word was drawn broken.
+    assert re.search(rf'<span lang="ml" class="f-{render.slug("Both Join")}">[^<]+</span> means', html)
 
 
 def test_a_broken_example_is_broken_in_every_browser():

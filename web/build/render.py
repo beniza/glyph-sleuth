@@ -284,9 +284,15 @@ def nta_case(fonts, blocks):
     grid = (f'<div class="case-grid" style="--columns: {len(shown)}">'
             f'<div class="case-head"><span class="quiet">typed as</span></div>{head}{body}</div>'
             if shown else "")
+    # The paragraph's own example word, set in the family that joins it. In the
+    # page font it fell back to a system face, and the card's first word was
+    # drawn broken above a table explaining what broken looks like.
+    word_my = (f'<span lang="ml" class="f-{esc(good.get("slug") or slug(good["name"]))}">'
+               "&#x0D0E;&#x0D7B;&#x0D4D;&#x0D31;&#x0D46;</span>" if good
+               else '<span lang="ml">&#x0D0E;&#x0D7B;&#x0D4D;&#x0D31;&#x0D46;</span>')
     html = f"""      <article class="case">
         <h3>A common Malayalam word, typed two ways</h3>
-        <p>എന്റെ means “my”. The <em>nta</em> in the middle should be one joined shape, and
+        <p>{word_my} means “my”. The <em>nta</em> in the middle should be one joined shape, and
            it can be typed several ways. Unicode recommends one; legacy keyboards produce
            another; Windows’ default font once needed a third, so people typed that too.
            A font may join one spelling and not another, so the same word can look right
