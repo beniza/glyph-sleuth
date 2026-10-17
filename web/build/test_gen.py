@@ -1257,6 +1257,27 @@ def test_a_language_without_a_checked_translation_is_still_indexed():
     assert picked["hin"]["stage"] == 4
 
 
+def test_every_language_sil_knows_is_listed():
+    """#101. Kui and Paniya have no UDHR entry, so no page, and a reader
+    searching the languages index for them found nothing. Every langtags
+    language without a page of its own is listed once, with every script it is
+    written in, its default first — Paniya in Malayalam, Kannada and Tamil."""
+    import langs
+    def tag(code, name, script, sldr=False):
+        return langs.Lang(tag=code, name=name, full=code, script=script, region="IN",
+                          has_sldr=sldr)
+    tags = [tag("pcg", "Paniya", "Mlym"), tag("pcg-Knda", "Paniya", "Knda"),
+            tag("pcg-Taml", "Paniya", "Taml", sldr=True), tag("uki", "Kui", "Orya"),
+            tag("ml", "Malayalam", "Mlym"), tag("xx", "No script", "")]
+    indexed = [{"id": "mal", "tag": "ml", "iso": "mal", "name": "Malayalam"}]
+    others = gen_index.unindexed_languages(tags, indexed)
+    assert others == [
+        {"tag": "uki", "name": "Kui", "scripts": ["Orya"]},
+        {"tag": "xx", "name": "No script", "scripts": []},
+        {"tag": "pcg", "name": "Paniya", "scripts": ["Mlym", "Knda", "Taml"]},
+    ]
+
+
 def test_every_shaped_script_declares_its_blocks():
     # A script with sequences but no blocks would never be shaped — nothing
     # would match the gate that decides which families to open.

@@ -276,9 +276,33 @@ def test_a_language_without_sample_text_says_why():
             "scripts": ["Orya"], "sample": None, "stage": 2}
     html = render.lang_page(odia, [], [], set(), [])
     assert "no checked translation in this language yet" in html
+    # Its script carries both names here too, as on the script's own page.
+    script = {"code": "Orya", "name": "Oriya", "iso_name": "Oriya (Odia)", "chars": 91,
+              "blocks": [{"name": "Oriya", "ranges": [[0x0B01, 0x0B77]], "chars": 91}]}
+    assert ">Oriya (Odia)</a>" in render.lang_page(odia, [], [script], set(), [])
     # A checked translation whose text did not arrive is a different fact.
     unread = dict(odia, stage=4)
     assert "no checked translation" not in render.lang_page(unread, [], [], set(), [])
+
+
+def test_the_languages_index_finds_every_language_sil_knows():
+    """#101. Searching the index for Kui or Paniya found nothing: neither has a
+    UDHR entry, so neither has a page. They are listed now, plainly marked as
+    having no page here, each linking to the script pages that list the
+    families covering it."""
+    indexed = [{"id": "mal", "name": "Malayalam", "tag": "ml", "scripts": ["Mlym"],
+                "exemplars": "അആ"}]
+    others = [{"tag": "uki", "name": "Kui", "scripts": ["Orya"]},
+              {"tag": "pcg", "name": "Paniya", "scripts": ["Mlym", "Knda", "Taml"]}]
+    html = render.languages_index(indexed, others, script_codes={"Orya", "Mlym", "Knda"})
+
+    assert 'data-name="kui"' in html and 'data-name="paniya"' in html
+    assert f'href="{render.link("/lang/mal/")}"' in html
+    assert "/lang/uki/" not in html and "/lang/pcg/" not in html
+    # Its scripts link to their pages — but only to pages that exist.
+    assert f'href="{render.link("/script/Orya/")}"' in html
+    assert f'href="{render.link("/script/Taml/")}"' not in html
+    assert re.search(r"Showing\s*<span data-showing>3</span>\s*of\s*3", html)
 
 
 def test_a_case_with_no_data_is_left_out():

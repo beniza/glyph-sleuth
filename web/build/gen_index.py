@@ -2183,6 +2183,36 @@ def languages_by_script(tags):
             for code, names in found.items()}
 
 
+def unindexed_languages(tags, indexed):
+    """[{"tag", "name", "scripts"}] for every langtags language with no page here.
+
+    #101. Kui and Paniya have no UDHR entry, so no page, and a reader searching
+    the languages index for them found nothing. Each is listed once — langtags
+    has a row per spelling, pcg, pcg-Knda, pcg-Taml — with every script it is
+    written in, the default first, so the index can point at the script pages
+    that list the families covering them.
+    """
+    have = ({lang["tag"].split("-")[0] for lang in indexed}
+            | {lang.get("iso") or "" for lang in indexed})
+    found = {}
+    for lang in tags:
+        base = lang.tag.split("-")[0]
+        if base in have:
+            continue
+        row = found.setdefault(base, {"tag": base, "name": lang.name, "scripts": []})
+        if "-" not in lang.tag:
+            row["name"] = lang.name      # the bare tag carries the language's own name
+        for code in expand_scripts([lang.script] if lang.script else []):
+            if code in NOT_SCRIPTS or code in row["scripts"]:
+                continue
+            # The bare tag's script is the default, so it leads.
+            if "-" not in lang.tag:
+                row["scripts"].insert(0, code)
+            else:
+                row["scripts"].append(code)
+    return sorted(found.values(), key=lambda row: row["name"].lower())
+
+
 def all_script_blocks():
     """{code: {"name", "chars", "blocks"}} for every Unicode script.
 
@@ -2500,8 +2530,10 @@ def main():
         # page links these codes: /lang/jpn/ listed Jpan, which resolves to no
         # script page, so Japanese linked Braille and Latin and nothing else.
         lang["scripts"] = expand_scripts(found)
+    # #101: and every other language SIL knows, so the index can find Kui.
     write(os.path.join(OUT_DATA, "languages.json"),
-          {"languages": languages, "count": len(languages)})
+          {"languages": languages, "count": len(languages),
+           "unindexed": unindexed_languages(langs.languages(), languages)})
 
     print("Scripts (Unicode blocks each one spans)")
     # The scan asks the regex engine about every codepoint below 0x30000 for

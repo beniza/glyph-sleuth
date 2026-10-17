@@ -3084,7 +3084,7 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
         for ch in exemplars if not ch.isspace())
 
     script_links = " ".join(
-        f'<a href="{link("/script/" + s["code"] + "/")}">{esc(s["name"])}</a>' for s in used)
+        f'<a href="{link("/script/" + s["code"] + "/")}">{esc(script_title(s))}</a>' for s in used)
 
     # Near misses are context for the families that do fit, not the answer, so
     # this table keeps its cap and says so.
@@ -3206,26 +3206,43 @@ def scripts_index(scripts, fonts):
                             "many font families cover all of it.")
 
 
-def languages_index(languages):
+def languages_index(languages, others=(), script_codes=None):
+    """Every language: those with a page, and — #101 — every other language SIL's
+    langtags knows, so a search for Kui or Paniya finds them. Those have no page
+    here; their scripts link to the script pages listing the families that
+    cover them, wherever such a page exists."""
+    def scripts_cell(codes):
+        return " ".join(
+            f'<a href="{link("/script/" + code + "/")}">{esc(code)}</a>'
+            if script_codes is None or code in script_codes else esc(code)
+            for code in codes)
+
     rows = []
-    for language in sorted(languages, key=lambda l: name_key(l["name"])):
+    entries = ([(language, True) for language in languages]
+               + [(other, False) for other in others])
+    for language, has_page in sorted(entries, key=lambda row: name_key(row[0]["name"])):
         exemplars = [c for c in (language.get("exemplars") or "") if not c.isspace()]
+        name = (f'<a href="{link("/lang/" + language["id"] + "/")}">{esc(language["name"])}</a>'
+                if has_page else
+                f'{esc(language["name"])} <span class="quiet">· no page here yet</span>')
         rows.append(
             f'      <tr data-name="{esc(language["name"].lower())}">'
-            f'<th scope="row"><a href="{link("/lang/" + language["id"] + "/")}">'
-            f'{esc(language["name"])}</a></th>'
+            f'<th scope="row">{name}</th>'
             f'<td class="mono">{esc(language.get("tag") or "")}</td>'
-            f'<td class="mono">{esc(" ".join(language.get("scripts") or []))}</td>'
+            f'<td class="mono">{scripts_cell(language.get("scripts") or [])}</td>'
             f'<td class="mono">{len(exemplars) or ""}</td></tr>')
+    total = len(entries)
     body = f"""    <section class="entity-head">
       <div class="head-row">
         <h1>Languages</h1>
-        <p class="showing quiet">Showing <span data-showing>{len(languages):,}</span>
-           of {len(languages):,}</p>
+        <p class="showing quiet">Showing <span data-showing>{total:,}</span>
+           of {total:,}</p>
       </div>
-      <p class="quiet">Every language with a translation in the UDHR corpus, so there is real
-         text to set. The scripts column is SIL's record of how the language is written — the
-         first is the default, and the rest are real alternatives, not curiosities.</p>
+      <p class="quiet">Every language SIL’s langtags records. {len(languages):,} have a page here,
+         judged against their own characters; the rest have none yet, and their scripts lead
+         to the families that cover them. The scripts column is SIL’s record of how each is
+         written — the first is the default, and the rest are real alternatives, not
+         curiosities.</p>
     </section>
 
     <section>
@@ -3438,7 +3455,9 @@ def main():
                 yield (f"/lang/{language['was']}/", moved_language(language))
 
     write_many(language_pages(), "language pages")
-    write("/languages/", languages_index(languages))
+    write("/languages/", languages_index(
+        languages, (load("languages") or {}).get("unindexed", []),
+        script_codes={script["code"] for script in scripts}))
     write("/compare/", compare_page(fonts["fonts"]))
     write("/inspect/", inspect_page())
 
