@@ -2867,7 +2867,9 @@ def script_page(script, fonts, languages, chars_built):
     <section>
       <h2 class="eyebrow">Written by</h2>
       {f'<ul class="links">{langs_html}</ul>' if langs_html
-        else '<p class="quiet">No language in the index is recorded as using it.</p>'}
+        else '<p class="quiet">No language in the index is recorded as using it yet. '
+             'Languages come from the UDHR project’s checked translations, and this '
+             'script has none there; it is listed because families cover it.</p>'}
 {langs_note}
     </section>
 
@@ -3152,8 +3154,8 @@ def scripts_index(scripts, fonts):
         <p class="showing quiet">Showing <span data-showing>{len(scripts):,}</span>
            of {len(scripts):,}</p>
       </div>
-      <p class="quiet">Every script the index records a language for, with the Unicode blocks
-         it spans. The last column is the number of families covering every block of it —
+      <p class="quiet">Every script an indexed language is written in or an indexed family
+         covers, with the Unicode blocks it spans. The last column is the number of families covering every block of it —
          which is a much smaller number than the one covering the main block.</p>
     </section>
 

@@ -2116,11 +2116,58 @@ def expand_scripts(codes):
         part for code in codes for part in SCRIPT_PARTS.get(code, (code,))))
 
 
-def script_index(languages):
-    """Every script SIL records a language for, with where it lives in Unicode.
+def all_script_blocks():
+    """{code: {"name", "chars", "blocks"}} for every Unicode script.
 
-    ponytail: the codespace scan is the slow part (a minute or so for ~150
-    scripts). It runs once per build, not once per visitor.
+    The codespace scan, once per Unicode version for every script, so which
+    scripts are listed can depend on the fonts without paying for the scan
+    again whenever a family is added.
+    """
+    key = "script-blocks:" + ucd_module().UNICODE_VERSION
+    hit = cached(key)
+    if hit is not None:
+        return hit
+    out = {}
+    for code, engine_name in script_names().items():
+        if code in NOT_SCRIPTS:
+            continue
+        blocks = script_blocks(engine_name)
+        if blocks:
+            out[code] = {"name": engine_name.replace("_", " "),
+                         "chars": sum(count for _name, _ranges, count in blocks),
+                         "blocks": [{"name": name, "ranges": ranges, "chars": chars}
+                                    for name, ranges, chars in blocks]}
+    return remember(key, out)
+
+
+def covered_scripts(fonts, blocks_by_code, floor=24):
+    """The scripts at least one indexed family covers substantially.
+
+    #99. Odia had no page: scripts came only from languages, and Odia's UDHR
+    translation is not at the stage we index. A script a family covers is worth
+    a page whether or not a language we index is written in it. "Substantially"
+    is the floor the renderer uses to say what a face is for — 24 characters,
+    or all of a smaller script — so five Greek letters in a Latin face do not
+    make it a Greek face.
+    """
+    covered = set()
+    for code, info in blocks_by_code.items():
+        need = min(floor, info["chars"])
+        spans = [(lo, hi) for block in info["blocks"] for lo, hi in block["ranges"]]
+        for font in fonts:
+            ranges = font.get("ranges") or []
+            if ranges and sum(countInRange(ranges, lo, hi) for lo, hi in spans) >= need:
+                covered.add(code)
+                break
+    return covered
+
+
+def script_index(languages, covered=(), blocks_by_code=None):
+    """Every script a language is written in or a family covers, with where it
+    lives in Unicode.
+
+    `blocks_by_code` is all_script_blocks(); without it each script is scanned
+    here, a minute or so for ~150 of them.
     """
     names = script_names()
     used = collections.defaultdict(list)
@@ -2134,7 +2181,17 @@ def script_index(languages):
 
     out = []
     dropped = collections.Counter()
-    for code in sorted(used):
+    for code in sorted(set(used) | set(covered)):
+        if blocks_by_code is not None:
+            info = blocks_by_code.get(code)
+            if not info:
+                dropped[code] += len(used[code])
+                continue
+            # A covered script no indexed language uses has an empty list, and
+            # its page says so rather than borrowing one.
+            out.append({"code": code, "name": info["name"], "blocks": info["blocks"],
+                        "chars": info["chars"], "languages": sorted(used[code])})
+            continue
         engine_name = names.get(code)
         if not engine_name:
             # This used to be a bare `continue`, and it cost Japanese and Korean
@@ -2383,8 +2440,12 @@ def main():
     # The scan asks the regex engine about every codepoint below 0x30000 for
     # every script — minutes of work that only changes when Unicode or the
     # langtags script list moves, so it is keyed on both.
+    # #99: and every script an indexed family covers, which is how Odia, whose
+    # UDHR translation we do not index, gets a page at all.
+    blocks_by_code = all_script_blocks()
+    covered = covered_scripts(fonts, blocks_by_code)
     codes = ",".join(sorted({code for lang in languages
-                             for code in (lang.get("scripts") or [])}))
+                             for code in (lang.get("scripts") or [])} | covered))
     # SCRIPT_PARTS is in the key because it changes the *answer* for unchanged
     # input. Keyed on the Unicode version and the codes alone, adding the
     # composite expansion changed nothing at all: the codes were the same, the
@@ -2399,7 +2460,7 @@ def main():
                              hashlib.sha1((codes + shape).encode("utf-8")).hexdigest())
     scripts = cached(key)
     if scripts is None:
-        scripts = remember(key, script_index(languages))
+        scripts = remember(key, script_index(languages, covered, blocks_by_code))
     print(f"  scripts: {len(scripts)} with "
           f"{sum(len(s['blocks']) for s in scripts)} blocks between them")
     write(os.path.join(OUT_DATA, "scripts.json"),

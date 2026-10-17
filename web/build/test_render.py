@@ -242,6 +242,18 @@ def test_a_feature_example_is_drawn_by_real_families():
     assert "No example yet" in bare
 
 
+def test_a_script_no_language_uses_says_why():
+    """#99. Odia is listed because families cover it; no indexed language is
+    written in it, since its UDHR translation is not one we index. "No language
+    uses it" alone would read as a claim about Odia, not about our data."""
+    odia = {"code": "Orya", "name": "Oriya", "chars": 91, "languages": [],
+            "blocks": [{"name": "Oriya", "ranges": [[0x0B01, 0x0B77]], "chars": 91}]}
+    font = {"name": "Noto Sans Oriya", "tier": "measured", "ranges": [[0x0B01, 0x0B77]]}
+    html = render.script_page(odia, [font], [], set())
+    assert "Noto Sans Oriya" in html
+    assert "listed because families cover it" in html
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

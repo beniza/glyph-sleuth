@@ -1183,6 +1183,33 @@ def test_devanagari_sequences():
         assert all(0 <= int(code, 16) <= 0x10FFFF for code in entry["codes"].split())
 
 
+ORYA_BLOCKS = {
+    "Orya": {"name": "Oriya", "chars": 91,
+             "blocks": [{"name": "Oriya", "ranges": [[0x0B01, 0x0B77]], "chars": 91}]},
+    "Grek": {"name": "Greek", "chars": 518,
+             "blocks": [{"name": "Greek and Coptic", "ranges": [[0x0370, 0x03FF]], "chars": 135}]},
+}
+
+
+def test_a_script_fonts_cover_is_listed_without_a_language():
+    """#99. Odia had no script page. Scripts came from the language list, the
+    language list from UDHR translations at stage 4 and up, and Odia's is stage
+    2 — so Odia the script went with Odia the language, while Noto Sans Oriya
+    sat in the index covering it. A script is listed when a family covers it."""
+    odia_font = {"name": "Noto Sans Oriya", "ranges": [[0x0B01, 0x0B77]]}
+    a_few_greek = {"name": "Latin Face", "ranges": [[0x20, 0x7E], [0x03C0, 0x03C4]]}
+    covered = gen_index.covered_scripts([odia_font, a_few_greek], ORYA_BLOCKS)
+    # Five Greek letters in a Latin face is not covering Greek.
+    assert covered == {"Orya"}
+
+    scripts = gen_index.script_index([], covered, ORYA_BLOCKS)
+    assert [s["code"] for s in scripts] == ["Orya"]
+    odia = scripts[0]
+    assert odia["name"] == "Oriya" and odia["chars"] == 91
+    # No indexed language is written in it yet, and the record says so plainly.
+    assert odia["languages"] == []
+
+
 def test_every_shaped_script_declares_its_blocks():
     # A script with sequences but no blocks would never be shaped — nothing
     # would match the gate that decides which families to open.
