@@ -2116,6 +2116,51 @@ def expand_scripts(codes):
         part for code in codes for part in SCRIPT_PARTS.get(code, (code,))))
 
 
+ISO15924 = "https://www.unicode.org/iso15924/iso15924.txt"
+
+
+def parse_iso15924(text):
+    """{code: English name} from the ISO 15924 registry.
+
+    Unicode's property value for Odia is still Oriya, so the script page said
+    only that, and nobody searching for Odia found it. The registry's English
+    name carries both — "Oriya (Odia)" — and the same for Bangla, Burmese, Hanzi.
+    """
+    names = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split(";")
+        if len(fields) > 2 and len(fields[0]) == 4:
+            names[fields[0]] = fields[2].strip()
+    return names
+
+
+def iso15924_names():
+    try:
+        return parse_iso15924(fetch(ISO15924).decode("utf-8-sig"))
+    except Exception as error:
+        print(f"  !! ISO 15924 names: {error}")
+        return {}
+
+
+def languages_by_script(tags):
+    """{script: [{"tag", "name"}]} for every language SIL's langtags writes in it.
+
+    The Odia page said no indexed language used the script, which read as a
+    claim about Odia rather than about our data: Odia, Desiya, Bondo, Kui and
+    two dozen more are written in it. Indexed or not, langtags knows them.
+    """
+    found = collections.defaultdict(dict)
+    for lang in tags:
+        if not lang.script or lang.script in NOT_SCRIPTS:
+            continue
+        for code in SCRIPT_PARTS.get(lang.script, (lang.script,)):
+            found[code].setdefault(lang.name, {"tag": lang.tag, "name": lang.name})
+    return {code: sorted(names.values(), key=lambda lang: lang["name"].lower())
+            for code, names in found.items()}
+
+
 def all_script_blocks():
     """{code: {"name", "chars", "blocks"}} for every Unicode script.
 
@@ -2461,6 +2506,12 @@ def main():
     scripts = cached(key)
     if scripts is None:
         scripts = remember(key, script_index(languages, covered, blocks_by_code))
+    # Names and writers come after the cache, since neither is the slow part.
+    iso_names = iso15924_names()
+    writers = languages_by_script(langs.languages())
+    for script in scripts:
+        script["iso_name"] = iso_names.get(script["code"], "")
+        script["written_in"] = writers.get(script["code"], [])
     print(f"  scripts: {len(scripts)} with "
           f"{sum(len(s['blocks']) for s in scripts)} blocks between them")
     write(os.path.join(OUT_DATA, "scripts.json"),

@@ -2804,6 +2804,13 @@ def script_alphabet(script, chars_built, faces=""):
             + more + '\n    </section>')
 
 
+def script_title(script):
+    """The name a reader searches for. Unicode's property value for Odia is still
+    Oriya; ISO 15924's English name is "Oriya (Odia)" — and "Bengali (Bangla)",
+    "Myanmar (Burmese)". Where the registry adds nothing it is the same name."""
+    return script.get("iso_name") or script["name"]
+
+
 def script_page(script, fonts, languages, chars_built):
     """One script: the blocks it spans, who writes it, what can set it."""
     ranked = []
@@ -2829,6 +2836,18 @@ def script_page(script, fonts, languages, chars_built):
     langs_html = "".join(
         f'<li><a href="{link("/lang/" + lang["id"] + "/")}">{esc(lang["name"])}</a></li>'
         for lang in shown_langs)
+    # Every language SIL's langtags writes in it, not only those we index. The
+    # Odia page said no language used the script, and Odia, Desiya, Bondo, Kui
+    # and two dozen more do: we had not indexed their UDHR texts, which is a
+    # fact about our data, not about the script.
+    have = ({lang["name"].lower() for lang in written_by}
+            | {(lang.get("tag") or "").split("-")[0] for lang in written_by}
+            | {lang.get("iso") or "" for lang in written_by})
+    others = [lang for lang in script.get("written_in") or []
+              if lang["name"].lower() not in have and lang["tag"].split("-")[0] not in have]
+    shown_others, _others_attrs, others_note = capped(
+        others, 60, "more languages written in it", "alphabetical")
+    others_html = ", ".join(esc(lang["name"]) for lang in shown_others)
 
     families = "\n".join(
         f'      <tr><th scope="row"><a href="{font_href(font)}">{esc(font["name"])}</a></th>'
@@ -2838,14 +2857,14 @@ def script_page(script, fonts, languages, chars_built):
         for font, cov in ranked)
 
     body = f"""    <section class="entity-head">
-      <h1>{esc(script["name"])}</h1>
+      <h1>{esc(script_title(script))}</h1>
       <p class="byline">ISO 15924 <span class="mono">{esc(script["code"])}</span></p>
       <div class="facts">
 {fact(len(script["blocks"]), "unicode blocks")}
 {fact(f"{script['chars']:,}", "codepoints")}
 {fact(f"{len(whole):,}", "families covering all of it")}
 {fact(f"{len(ranked):,}", "families covering some")}
-{fact(f"{len(written_by):,}", "languages written in it")}
+{fact(f"{len(written_by) + len(others):,}", "languages written in it")}
       </div>
     </section>
 
@@ -2866,11 +2885,13 @@ def script_page(script, fonts, languages, chars_built):
 
     <section>
       <h2 class="eyebrow">Written by</h2>
-      {f'<ul class="links">{langs_html}</ul>' if langs_html
-        else '<p class="quiet">No language in the index is recorded as using it yet. '
-             'Languages come from the UDHR project’s checked translations, and this '
-             'script has none there; it is listed because families cover it.</p>'}
+      {f'<ul class="links">{langs_html}</ul>' if langs_html else ""}
 {langs_note}
+      {(f'<p>{"Also written in it" if langs_html else "Written in it"}, per SIL’s langtags, '
+        f'with no page here yet: {others_html}.</p>') if others_html else ""}
+{others_note}
+      {"" if langs_html or others_html
+        else '<p class="quiet">SIL’s langtags records no language written in it.</p>'}
     </section>
 
     <section>
@@ -2886,8 +2907,8 @@ def script_page(script, fonts, languages, chars_built):
          will still fall through to a default shaper on older stacks.</p>
     </section>
 """
-    return page(script["name"], body, kind="script", code=script["code"],
-                description=f"{script['name']} ({script['code']}): the Unicode blocks it "
+    return page(script_title(script), body, kind="script", code=script["code"],
+                description=f"{script_title(script)} ({script['code']}): the Unicode blocks it "
                             f"spans, the languages written in it, and the font families "
                             f"that cover it.",
                 # The alphabet is the point of this page, and it was tofu for any
@@ -3141,9 +3162,9 @@ def scripts_index(scripts, fonts):
         whole = sum(1 for font in fonts
                     if script_coverage(font, script)["covered"] >= script["chars"])
         rows.append(
-            f'      <tr data-name="{esc(script["name"].lower())}">'
+            f'      <tr data-name="{esc(script_title(script).lower())}">'
             f'<th scope="row"><a href="{link("/script/" + script["code"] + "/")}">'
-            f'{esc(script["name"])}</a></th>'
+            f'{esc(script_title(script))}</a></th>'
             f'<td class="mono">{esc(script["code"])}</td>'
             f'<td class="mono">{len(script["blocks"])}</td>'
             f'<td class="mono">{script["chars"]:,}</td>'

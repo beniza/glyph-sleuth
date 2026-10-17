@@ -1210,6 +1210,34 @@ def test_a_script_fonts_cover_is_listed_without_a_language():
     assert odia["languages"] == []
 
 
+def test_a_script_knows_its_other_names():
+    """Odia was renamed from Oriya in 2011; Unicode's property value is still
+    Oriya, so the page said only that, and nobody searching for Odia found it.
+    ISO 15924's English names carry both — and Bangla, Burmese, Hanzi."""
+    text = ("# comment\n"
+            "Orya;327;Oriya (Odia);oriyâ (odia);Oriya;1.1;2016-12-05\n"
+            "Latn;215;Latin;latin;Latin;1.1;2004-05-01\n")
+    assert gen_index.parse_iso15924(text) == {"Orya": "Oriya (Odia)", "Latn": "Latin"}
+
+
+def test_a_script_lists_every_language_sil_writes_in_it():
+    """The Odia page said no indexed language used the script. Odia, Desiya,
+    Bondo, Kui and two dozen more do, per SIL's langtags — we had simply not
+    indexed their UDHR texts. The page lists them all, linking those we have."""
+    import langs
+    tags = [langs.Lang(tag="or", name="Odia", full="or-Orya-IN", script="Orya", region="IN", has_sldr=True),
+            langs.Lang(tag="dso", name="Desiya", full="dso-Orya-IN", script="Orya", region="IN", has_sldr=True),
+            langs.Lang(tag="hoc-Orya", name="Ho", full="hoc-Orya-IN", script="Orya", region="IN", has_sldr=True),
+            langs.Lang(tag="ja", name="Japanese", full="ja-Jpan-JP", script="Jpan", region="JP", has_sldr=True),
+            langs.Lang(tag="xx", name="Unwritten", full="xx", script="", region="", has_sldr=False)]
+    by_script = gen_index.languages_by_script(tags)
+    assert [lang["name"] for lang in by_script["Orya"]] == ["Desiya", "Ho", "Odia"]
+    assert {"tag": "dso", "name": "Desiya"} in by_script["Orya"]
+    # A composite is credited to the scripts it stands for.
+    assert "Hira" in by_script and "Hani" in by_script
+    assert "" not in by_script
+
+
 def test_every_shaped_script_declares_its_blocks():
     # A script with sequences but no blocks would never be shaped — nothing
     # would match the gate that decides which families to open.

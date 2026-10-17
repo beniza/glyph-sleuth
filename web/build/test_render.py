@@ -242,16 +242,30 @@ def test_a_feature_example_is_drawn_by_real_families():
     assert "No example yet" in bare
 
 
-def test_a_script_no_language_uses_says_why():
-    """#99. Odia is listed because families cover it; no indexed language is
-    written in it, since its UDHR translation is not one we index. "No language
-    uses it" alone would read as a claim about Odia, not about our data."""
-    odia = {"code": "Orya", "name": "Oriya", "chars": 91, "languages": [],
+def test_a_script_page_names_everyone_who_writes_it():
+    """#99 follow-up. The Odia page said no indexed language used the script and
+    explained it with UDHR — but Odia, Desiya, Bondo, Kui and two dozen more are
+    written in it. The page lists every language SIL's langtags writes in it,
+    linking the ones that have a page here. And it carries the name a reader
+    searches for: Unicode still says Oriya; ISO 15924 says "Oriya (Odia)"."""
+    odia = {"code": "Orya", "name": "Oriya", "iso_name": "Oriya (Odia)", "chars": 91,
+            "languages": ["ory"],
+            "written_in": [{"tag": "dso", "name": "Desiya"}, {"tag": "or", "name": "Odia"}],
             "blocks": [{"name": "Oriya", "ranges": [[0x0B01, 0x0B77]], "chars": 91}]}
+    indexed = [{"id": "ory", "name": "Odia", "tag": "or", "iso": "ory", "scripts": ["Orya"]}]
     font = {"name": "Noto Sans Oriya", "tier": "measured", "ranges": [[0x0B01, 0x0B77]]}
-    html = render.script_page(odia, [font], [], set())
-    assert "Noto Sans Oriya" in html
-    assert "listed because families cover it" in html
+    html = render.script_page(odia, [font], indexed, set())
+
+    assert "<h1>Oriya (Odia)</h1>" in html
+    assert "<title>Oriya (Odia)" in html
+    # Odia has a page and is linked; Desiya has none and is named, not linked.
+    assert f'href="{render.link("/lang/ory/")}">Odia</a>' in html
+    assert "Desiya" in html and "/lang/dso/" not in html
+    assert "UDHR" not in html
+
+    # The index shows both names and finds the script by either.
+    index = render.scripts_index([odia], [font])
+    assert "Oriya (Odia)" in index and 'data-name="oriya (odia)"' in index
 
 
 def test_a_case_with_no_data_is_left_out():
