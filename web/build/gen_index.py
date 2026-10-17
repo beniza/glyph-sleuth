@@ -1905,17 +1905,24 @@ PREFERRED = {"mal": "mal_chillus"}
 
 def udhr_languages(limit=None):
     """The UDHR translation list: our language menu, and our sample text."""
-    root = ET.fromstring(fetch(UDHR_INDEX))
-    entries = []
-    for node in root:
-        if node.get("stage") not in ("4", "5") or not node.get("iso639-3"):
-            continue
-        iso = node.get("iso639-3")
-        if iso in PREFERRED and node.get("f") != PREFERRED[iso]:
-            continue
+    entries = pick_udhr(ET.fromstring(fetch(UDHR_INDEX)))
+    return entries[:limit] if limit else entries
+
+
+def pick_udhr(root):
+    """The UDHR entries we index, each with its stage.
+
+    #100. Only stage 4 and up used to be taken — the translations the project
+    has checked — so Odia, whose translation is stage 2 and has no text file at
+    all, had no page. A lower-stage entry is taken too, to be judged against
+    SLDR's character set with no sample, unless its language already has a
+    checked translation: that would be a second, text-less row of the same
+    language.
+    """
+    def entry(node):
         # Some entries carry bcp47='und'; the ISO 639-3 code is the real handle.
         bcp47 = node.get("bcp47")
-        entries.append({
+        return {
             # Several translations share a language tag (two Catalans, two
             # Crioulos), so the UDHR file id is the stable key.
             "id": node.get("f"),
@@ -1924,9 +1931,24 @@ def udhr_languages(limit=None):
             "script": node.get("iso15924") or "",
             "name": re.sub(r"\s*\(\d+\)$", "", node.get("n") or ""),
             "dir": node.get("dir") or "ltr",
-        })
+            "stage": int(node.get("stage") or 0),
+        }
+
+    nodes = [node for node in root if node.get("iso639-3")]
+    checked = [node for node in nodes if node.get("stage") in ("4", "5")]
+    have = {node.get("iso639-3") for node in checked}
+    entries = []
+    for node in checked:
+        iso = node.get("iso639-3")
+        if iso in PREFERRED and node.get("f") != PREFERRED[iso]:
+            continue
+        entries.append(entry(node))
+    for node in nodes:
+        if node.get("stage") not in ("4", "5") and node.get("iso639-3") not in have:
+            entries.append(entry(node))
+            have.add(node.get("iso639-3"))
     entries.sort(key=lambda e: e["name"])
-    return entries[:limit] if limit else entries
+    return entries
 
 
 def strip_tags(tag):

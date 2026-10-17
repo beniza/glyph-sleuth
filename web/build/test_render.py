@@ -268,6 +268,19 @@ def test_a_script_page_names_everyone_who_writes_it():
     assert "Oriya (Odia)" in index and 'data-name="oriya (odia)"' in index
 
 
+def test_a_language_without_sample_text_says_why():
+    """#100. Odia is indexed though the UDHR project has no checked translation
+    of it: no line of it is shown, and the page says why rather than leaving a
+    gap or borrowing text."""
+    odia = {"id": "ori", "name": "Odia", "tag": "or", "iso": "ory", "exemplars": "ଅଆଇ",
+            "scripts": ["Orya"], "sample": None, "stage": 2}
+    html = render.lang_page(odia, [], [], set(), [])
+    assert "no checked translation in this language yet" in html
+    # A checked translation whose text did not arrive is a different fact.
+    unread = dict(odia, stage=4)
+    assert "no checked translation" not in render.lang_page(unread, [], [], set(), [])
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

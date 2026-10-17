@@ -3130,7 +3130,13 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     {'<section><h2 class="eyebrow">A line of it</h2><p class="specimen-small">'
      + esc(sample.split(chr(10))[0][:200]) + '</p>'
      '<p class="quiet">From the Universal Declaration of Human Rights.</p></section>'
-     if sample else ''}
+     if sample else
+     '<section><h2 class="eyebrow">A line of it</h2><p class="quiet">'
+     + ('The UDHR project has no checked translation in this language yet, so there '
+        'is no sample text here.' if (language.get("stage") or 4) < 4 else
+        'No sample text could be read from the UDHR project for this language.')
+     + ' Which families fit is judged from the characters SLDR records for it, above.'
+     '</p></section>'}
 
     <section>
       <h2 class="eyebrow">Nearly fits</h2>

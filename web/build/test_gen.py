@@ -1238,6 +1238,25 @@ def test_a_script_lists_every_language_sil_writes_in_it():
     assert "" not in by_script
 
 
+def test_a_language_without_a_checked_translation_is_still_indexed():
+    """#100. Only UDHR translations at stage 4 and up were indexed, so Odia
+    (stage 2, no text file at all) had no page. A lower-stage entry is indexed
+    with its stage recorded, to be judged against SLDR's character set — unless
+    the language already has a checked translation, which would make a second,
+    text-less row of the same language."""
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring("""<udhrs>
+      <udhr f="ori" n="Odia" iso639-3="ory" bcp47="or" iso15924="Orya" stage="2"/>
+      <udhr f="hin" n="Hindi" iso639-3="hin" bcp47="hi" iso15924="Deva" stage="4"/>
+      <udhr f="hin2" n="Hindi (draft)" iso639-3="hin" bcp47="hi" iso15924="Deva" stage="2"/>
+      <udhr f="nil" n="No code" stage="2"/>
+    </udhrs>""")
+    picked = {entry["id"]: entry for entry in gen_index.pick_udhr(root)}
+    assert set(picked) == {"ori", "hin"}
+    assert picked["ori"]["stage"] == 2 and picked["ori"]["tag"] == "or"
+    assert picked["hin"]["stage"] == 4
+
+
 def test_every_shaped_script_declares_its_blocks():
     # A script with sequences but no blocks would never be shaped — nothing
     # would match the gate that decides which families to open.
