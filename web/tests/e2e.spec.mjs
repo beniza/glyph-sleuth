@@ -147,6 +147,15 @@ test.describe("Inspect", () => {
     await expect(out).toContainText("codepoints");
   });
 
+  test("the r12a String Analyser link opens with the text in it", async ({ page }) => {
+    // It passed ?text=, which the analyser does not read, so it opened empty.
+    // It reads ?chars=, on index.html.
+    await page.goto(`${BASE}/inspect/?t=${encodeURIComponent("സിബു")}`);
+    const link = page.locator("#inspect-out a", { hasText: "r12a String Analyser" });
+    await expect(link).toHaveAttribute("href",
+      "https://r12a.github.io/app-analysestring/index.html?chars=%E0%B4%B8%E0%B4%BF%E0%B4%AC%E0%B5%81");
+  });
+
   test("a second number does not change what the first one means", async ({ page }) => {
     // "2018" was U+2018 and "2018 2" was U+07E2 and U+0002: in a list, bare
     // digits were read as decimal. They are hex alone and hex in a list now.

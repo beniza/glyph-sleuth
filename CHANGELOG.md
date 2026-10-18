@@ -4,6 +4,13 @@ What changed in each release of Glyph Sleuth, newest first. The annotated
 release tags carry the full notes, including what went wrong on the way; this is
 the summary. Commit messages carry the reasons.
 
+## Unreleased
+
+### Fixed
+
+- **Inspect's link to r12a's String Analyser opened it empty.** It passed the
+  text as `?text=`; the analyser reads `?chars=`, on `index.html`.
+
 ## 0.6.0 — 2026-10-18
 
 The site says what it is for, measures Latin, and its verdicts stop overstating.

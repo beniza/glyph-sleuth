@@ -381,7 +381,7 @@ export async function start(field, reading, out) {
           ${copy(value)}</span>
       </div>`).join("")}</div>
       <p class="quiet">Or check it against other people's tools:
-        <a href="https://r12a.github.io/app-analysestring/?text=${encodeURIComponent(subject)}"
+        <a href="https://r12a.github.io/app-analysestring/index.html?chars=${encodeURIComponent(subject)}"
            target="_blank" rel="noopener">r12a String Analyser ↗</a> ·
         <a href="https://r12a.github.io/uniview/?charlist=${encodeURIComponent(subject)}"
            target="_blank" rel="noopener">Uniview ↗</a> — external. They disagree with us
