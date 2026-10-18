@@ -120,6 +120,45 @@ test.describe("Facets", () => {
   });
 });
 
+test.describe("Try it in the address", () => {
+  // "This sentence, in this family, at this size and weight, with akhn off" is a
+  // link someone can be sent: every setting is kept, and read back on arrival.
+  test("size, weight, italic and features survive the link", async ({ page }) => {
+    const text = "മലയാളം";
+    await page.goto(`${BASE}/font/rit-rachana/?text=${encodeURIComponent(text)}`
+      + "&px=48&weight=700&italic=1&off=akhn,kern#try-it");
+    const out = page.locator('[data-try="out"]');
+    await expect(out).toBeVisible();
+    const style = await out.evaluate((node) => {
+      const s = getComputedStyle(node);
+      return { size: s.fontSize, weight: s.fontWeight, italic: s.fontStyle,
+               features: s.fontFeatureSettings };
+    });
+    expect(style).toMatchObject({ size: "48px", weight: "700", italic: "italic" });
+    expect(style.features).toContain('"akhn" 0');
+    expect(style.features).toContain('"kern" 0');
+    await expect(page.locator('[data-feature="akhn"]')).not.toBeChecked();
+    await expect(page.locator('[data-feature="blwf"]')).toBeChecked();
+
+    // Changing one is written back, and a default leaves the address.
+    await page.locator('[data-try="weight"]').selectOption("400");
+    await page.locator('[data-feature="akhn"]').check();
+    const url = new URL(page.url());
+    expect(url.searchParams.get("weight")).toBeNull();
+    expect(url.searchParams.get("off")).toBe("kern");
+    expect(url.searchParams.get("px")).toBe("48");
+  });
+
+  test("a setting the family does not offer is ignored, not invented", async ({ page }) => {
+    await page.goto(`${BASE}/font/rit-rachana/?text=a&px=5000&weight=950&off=zzzz`);
+    const out = page.locator('[data-try="out"]');
+    await expect(out).toBeVisible();
+    const style = await out.evaluate((node) => getComputedStyle(node).fontSize);
+    expect(style).toBe("96px");      // the slider's own maximum
+    await expect(page.locator('[data-try="weight"]')).toHaveValue("400");
+  });
+});
+
 test.describe("Marks on their circle", () => {
   // Inspect draws a mark on a dotted circle. With the page font, which has
   // neither, Firefox took the circle from one fallback font and the mark from

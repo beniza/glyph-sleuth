@@ -14,6 +14,10 @@ the summary. Commit messages carry the reasons.
   no-break space are usually one glyph), so a block's glyphs add up to the
   coverage the family page gives. Where they cannot — Google's figure is for the
   whole family, the list for one file — the page says so.
+- **A Try it link keeps how the text was set**, not only the text: `px` for the
+  size, `weight`, `italic=1`, and `off=` for the features switched off — for
+  example `?text=…&px=48&weight=700&off=akhn`. A setting the family does not
+  offer is ignored.
 
 ### Fixed
 

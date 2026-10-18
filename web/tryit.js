@@ -72,11 +72,41 @@ if (panel) {
   // What was typed is in the address once previewed, so "this sentence, in this
   // family" is a link someone can be sent. Replaced, not pushed: Back still
   // leaves the page. As typed, not as read — U+0D15 stays U+0D15 in the link.
+  //
+  // And how it was set: `px` (not `size`, which is the specimen's above),
+  // `weight`, `italic`, and `off` for the features switched off. A default is
+  // left out, so a plain link stays plain.
+  const switches = () => [...panel.querySelectorAll("[data-feature]")];
   const remember = () => {
     const url = new URL(location.href);
-    field.value ? url.searchParams.set("text", field.value) : url.searchParams.delete("text");
+    const off = switches().filter((box) => !box.checked).map((box) => box.dataset.feature);
+    const state = {
+      text: field.value,
+      px: size.value === size.defaultValue ? "" : size.value,
+      weight: weight && weight.selectedIndex > 0 ? weight.value : "",
+      italic: italic?.checked ? "1" : "",
+      off: off.join(","),
+    };
+    for (const [key, value] of Object.entries(state)) {
+      value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
+    }
     history.replaceState(null, "", url);
   };
+
+  // Read back on arrival, each only if this family offers it: a weight it does
+  // not have, or a feature it does not declare, is ignored rather than invented.
+  const given = new URL(location.href).searchParams;
+  const px = Number(given.get("px"));
+  if (px) size.value = String(Math.min(Number(size.max), Math.max(Number(size.min), Math.round(px))));
+  sizeValue.textContent = `${size.value}px`;
+  if (weight && [...weight.options].some((option) => option.value === given.get("weight"))) {
+    weight.value = given.get("weight");
+  }
+  if (italic && given.get("italic") === "1") italic.checked = true;
+  const off = new Set((given.get("off") || "").split(",").filter(Boolean));
+  for (const box of switches()) if (off.has(box.dataset.feature)) box.checked = false;
+  // A link that switched features off shows which: they are the point of it.
+  if (switches().some((box) => !box.checked)) panel.querySelector(".try-features").open = true;
 
   const render = async () => {
     remember();
@@ -149,15 +179,15 @@ if (panel) {
   size.addEventListener("input", () => {
     sizeValue.textContent = `${size.value}px`;
     if (!out.hidden) out.setAttribute("style", styles());
+    remember();
   });
   for (const control of panel.querySelectorAll("select, [type=checkbox]")) {
-    control.addEventListener("change", () => { if (!out.hidden) render(); });
+    control.addEventListener("change", () => (out.hidden ? remember() : render()));
   }
 
   // Arriving with a line to try previews it at once: that is what the link was for.
-  const given = new URL(location.href).searchParams.get("text");
-  if (given) {
-    field.value = given;
+  if (given.get("text")) {
+    field.value = given.get("text");
     render();
   }
 }
