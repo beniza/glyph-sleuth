@@ -416,7 +416,7 @@ def home(fonts, scripts, languages, blocks=()):
             writes[lang] = good
     wide, narrow = (cases[0], cases[1:]) if cases and "case-wide" in cases[0] else ("", cases)
     same_text = ("""    <section>
-      <h2 class="eyebrow">Same text, different results</h2>
+      <h2 class="eyebrow" id="same-text">Same text, different results</h2>
 """ + wide + ("\n      <div class=\"cases\">\n" + "\n".join(narrow) + "\n      </div>" if narrow else "")
                  + "\n    </section>\n") if cases else ""
 
@@ -460,7 +460,7 @@ def home(fonts, scripts, languages, blocks=()):
     </section>
 
     <section>
-      <h2 class="eyebrow">What you can find out</h2>
+      <h2 class="eyebrow" id="find-out">What you can find out</h2>
       <div class="finds">
         <div>
           <h3>Which fonts can write your language</h3>
@@ -486,7 +486,7 @@ def home(fonts, scripts, languages, blocks=()):
 
 {same_text}
     <section>
-      <h2 class="eyebrow">How we check a font</h2>
+      <h2 class="eyebrow" id="how-we-check">How we check a font</h2>
       <ol class="steps">
         <li><span class="mono quiet">1</span><h3>Does it have the letters?</h3>
           <p>Every character a language needs, read from the font file itself.</p></li>
@@ -589,7 +589,7 @@ def try_it(font, name):
         f'          <div class="feats">{chips}</div>\n        </details>'
         if features else "")
 
-    return f"""      <h2 class="eyebrow">Try it</h2>
+    return f"""      <h2 class="eyebrow" id="try-it">Try it</h2>
       <div class="try" data-face="{esc(name)}"
            data-src="{link(f"/data/font/{font.get('slug') or slug(name)}.json")}">
         <label class="field">
@@ -1139,7 +1139,7 @@ def two_releases(font):
         return ""
 
     return ('    <section class="releases">\n'
-            '      <h2 class="eyebrow">Two releases</h2>\n'
+            '      <h2 class="eyebrow" id="two-releases">Two releases</h2>\n'
             f'      <p class="quiet">{esc(release_label(font))} and '
             f'{esc(release_label(other))} publish this family separately. '
             'Where they differ:</p>\n'
@@ -1307,7 +1307,7 @@ def font_page(font, blocks):
     left = []
     rows = coverage_rows(font, blocks) if measured else []
     if rows:
-        left.append('      <h2 class="eyebrow">Coverage, by block</h2>\n'
+        left.append('      <h2 class="eyebrow" id="coverage">Coverage, by block</h2>\n'
                     '      <table>\n      <tbody>\n' + "\n".join(rows) + '\n      </tbody>\n'
                     '      </table>\n'
                     '      <p class="quiet rule-top">A script is rarely one block, which is'
@@ -1317,12 +1317,12 @@ def font_page(font, blocks):
             f'        <div class="pair"><span class="mono">{esc(tag)}</span>'
             f'<span class="quiet">{esc(TAG_NOTES.get(tag, ""))}</span></div>'
             for tag in font.get("tags") or [])
-        left.append('      <h2 class="eyebrow">Declares</h2>\n' + tags +
+        left.append('      <h2 class="eyebrow" id="declares">Declares</h2>\n' + tags +
                     '\n      <p class="quiet rule-top">From the GSUB and GPOS script lists. A'
                     ' face can cover every codepoint of a script and still declare only the'
                     ' tag an older shaper will not look for.</p>')
     elif measured:
-        left.append('      <h2 class="eyebrow">Declares</h2>\n'
+        left.append('      <h2 class="eyebrow" id="declares">Declares</h2>\n'
                     '      <p class="untested">not read</p>\n'
                     '      <p class="quiet">This family\'s coverage comes from the metadata'
                     ' its distributor publishes, which does not include the'
@@ -1337,7 +1337,7 @@ def font_page(font, blocks):
             continue
         heads = "".join(f"<th>{label}</th>" for _key, label in ENGINES)
         shaper = next(iter(script_rows.values())).get("hb") or {}
-        middle.append(f'      <h2 class="eyebrow">Shapes · {esc(script)}</h2>\n'
+        middle.append(f'      <h2 class="eyebrow" id="shapes-{esc(script.lower())}">Shapes · {esc(script)}</h2>\n'
                       '      <table class="matrix">\n        <thead><tr><th>Sequence</th>'
                       + heads + '</tr></thead>\n      <tbody>\n' + "\n".join(evidence)
                       + '\n      </tbody>\n      </table>\n'
@@ -1350,7 +1350,7 @@ def font_page(font, blocks):
     # Right column: taking it away.
     # The snippet is the one thing on this page a reader takes away with them,
     # and selecting a <pre> by hand on a phone is a fight.
-    right = ['      <h2 class="eyebrow">Use it</h2>\n'
+    right = ['      <h2 class="eyebrow" id="use-it">Use it</h2>\n'
              '      <div class="snippet-wrap">\n'
              f'        <pre class="snippet mono">{highlight(snippet)}</pre>\n'
              f'        <button class="copy" data-copy="{esc(snippet)}" '
@@ -1376,7 +1376,7 @@ def font_page(font, blocks):
     if parsed and font.get("features"):
         chips = " ".join(f'<a class="chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
                          for tag in font["features"])
-        right.append('      <h2 class="eyebrow">Implements</h2>\n      <div class="chips">'
+        right.append('      <h2 class="eyebrow" id="implements">Implements</h2>\n      <div class="chips">'
                      + chips + '</div>')
 
     if font.get("axes"):
@@ -1385,9 +1385,9 @@ def font_page(font, blocks):
             f' {axis["min"]:g}–{axis["max"]:g}</span>'
             f'<span class="quiet">axis, continuous</span></div>'
             for axis in font["axes"])
-        right.append('      <h2 class="eyebrow">Variable</h2>\n' + axes)
+        right.append('      <h2 class="eyebrow" id="variable">Variable</h2>\n' + axes)
     elif font.get("faces"):
-        right.append('      <h2 class="eyebrow">Weights</h2>\n      <div class="chips">'
+        right.append('      <h2 class="eyebrow" id="weights">Weights</h2>\n      <div class="chips">'
                      + " ".join(f'<span class="chip">{esc(face)}</span>'
                                 for face in font["faces"]) + '</div>')
 
@@ -1403,7 +1403,7 @@ def font_page(font, blocks):
                  else f' release <span class="mono">{esc(release)}</span>')
         link_text = (f'<a href="{esc(where)}">the release the foundry publishes ↗ — external</a>'
                      if where else "the release the foundry publishes")
-        right.append('      <h2 class="eyebrow">Provenance</h2>\n'
+        right.append('      <h2 class="eyebrow" id="provenance">Provenance</h2>\n'
                      '      <p class="quiet">Read from <span class="mono">'
                      f'{esc(source.get("file"))}</span>{named} on {esc(source.get("read"))}, '
                      f'via {link_text}.<br>'
@@ -2041,7 +2041,7 @@ def lookups_page(font):
         rows = lookup_rows(tables.get(key) or [], drawn)
         if not rows:
             continue
-        body.append(f'    <section>\n      <h2 class="eyebrow">{esc(title)}</h2>\n'
+        body.append(f'    <section>\n      <h2 class="eyebrow" id="{slug(title)}">{esc(title)}</h2>\n'
                     '      <table class="lookups">\n'
                     '        <thead><tr><th>Lookup</th><th>Type</th><th>Rules</th></tr></thead>\n'
                     "      <tbody>\n" + "\n".join(rows) + "\n      </tbody>\n      </table>\n"
@@ -2263,7 +2263,7 @@ def features_index(tags, content, fonts):
             f'<td class="quiet">{"written up" if (written.get(tag) or {}).get("prose") else ""}</td></tr>'
             for tag in group_tags)
         return f"""    <section>
-      <h2 class="eyebrow">{esc(title)}</h2>
+      <h2 class="eyebrow" id="{slug(title)}">{esc(title)}</h2>
       <p class="quiet">{note}</p>
       <table class="matrix">
         <thead><tr><th>Feature</th><th>Name</th><th>Table</th><th>Families</th><th></th></tr></thead>
@@ -2329,7 +2329,7 @@ def feature_page(tag, content, fonts):
                if stage != tag else f'<span class="mono">{esc(stage)}</span>')
             + "</li>"
             for stage in stages)
-        pipeline = ('    <section>\n      <h2 class="eyebrow">Where it runs</h2>\n'
+        pipeline = ('    <section>\n      <h2 class="eyebrow" id="where-it-runs">Where it runs</h2>\n'
                     f'      <ol class="pipeline">\n{cells}\n      </ol>\n'
                     '      <p class="quiet">The order a shaper applies these in. Position '
                     'matters: a feature cannot undo what an earlier one did, which is why '
@@ -2364,7 +2364,7 @@ def feature_page(tag, content, fonts):
                 + (f'<div class="quiet">as <span class="mono">{esc(demo["lang"])}</span> text</div>'
                    if demo.get("lang") else "")
                 + f'</th><td>{drawing(font, with_it)}</td><td>{drawing(font, without)}</td></tr>')
-        examples = (f'    <section>\n      <h2 class="eyebrow">With it, and without</h2>\n'
+        examples = (f'    <section>\n      <h2 class="eyebrow" id="examples">With it, and without</h2>\n'
                     f'      <table class="feature-demo"{demo_attrs}>\n'
                     f'        <thead><tr><th>Family</th><th>With {esc(tag)}</th>'
                     f'<th>Without</th></tr></thead>\n'
@@ -2375,7 +2375,7 @@ def feature_page(tag, content, fonts):
                     '<span class="mono">font-feature-settings</span>. The build shaped both '
                     'and kept only texts where the two differ.</p>\n    </section>')
     else:
-        examples = ('    <section>\n      <h2 class="eyebrow">With it, and without</h2>\n'
+        examples = ('    <section>\n      <h2 class="eyebrow" id="examples">With it, and without</h2>\n'
                     f'      <p class="quiet">No example yet: none of the families whose '
                     f'tables we have read draws any of our sample texts differently with '
                     f'{esc(tag)} and without it.</p>\n    </section>')
@@ -2397,7 +2397,7 @@ def feature_page(tag, content, fonts):
     # note — so it keeps its own sentence and takes only the marker, which is
     # what lets check_site.py notice if the sentence ever goes away. The
     # `cap-note` class is the contract between the two.
-    who = ('    <section>\n      <h2 class="eyebrow">Implemented by</h2>\n'
+    who = ('    <section>\n      <h2 class="eyebrow" id="implemented-by">Implemented by</h2>\n'
            f'      <table class="index"{implementers_attrs}>\n'
            '        <thead><tr><th>Family</th><th>Rules</th>'
            '<th>Lookups</th><th>Foundry</th></tr></thead>\n'
@@ -2408,7 +2408,7 @@ def feature_page(tag, content, fonts):
               if len(implementers) > len(shown_implementers) else ".")
            + ' Rule counts are what the font actually carries, not what it declares.</p>\n'
            "    </section>") if implementers else (
-        '    <section>\n      <h2 class="eyebrow">Implemented by</h2>\n'
+        '    <section>\n      <h2 class="eyebrow" id="implemented-by">Implemented by</h2>\n'
         '      <p class="quiet">None of the families whose tables we have read run this '
         'feature.</p>\n    </section>')
 
@@ -2567,11 +2567,11 @@ def char_page(cp, name, block, covering, chars_built):
 
     <section class="split">
       <div>
-        <h2 class="eyebrow">How it is written down</h2>
+        <h2 class="eyebrow" id="encodings">How it is written down</h2>
 {rows}
       </div>
       <div>
-        <h2 class="eyebrow">How it is drawn</h2>
+        <h2 class="eyebrow" id="drawn">How it is drawn</h2>
         <div class="drawn">
 {tiles}
         </div>
@@ -2666,7 +2666,7 @@ def block_page(block, fonts, chars_built):
     </section>
 
     <section>
-      <h2 class="eyebrow">The chart</h2>
+      <h2 class="eyebrow" id="chart">The chart</h2>
       <div class="chart">
 {chr(10).join(cells)}
       </div>
@@ -2676,7 +2676,7 @@ def block_page(block, fonts, chars_built):
     </section>
 
     <section>
-      <h2 class="eyebrow">Coverage across the index</h2>
+      <h2 class="eyebrow" id="coverage">Coverage across the index</h2>
       <table class="index">
         <thead><tr><th>Family</th><th>Covers</th><th>Foundry</th></tr></thead>
       <tbody>
@@ -2794,7 +2794,7 @@ def script_alphabet(script, chars_built, faces=""):
             'script are not drawn here — a script with tens of thousands of them is a '
             'chart, not an alphabet. The full charts are on the block pages: '
             f'{blocks}.</p>' if dropped else "")
-    return ('    <section>\n      <h2 class="eyebrow">The characters</h2>\n'
+    return ('    <section>\n      <h2 class="eyebrow" id="characters">The characters</h2>\n'
             + "\n".join(sections)
             + '\n      <p class="quiet">The script\'s characters, in Unicode\'s '
               'own categories rather than a grouping of ours — ours could not be checked '
@@ -2869,7 +2869,7 @@ def script_page(script, fonts, languages, chars_built):
     </section>
 
     <section>
-      <h2 class="eyebrow">The blocks it spans</h2>
+      <h2 class="eyebrow" id="blocks">The blocks it spans</h2>
       <table>
         <thead><tr><th>Block</th><th>Codepoints</th><th>Families covering it fully</th></tr></thead>
       <tbody>
@@ -2884,7 +2884,7 @@ def script_page(script, fonts, languages, chars_built):
 {script_alphabet(script, chars_built)}
 
     <section>
-      <h2 class="eyebrow">Written by</h2>
+      <h2 class="eyebrow" id="written-by">Written by</h2>
       {f'<ul class="links">{langs_html}</ul>' if langs_html else ""}
 {langs_note}
       {(f'<p>{"Also written in it" if langs_html else "Written in it"}, per SIL’s langtags, '
@@ -2895,7 +2895,7 @@ def script_page(script, fonts, languages, chars_built):
     </section>
 
     <section>
-      <h2 class="eyebrow">Families that can set it</h2>
+      <h2 class="eyebrow" id="families">Families that can set it</h2>
       <table class="index">
         <thead><tr><th>Family</th><th>Covers</th><th>Declares</th><th>Foundry</th></tr></thead>
       <tbody>
@@ -3113,7 +3113,7 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     </section>
 
     <section>
-      <h2 class="eyebrow">Set in the families that fit</h2>
+      <h2 class="eyebrow" id="fits">Set in the families that fit</h2>
       <div class="cards">
 {cards or '        <p class="quiet">No indexed family covers this exemplar set.</p>'}
       </div>
@@ -3121,17 +3121,17 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
     </section>
 
     <section>
-      <h2 class="eyebrow">What it needs</h2>
+      <h2 class="eyebrow" id="needs">What it needs</h2>
       <div class="tiles">{tiles or '<span class="quiet">No exemplar set in SLDR for this language yet.</span>'}</div>
       <p class="quiet">The exemplar characters SIL's SLDR records for this language — what
          ordinary text in it actually requires, rather than a whole block.</p>
     </section>
 
-    {'<section><h2 class="eyebrow">A line of it</h2><p class="specimen-small">'
+    {'<section><h2 class="eyebrow" id="sample">A line of it</h2><p class="specimen-small">'
      + esc(sample.split(chr(10))[0][:200]) + '</p>'
      '<p class="quiet">From the Universal Declaration of Human Rights.</p></section>'
      if sample else
-     '<section><h2 class="eyebrow">A line of it</h2><p class="quiet">'
+     '<section><h2 class="eyebrow" id="sample">A line of it</h2><p class="quiet">'
      + ('The UDHR project has no checked translation in this language yet, so there '
         'is no sample text here.' if (language.get("stage") or 4) < 4 else
         'No sample text could be read from the UDHR project for this language.')
@@ -3139,7 +3139,7 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
      '</p></section>'}
 
     <section>
-      <h2 class="eyebrow">Nearly fits</h2>
+      <h2 class="eyebrow" id="nearly-fits">Nearly fits</h2>
       <table class="index"{near_attrs}>
         <thead><tr><th>Family</th><th>Missing</th><th>Which characters</th></tr></thead>
       <tbody>

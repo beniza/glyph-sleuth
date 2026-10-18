@@ -68,6 +68,52 @@ test.describe("the nav", () => {
   });
 });
 
+test.describe("Links into a page", () => {
+  test("copy link copies this page's address with the section", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto(`${BASE}/script/Latn/`);
+    const button = page.locator("#families .section-link");
+    await button.click();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toMatch(/\/script\/Latn\/#families$/);
+    await expect(page).toHaveURL(/#families$/);
+    await expect(button).toHaveText("copied");
+  });
+
+  test("a link to a section lands on it", async ({ page }) => {
+    await page.goto(`${BASE}/script/Latn/#families`);
+    await expect(page.locator("#families")).toBeInViewport();
+  });
+
+  test("Inspect's sections can be linked to once they are drawn", async ({ page }) => {
+    // They exist only after the text is read, so the browser's own jump to the
+    // fragment found nothing; Inspect makes it once they do.
+    await page.goto(`${BASE}/inspect/?t=U%2B0D7B#families`);
+    await expect(page.locator("#families")).toBeInViewport({ timeout: 15_000 });
+    await expect(page.locator("#families .section-link")).toBeVisible();
+  });
+
+  test("an index filter is in the address and comes back from it", async ({ page }) => {
+    await page.goto(`${BASE}/languages/`);
+    const total = Number((await page.locator("[data-showing]").textContent()).replace(/,/g, ""));
+    await page.locator(".filter").fill("abkhaz");
+    await expect(page).toHaveURL(/[?&]q=abkhaz/);
+
+    await page.goto(`${BASE}/languages/?q=abkhaz`);
+    await expect(page.locator(".filter")).toHaveValue("abkhaz");
+    const shown = Number((await page.locator("[data-showing]").textContent()).replace(/,/g, ""));
+    expect(shown).toBeGreaterThan(0);
+    expect(shown).toBeLessThan(total);
+  });
+
+  test("Try it's line is in the address and previews on arrival", async ({ page }) => {
+    await page.goto(`${BASE}/font/manjari/?text=${encodeURIComponent("ക്ക")}#try-it`);
+    await expect(page.locator('[data-try="out"]')).toBeVisible();
+    await expect(page.locator('[data-try="out"]')).toContainText("ക്ക");
+    await expect(page.locator("#try-it")).toBeInViewport();
+  });
+});
+
 test.describe("Home", () => {
   test("the box on the home page opens Inspect with what was typed", async ({ page }) => {
     // A plain GET form, so it works before any script has run.

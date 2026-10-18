@@ -69,7 +69,17 @@ if (panel) {
     return rules.join("; ");
   };
 
+  // What was typed is in the address once previewed, so "this sentence, in this
+  // family" is a link someone can be sent. Replaced, not pushed: Back still
+  // leaves the page. As typed, not as read — U+0D15 stays U+0D15 in the link.
+  const remember = () => {
+    const url = new URL(location.href);
+    field.value ? url.searchParams.set("text", field.value) : url.searchParams.delete("text");
+    history.replaceState(null, "", url);
+  };
+
   const render = async () => {
+    remember();
     const text = asText(field.value);
     if (!text) {
       out.hidden = note.hidden = true;
@@ -142,5 +152,12 @@ if (panel) {
   });
   for (const control of panel.querySelectorAll("select, [type=checkbox]")) {
     control.addEventListener("change", () => { if (!out.hidden) render(); });
+  }
+
+  // Arriving with a line to try previews it at once: that is what the link was for.
+  const given = new URL(location.href).searchParams.get("text");
+  if (given) {
+    field.value = given;
+    render();
   }
 }

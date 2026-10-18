@@ -76,21 +76,46 @@ def internal(url):
     return not urllib.parse.urlsplit(url).scheme
 
 
-def resolves(url, page):
-    """Does this internal link land on a file that exists?"""
+def landing(url, page, root=SITE):
+    """The file an internal link lands on, or None if it lands nowhere.
+
+    Absolute links resolve under `root`, the site being checked. They resolved
+    under the real site/ whatever was passed, so a test's throwaway site passed
+    only where the developer's own last build happened to have the page.
+    """
     path = urllib.parse.urlsplit(url).path
     if not path:
-        return True
+        return page
     if path.startswith("/"):
         if BASE and not (path == BASE or path.startswith(BASE + "/")):
-            return False            # absolute, but outside the prefix we serve
-        target = os.path.join(SITE, urllib.parse.unquote(path[len(BASE):]).lstrip("/"))
+            return None             # absolute, but outside the prefix we serve
+        target = os.path.join(root, urllib.parse.unquote(path[len(BASE):]).lstrip("/"))
     else:
         target = os.path.join(os.path.dirname(page), urllib.parse.unquote(path))
     if os.path.isfile(target):
-        return True
+        return target
     # A directory URL is served by its index.
-    return os.path.isfile(os.path.join(target, "index.html"))
+    index = os.path.join(target, "index.html")
+    return index if os.path.isfile(index) else None
+
+
+def resolves(url, page, root=SITE):
+    """Does this internal link land on a file that exists?"""
+    return landing(url, page, root) is not None
+
+
+# Section ids. Every heading has one now, and links to them are saved and
+# shared; renaming one would leave each such link landing at the top of its
+# page without a word.
+ID = re.compile(r'\sid="([^"]+)"')
+_ids = {}
+
+
+def ids_on(path):
+    if path not in _ids:
+        with open(path, encoding="utf-8") as handle:
+            _ids[path] = set(ID.findall(handle.read()))
+    return _ids[path]
 
 
 def faces_declared(html):
@@ -127,15 +152,24 @@ def check(root=SITE):
         shown = os.path.relpath(page, root).replace(os.sep, "/")
 
         for url in set(LINK.findall(html)):
+            fragment = urllib.parse.urlsplit(url).fragment
+            if url.startswith("#"):
+                # A section of this same page.
+                if fragment and fragment not in ids_on(page):
+                    problems.append((shown, f"links to no section here: {url}"))
+                continue
             if not internal(url):
                 # Counted so the summary can say what was skipped rather than
-                # implying everything was checked. A fragment or a mailto is
-                # neither ours to resolve nor a URL anyone would fetch.
+                # implying everything was checked. A mailto is neither ours to
+                # resolve nor a URL anyone would fetch.
                 external += url.startswith(("http://", "https://", "//"))
                 continue
             checked += 1
-            if not resolves(url, page):
+            target = landing(url, page, root)
+            if target is None:
                 problems.append((shown, f"link goes nowhere: {url}"))
+            elif fragment and fragment not in ids_on(target):
+                problems.append((shown, f"links to no section there: {url}"))
 
         # A table that stopped short must say so on the same page. `capped()` in
         # render.py emits the marker and the note together, so a bare marker means

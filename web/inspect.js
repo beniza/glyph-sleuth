@@ -78,6 +78,22 @@ const INVISIBLE = {
 
 export async function start(field, reading, out) {
   const core = await import(`${BASE}core.js`);
+  const { sectionLinks } = await import(`${BASE}copy.js`);
+
+  // Every heading this page draws can be linked to, and a link that names one
+  // lands on it — once, on arrival. The sections exist only after the text is
+  // read, so the browser's own jump to the fragment found nothing to jump to.
+  let arrived = false;
+  const linkable = (root) => {
+    sectionLinks(root);
+    const wanted = decodeURIComponent(location.hash.slice(1));
+    if (arrived || !wanted) return;
+    const target = document.getElementById(wanted);
+    if (target && root.contains(target)) {
+      target.scrollIntoView();
+      arrived = true;
+    }
+  };
   const [blocks, formulaic, props, sequences, families, lazy] = await Promise.all([
     fetch(`${BASE}data/blocks.json`).then((r) => r.json()),
     fetch(`${BASE}data/names-formulaic.json`).then((r) => r.json()),
@@ -163,7 +179,7 @@ export async function start(field, reading, out) {
       }
     }
     if (!rows.length) return "";
-    return `<h2 class="eyebrow">Other ways to write it</h2>
+    return `<h2 class="eyebrow" id="other-spellings">Other ways to write it</h2>
       <div class="alts">${rows.map((row) => `<div class="alt">
         <span class="alt-glyph">${esc(row.text)}</span>
         <span class="alt-label mono">${esc(row.label)}</span>
@@ -183,7 +199,7 @@ export async function start(field, reading, out) {
       if (part !== subject && known.has(part)) hits.push({ text: part, ...known.get(part) });
     }
     if (!hits.length) return "";
-    return `<h2 class="eyebrow">A sequence we test</h2>
+    return `<h2 class="eyebrow" id="sequence">A sequence we test</h2>
       ${hits.map((hit) => `<p><strong class="mono">${esc(hit.id)}</strong> —
         ${esc(hit.note || "")}</p>
         <p class="quiet">Every measured family is checked against this one, so the verdicts
@@ -226,9 +242,10 @@ export async function start(field, reading, out) {
     const files = await Promise.all(starts.map(coverOf));
     if (turn !== drawing) return;
     if (files.includes(null)) {
-      panel.innerHTML = `<h2 class="eyebrow">Drawn by every family that has it</h2>
+      panel.innerHTML = `<h2 class="eyebrow" id="families">Drawn by every family that has it</h2>
         <p class="quiet">The coverage tables did not load, so this cannot say which
           families have this text. Nothing here means none do.</p>`;
+      linkable(panel);
       return;
     }
     const { families: found, nobody, unknown } = core.coveringAll(
@@ -263,12 +280,13 @@ export async function start(field, reading, out) {
         : nobody.length
           ? `No indexed family has ${nobody.map(name).join(", ")}.`
           : `No indexed family has every codepoint of this text.`;
-      panel.innerHTML = `<h2 class="eyebrow">Drawn by every family that has it</h2>
+      panel.innerHTML = `<h2 class="eyebrow" id="families">Drawn by every family that has it</h2>
         <p class="quiet">${why}${undrawable
           ? ` ${undrawable.toLocaleString()} ${undrawable === 1 ? "family has" : "families have"}
              it but ${undrawable === 1 ? "publishes" : "publish"} no webfont we can load or
              re-serve, so ${undrawable === 1 ? "it cannot" : "they cannot"} be drawn here.`
           : ""}${unmeasured}</p>`;
+      linkable(panel);
       return;
     }
 
@@ -296,13 +314,14 @@ export async function start(field, reading, out) {
           + "load or re-serve, so they cannot be drawn here."
         : "")
       + unmeasured;
-    panel.innerHTML = `<h2 class="eyebrow">Drawn by every family that has it</h2>
+    panel.innerHTML = `<h2 class="eyebrow" id="families">Drawn by every family that has it</h2>
       <div class="${long ? "drawn-rows" : "drawn"}">${tiles}</div>
       <p class="quiet"><span data-drawn-note="${esc(settled)}">${esc(settled)}</span>
         The same codepoints, drawn by each family's own face. Having every codepoint is not
         the same as drawing them correctly together — where they differ, the difference is
         the font's: which lookups it carries, and which sequences it was built to handle. A
         dot marks a family drawn for this script rather than one that merely covers it.</p>`;
+    linkable(panel);
     stopWatching = lazy.watch(panel.querySelectorAll("[data-family]"),
       panel.querySelector("[data-drawn-note]"));
   }
@@ -337,7 +356,7 @@ export async function start(field, reading, out) {
         + "codepoints, and a font's lookups decide what you see.");
     }
     if (!notes.length) return "";
-    return `<h2 class="eyebrow">Worth knowing</h2>
+    return `<h2 class="eyebrow" id="worth-knowing">Worth knowing</h2>
       <ul class="notes">${notes.map((note) => `<li>${esc(note)}</li>`).join("")}</ul>`;
   }
 
@@ -355,7 +374,7 @@ export async function start(field, reading, out) {
     // say what was left out; copy still takes the whole thing.
     const shorten = (value) => (value.length <= 96 ? esc(value)
       : `${esc(value.slice(0, 96))}<span class="quiet"> … ${value.length} characters</span>`);
-    return `<h2 class="eyebrow">Take it away</h2>
+    return `<h2 class="eyebrow" id="take-it-away">Take it away</h2>
       <div class="pairs">${rows.map(([label, value]) => `<div class="pair">
         <span class="quiet">${esc(label)}</span>
         <span class="row-copy"><span class="mono break">${shorten(value)}</span>
@@ -399,7 +418,7 @@ export async function start(field, reading, out) {
         ${copy(subject, "copy text")}</div>
       <div class="inspect-grid">
         <div>
-          <h2 class="eyebrow">${codepoints.length} codepoint${codepoints.length === 1 ? "" : "s"}
+          <h2 class="eyebrow" id="codepoints">${codepoints.length} codepoint${codepoints.length === 1 ? "" : "s"}
             in ${parts.length} cluster${parts.length === 1 ? "" : "s"}</h2>
           <div class="scroll"><table class="index tight"><tbody>
             ${codepointsTable(codepoints)}
@@ -413,6 +432,7 @@ export async function start(field, reading, out) {
         </div>
       </div>
       <section id="drawn-by"></section>`;
+    linkable(out);
     drawnBy(out.querySelector("#drawn-by"), subject, codepoints);
   }
 

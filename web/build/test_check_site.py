@@ -53,6 +53,25 @@ def test_a_directory_link_is_served_by_its_index():
     }) == []
 
 
+def test_a_link_to_a_section_that_is_not_there_is_caught():
+    """Every section heading has an id now, and links to them get saved and
+    shared. Renaming an id would leave every such link landing at the top of
+    its page without a word, so a fragment must name an id on its target."""
+    ok = {
+        "index.html": f'<a href="{BASE}/script/Orya/#families">families</a>'
+                      '<a href="#find-out">here</a><h2 id="find-out">x</h2>',
+        "script/Orya/index.html": '<h2 class="eyebrow" id="families">Families</h2>',
+    }
+    assert problems(ok) == []
+
+    broken = problems({
+        "index.html": f'<a href="{BASE}/script/Orya/#fonts">families</a><a href="#gone">x</a>',
+        "script/Orya/index.html": '<h2 class="eyebrow" id="families">Families</h2>',
+    })
+    assert len(broken) == 2
+    assert all("no section" in problem for problem in broken)
+
+
 def test_relative_and_encoded_links_resolve():
     assert problems({
         "font/manjari/index.html": '<a href="lookups/">lookups</a>'

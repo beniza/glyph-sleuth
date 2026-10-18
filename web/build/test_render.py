@@ -305,6 +305,38 @@ def test_the_languages_index_finds_every_language_sil_knows():
     assert re.search(r"Showing\s*<span data-showing>3</span>\s*of\s*3", html)
 
 
+def test_every_section_can_be_linked_to():
+    """A link to "the families that can set Odia" opened the top of the page:
+    no section heading had an id. Every one has a fixed id now — written here,
+    not derived from the wording, so rewording a heading breaks no link anyone
+    saved — and no two on a page share one."""
+    odia = {"code": "Orya", "name": "Oriya", "iso_name": "Oriya (Odia)", "chars": 91,
+            "languages": [], "written_in": [{"tag": "dso", "name": "Desiya"}],
+            "blocks": [{"name": "Oriya", "ranges": [[0x0B01, 0x0B77]], "chars": 91}]}
+    language = {"id": "ori", "name": "Odia", "tag": "or", "iso": "ory", "exemplars": "ଅ",
+                "scripts": ["Orya"], "sample": "ଅ", "stage": 4}
+    pages = {
+        "home": render.home([MANJARI], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS)),
+        "font": render.font_page(MANJARI, FULL_BLOCKS),
+        "script": render.script_page(odia, [MANJARI], [], set()),
+        "language": render.lang_page(language, [MANJARI], [odia], set(), FULL_BLOCKS),
+        "character": render.char_page(0x0D15, "MALAYALAM LETTER KA", BLOCKS[1],
+                                      [MANJARI], {0x0D15}),
+        "block": render.block_page([0x0D00, 0x0D7F, "Malayalam"], [MANJARI], {0x0D15}),
+        "feature": render.feature_page("akhn", {"features": {}, "stages": ["akhn"]},
+                                       [MANJARI]),
+        "features": render.features_index(["akhn", "kern"], {"stages": ["akhn"]}, []),
+    }
+    for kind, html in pages.items():
+        headings = re.findall(r'<h2 class="eyebrow"([^>]*)>', html)
+        assert headings, kind
+        ids = [re.search(r'id="([^"]+)"', attrs) for attrs in headings]
+        assert all(ids), f"a section heading on the {kind} page has no id"
+        ids = [found.group(1) for found in ids]
+        assert len(ids) == len(set(ids)), f"{kind} page repeats a section id: {ids}"
+        assert all(re.fullmatch(r"[a-z0-9-]+", anchor) for anchor in ids), ids
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

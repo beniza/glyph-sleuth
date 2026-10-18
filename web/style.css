@@ -240,6 +240,22 @@ h1 {
   padding-bottom: 7px;
   border-bottom: 1px solid var(--ink);
 }
+/* Every section heading can be linked to: its id is in the markup, and a
+   "copy link" button copies the page's full address to that section. Quiet
+   until wanted, but always there — a touch screen has no hover to reveal it. */
+.eyebrow[id] { display: flex; align-items: baseline; gap: 12px; scroll-margin-top: 16px; }
+.section-link {
+  margin-left: auto;
+  padding: 0 2px;
+  background: none;
+  border: 0;
+  font: inherit;
+  letter-spacing: .1em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.section-link:hover, .section-link:focus-visible { color: var(--proof); }
+.eyebrow[id]:target { color: var(--ink); border-bottom-color: var(--proof); }
 .mono { font-family: var(--mono); font-size: .82em; }
 .quiet { color: var(--muted); font-size: 14px; max-width: 66ch; }
 

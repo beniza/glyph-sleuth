@@ -2,9 +2,10 @@
 // a few of them adjustable. With JS off nothing here is missed except the
 // ability to change a number.
 
-import { copyButtons } from "./copy.js";
+import { copyButtons, sectionLinks } from "./copy.js";
 
 copyButtons();
+sectionLinks();
 
 // Only the family pages have a Try it panel, and only they pay for it.
 if (document.querySelector(".try")) import("./tryit.js");
@@ -78,7 +79,43 @@ if (table) {
     if (showing) showing.textContent = shown.length.toLocaleString();
     if (empty) empty.hidden = shown.length > 0;
     table.hidden = shown.length === 0;
+    remember();
   };
+
+  // The filter is in the address, so "the languages, filtered to Kui" is a link
+  // someone can be sent — the rule Inspect and Compare already follow. Replaced,
+  // not pushed, so Back still leaves the page rather than stepping through
+  // every keystroke. The default of each is left out of the address.
+  const remember = () => {
+    const url = new URL(location.href);
+    const state = { q: (search?.value || "").trim(), facet: facet === "all" ? "" : facet,
+                    tag: tagPick?.value || "", block: blockPick?.value || "",
+                    sort: sort === "name" ? "" : sort };
+    for (const [key, value] of Object.entries(state)) {
+      value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
+    }
+    history.replaceState(null, "", url);
+  };
+
+  // And read back on arrival, each value only if this page offers it.
+  const given = new URL(location.href).searchParams;
+  if (search && given.get("q")) search.value = given.get("q");
+  const pick = (select, value) => {
+    if (select && value && [...select.options].some((o) => o.value === value)) select.value = value;
+  };
+  pick(tagPick, given.get("tag"));
+  pick(blockPick, given.get("block"));
+  const facetButton = facets.find((button) => button.dataset.facet === given.get("facet"));
+  if (facetButton) {
+    facet = facetButton.dataset.facet;
+    facets.forEach((other) => other.classList.toggle("on", other === facetButton));
+  }
+  const sortButton = sorts.find((button) => button.dataset.sort === given.get("sort"));
+  if (sortButton) {
+    sort = sortButton.dataset.sort;
+    sorts.forEach((other) => other.classList.toggle("on", other === sortButton));
+  }
+  if ([...given.keys()].some((key) => ["q", "tag", "block", "facet", "sort"].includes(key))) apply();
 
   search?.addEventListener("input", apply);
   tagPick?.addEventListener("change", apply);
