@@ -1,0 +1,126 @@
+# Changelog
+
+What changed in each release of Glyph Sleuth, newest first. The annotated
+release tags carry the full notes, including what went wrong on the way; this is
+the summary. Commit messages carry the reasons.
+
+## Unreleased
+
+### Added
+
+- **A home page that says what the site is for.** "Does your font draw your
+  language correctly?", an input on the first screen, and three cases of the same
+  text drawn differently — Vietnamese stacked accents, the Malayalam nta typed
+  two ways, the Marathi eyelash ra. Every number and example in them is computed
+  from the verdicts at build time, and each broken example is chosen to look
+  broken in every browser, whether or not it applies the page's language.
+- **Latin is measured.** Vietnamese ế and ệ and Yoruba ẹ́, judged by the ink:
+  accents that collide, or that stand beside their letter, fail. About 765
+  families are now opened and read, up from about 100.
+- **A features index** at `/feature/` (#97), and feature examples drawn by real
+  families with only that feature switched on or off, kept only where the build
+  saw a difference (#98).
+- **Scripts that fonts cover are listed** even when no indexed language uses
+  them (#99): 84 scripts to 163, Odia, Ol Chiki and Meetei Mayek among them. Each
+  carries its ISO 15924 name — "Oriya (Odia)", "Bengali (Bangla)" — and lists
+  every language SIL's langtags writes in it.
+- **More languages.** Those whose UDHR translation is not yet checked are indexed
+  against SLDR's characters, with no sample text and a page saying why (#100);
+  526 languages to 563. Every other language langtags records is findable in the
+  languages index and leads to its script (#101).
+- **Links into a page.** Every section heading has a fixed id and a "copy link"
+  button; index filters and Try it's text are kept in the address; the site
+  checker fails a link to a section that does not exist.
+- **Inspect draws the text in every family that has every codepoint of it**, not
+  eight families chosen for covering a whole block.
+
+### Fixed
+
+- **Shaping verdicts** (#96). The recommended nta was compared with itself and
+  could never fail; Baloo Chettan 2, Rachana and Meera were called clean on a
+  conjunct they never form. A conjunct is now checked against the same text with
+  joining refused; a form the font cannot draw is no longer the yardstick; the
+  expected form is shaped in the same language; and each verdict records the
+  language it was shaped in, and its result without one.
+- **A family is judged on its own script.** Malini, a Malayalam family, was listed
+  as one that "breaks" for lacking Devanagari.
+- **Two spellings of one text** (ệ against e + dot below + circumflex) are no
+  longer compared, which had given nearly every font without a composed ệ a
+  caveat.
+- **A slow foundry stylesheet** was reported as a face that did not load.
+- **Bracketed UDHR names** such as "(Bataknese)" sort by their letters instead of
+  opening every list of languages.
+- **Malayalam** lives at `/lang/mal/`, not `/lang/mal_chillus/`.
+- **The site checker** resolved absolute links under the real `site/` whatever it
+  was given, so its own tests passed only where a local build had the page.
+
+### Changed
+
+- Each verdict now carries the language it was shaped in, and the cache re-reads
+  any font measured by an older check.
+- The deployed site grew from about 87 MB to about 106 MB compressed with Latin
+  measured.
+
+## 0.5.0 — 2026-08-21
+
+The reported bugs, and the two more that fixing them uncovered.
+
+- Inspect said how many families it was not showing, and linked the block page.
+- Japanese and Korean got script pages: composite codes (`Jpan`, `Kore`) and
+  variants (`Hans`, `Hant`) were dropped without a word. A drop report now names
+  any code that resolves to nothing.
+- The scripts cache keyed on its inputs alone served the answer from before the
+  fix; the composite table is in the key now.
+- `/script/Hani/` went from 2.5 MB to 59 KB, its charts bounded and disclosed.
+- Charts and headline glyphs stopped being tofu where a covering family exists.
+- Inline link lists became real lists.
+
+## 0.4.3 — 2026-08-21
+
+Every remaining cap, and a rule so the next one cannot be silent.
+
+- A test fails on any literal slice in the renderer that is neither in `capped()`
+  nor allowlisted with a reason.
+- The block and script pages list every covering family; the caps that remain
+  say what they leave out.
+
+## 0.4.2 — 2026-08-20
+
+- The language page shows every family that fits, not the first 36.
+
+## 0.4.1 — 2026-08-20
+
+Two releases of one family, and no more caps.
+
+- A family released by both its foundry and Google keeps both, and the page shows
+  where they differ.
+- A character page carries a tile for every family that covers it, loading as
+  they are scrolled to.
+
+## 0.4.0 — 2026-08-20
+
+The build refuses to overstate.
+
+- `check_site.py` runs over the built site: every internal link resolves, and no
+  page names a face it has no source for. It found three faults on its first run.
+- The glyph inventory says when it stops short.
+- A throttled download is retried; a 404 is an answer and is not.
+
+## 0.3.0 — 2026-08-19
+
+The site rebuilt, and the fonts actually drawn.
+
+- The family index, and a page per family, character, block, script and language;
+  Compare; Inspect; Try it.
+- Foundry webfonts are served where their licence permits, so families with no
+  stylesheet are drawn rather than shown in a fallback under their own name.
+
+## 0.2.0 — 2026-08-15
+
+- A licence per family, linked to its text.
+- Five libre families with no Google Fonts entry.
+- One Malayalam where there were two.
+
+## 0.1.0 — 2026-08-14
+
+- Release binaries for the desktop companion, built only when the tests pass.
