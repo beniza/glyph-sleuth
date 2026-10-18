@@ -1,5 +1,6 @@
 {
   "name": "glyph-sleuth",
+  "version": "0.6.0",
   "private": true,
   "description": "Test harness for the site's browser behaviour. The site itself is static.",
   "type": "module",

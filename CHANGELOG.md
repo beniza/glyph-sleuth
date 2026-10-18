@@ -35,6 +35,11 @@ The site says what it is for, measures Latin, and its verdicts stop overstating.
   checker fails a link to a section that does not exist.
 - **Inspect draws the text in every family that has every codepoint of it**, not
   eight families chosen for covering a whole block.
+- **Every page says which build it is** — version, commit, build day and the day
+  the fonts were read — in its footer and in `/version.json`.
+- **Releases are published by a workflow** that refuses unless the tag, the
+  version in `package.json`, this changelog and a green deploy all agree. 0.6.0
+  is the first.
 
 ### Fixed
 

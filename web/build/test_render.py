@@ -337,6 +337,41 @@ def test_every_section_can_be_linked_to():
         assert all(re.fullmatch(r"[a-z0-9-]+", anchor) for anchor in ids), ids
 
 
+def test_every_page_says_which_build_it_is():
+    """No page said what was deployed: a reader reporting a bug and the person
+    fixing it could not tell which build they were looking at. Code and data move
+    separately — the monthly build re-reads every font under the same release —
+    so the stamp names both: the release, the commit, and when fonts were read."""
+    saved = dict(render.BUILD)
+    try:
+        render.BUILD.clear()
+        assert "fonts read" not in render.home([], scripts=[], languages=[])
+
+        render.BUILD.update(version="0.6.0", commit="505f666abc", built="2026-10-18",
+                            fonts_read="2026-10-17")
+        html = render.home([], scripts=[], languages=[])
+        assert "v0.6.0" in html
+        assert 'href="https://github.com/beniza/glyph-sleuth/commit/505f666abc"' in html
+        assert ">505f666<" in html
+        assert "built 2026-10-18" in html and "fonts read 2026-10-17" in html
+    finally:
+        render.BUILD.clear()
+        render.BUILD.update(saved)
+
+
+def test_the_changelog_names_the_version_in_package_json():
+    """One version, in package.json, and the changelog's newest release is it —
+    so a version bump without notes, or notes without a bump, fails here."""
+    import json
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(render.__file__))))
+    with io.open(os.path.join(root, "package.json"), encoding="utf-8") as handle:
+        version = json.load(handle)["version"]
+    with io.open(os.path.join(root, "CHANGELOG.md"), encoding="utf-8") as handle:
+        newest = re.search(r"^## (\d+\.\d+\.\d+) — ", handle.read(), re.M)
+    assert newest and newest.group(1) == version, (newest and newest.group(1), version)
+    assert render.package_version() == version
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html
@@ -1197,6 +1232,8 @@ ALLOWED_SLICES = {
     "fits[:CARDS_LIMIT]": "how many faces load eagerly, not how many cards exist",
     "rows[:limit]": "capped() itself",
     "hexdigest()[:8]": "a slug's hash suffix, not a list of anything",
+    'BUILD["commit"][:7]': "a commit's short hash, linked to the whole one",
+    "{commit[:7] or": "a commit's short hash, in the build log",
     # Each sits directly above "All scripts, with counts" / "All languages".
     'for s in ranked_scripts[:12])': "the home page's featured scripts, not an answer",
     'for l in ranked_languages[:12])': "the home page's featured languages",

@@ -2509,7 +2509,10 @@ def main():
     fonts.sort(key=lambda f: f["name"])
     measured = sum(1 for f in fonts if f["tier"] == "measured")
     print(f"  {len(fonts)} families, {measured} measured, {len(fonts) - measured} not yet")
-    write(os.path.join(OUT_DATA, "fonts.json"), {"fonts": fonts, "count": len(fonts)})
+    # The day the fonts were read, which the site states beside its version: the
+    # monthly build re-reads them under the same release.
+    write(os.path.join(OUT_DATA, "fonts.json"),
+          {"fonts": fonts, "count": len(fonts), "read": TODAY})
 
     print("Unicode tables")
     write_blocks()

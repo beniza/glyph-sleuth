@@ -116,6 +116,34 @@ def font_href(font):
     return link(f"/font/{font.get('slug') or slug(font['name'])}/")
 
 
+def package_version():
+    """The version, from package.json: the one place it is written."""
+    with io.open(os.path.join(ROOT, "package.json"), encoding="utf-8") as handle:
+        return json.load(handle)["version"]
+
+
+# Which build a page is: the release, the commit, the day it was built, and the
+# day its fonts were read — code and data move separately, since the monthly
+# build re-reads every font under the same release. Empty until main() fills it,
+# so a page rendered in a test claims no build.
+BUILD = {}
+REPO = "https://github.com/beniza/glyph-sleuth"
+
+
+def build_stamp():
+    if not BUILD:
+        return ""
+    parts = [f'v{esc(BUILD["version"])}']
+    if BUILD.get("commit"):
+        parts.append(f'built {esc(BUILD["built"])} from <a href="{REPO}/commit/'
+                     f'{esc(BUILD["commit"])}">{esc(BUILD["commit"][:7])}</a>')
+    else:
+        parts.append(f'built {esc(BUILD["built"])}')
+    if BUILD.get("fonts_read"):
+        parts.append(f'fonts read {esc(BUILD["fonts_read"])}')
+    return f'      <p class="build">{" · ".join(parts)}</p>\n'
+
+
 def page(title, body, kind=None, code=None, description=None, extra_head=""):
     """The shell every page shares: masthead, nav, content, colophon."""
     nav = "\n".join(
@@ -178,7 +206,7 @@ def page(title, body, kind=None, code=None, description=None, extra_head=""):
          distributes no webfont, from our copy of its own release build, under
          the licence that release ships.</p>
       <p><a href="https://github.com/beniza/glyph-sleuth">Source and corrections ↗ — external</a></p>
-    </div>
+{build_stamp()}    </div>
   </footer>
 </body>
 </html>
@@ -3333,6 +3361,30 @@ def main():
     fonts = load("fonts")
     if not fonts:
         raise SystemExit("No web/data — run: python web/build/gen_index.py --limit 60")
+
+    # Which build this is, on every page and in /version.json. The commit is
+    # CI's own; locally it is asked of git, and left out if git cannot say.
+    import datetime
+    import subprocess
+
+    commit = os.environ.get("GITHUB_SHA", "")
+    if not commit:
+        try:
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+                                    text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            commit = ""
+    # The day the generator read the fonts; older data carries only each
+    # family's own read date, and the latest of those is the same fact.
+    fonts_read = fonts.get("read") or max(
+        ((font.get("provenance") or {}).get("read") or font.get("read") or ""
+         for font in fonts["fonts"]), default="")
+    BUILD.update(version=package_version(), commit=commit,
+                 built=datetime.date.today().isoformat(), fonts_read=fonts_read)
+    os.makedirs(OUT_SITE, exist_ok=True)
+    with io.open(os.path.join(OUT_SITE, "version.json"), "w", encoding="utf-8") as handle:
+        json.dump(BUILD, handle, indent=2)
+    print(f"  build v{BUILD['version']} · {commit[:7] or 'no commit'} · fonts read {fonts_read or '?'}")
 
     scripts = (load("scripts") or {}).get("scripts", [])
     languages = (load("languages") or {}).get("languages", [])

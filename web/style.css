@@ -115,6 +115,9 @@ section { padding-top: 34px; }
   font-size: 13.5px;
 }
 .colophon p { margin: 0 0 8px; max-width: 62ch; }
+/* Which build this page is. Small, but there: a bug report is worth more when
+   it can say which release and which font data it was looking at. */
+.colophon .build { font-family: var(--mono); font-size: 12px; }
 
 /* ------------------------------------------------------------------ type */
 

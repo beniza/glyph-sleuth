@@ -150,11 +150,40 @@ rules, `docs/BRIEF.md` the original brief; everything that is *work* is a card.
   nobody can bisect by eye.
 - **Commit messages carry the why**, including what was wrong before. For several
   decisions in this repo the commit message is the only record.
-- **Small releases, often.** An annotated tag, `vX.Y.Z`, headline `X.Y.Z: short
-  summary` then prose. Do not hold work back to justify a bigger number.
+- **Small releases, often.** Do not hold work back to justify a bigger number.
 - **Never re-run a failed deploy job.** It uploads a second artifact named
   `github-pages` and the next attempt dies on "Artifact count is 2". Push a fresh
   commit or use `workflow_dispatch`.
+
+### Versions and releases
+
+**One version, in `package.json`.** The build reads it, and every page's footer
+and `/version.json` say which build they are: the version, the commit, the day it
+was built, and the day the fonts were read. Code and data move separately — the
+monthly build re-reads every font under the same release — so a bug report can
+name both.
+
+**Which number to bump.** Patch (`0.6.1`) for fixes only. Minor (`0.7.0`) for
+anything new a reader can see: a page, a measurement, a feature, a script or
+language newly covered. While the version is 0.x, a change that breaks a link
+someone saved is a minor bump too, and the changelog says so.
+
+**Each release has a milestone** on the board. Issues are staged into it; when
+its view is empty, release it.
+
+**To release:**
+
+1. Set `"version"` in `package.json`, and turn `## Unreleased` in `CHANGELOG.md`
+   into `## X.Y.Z — YYYY-MM-DD` with a one-line summary under it. A test fails
+   if the two disagree.
+2. Commit, push, and let the Pages deploy pass.
+3. Tag and push: an annotated tag, `vX.Y.Z`, headline `X.Y.Z: short summary`
+   then prose — the full notes, as every tag has carried.
+
+`.github/workflows/release.yml` does the rest, and refuses unless the tag is
+`v` + the version, the changelog has a section for it, and a green Pages run
+deployed the site's code at the tag. It publishes the GitHub Release with that
+changelog section as its notes. Do not create Releases by hand.
 
 ## Traps, each of which cost real time
 

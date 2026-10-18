@@ -1,0 +1,85 @@
+# Publish a release when its tag is pushed — and only if the tag, the version,
+# the changelog and the deployed site all agree.
+#
+# Releases used to be four hand steps that nothing kept consistent: a tag, a
+# GitHub Release, its notes, and (lately) a changelog entry. A tag could name a
+# version nobody had written down, or a Release describe code that never
+# deployed. This refuses to publish unless:
+#
+#   1. the tag is `v` + package.json's version, the one place it is written;
+#   2. CHANGELOG.md has a section for that version — which becomes the notes, so
+#      the two cannot drift;
+#   3. the site's code at the tag (web/, shared/, site/) is code a green Pages
+#      run deployed. Compared by tree, not by commit: a changelog-only commit,
+#      like the one a release is usually tagged on, never deploys by itself.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: The tag names the version in package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME, but package.json says $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: The changelog has a section for it
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          version = os.environ["VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          found = re.search(r"^## " + re.escape(version) + r" — .*?$(.*?)(?=^## |\Z)",
+                            text, re.M | re.S)
+          if not found:
+              print(f"::error::CHANGELOG.md has no section for {version}")
+              sys.exit(1)
+          body = found.group(1).strip()
+          headline = body.splitlines()[0].strip().rstrip(".")
+          open("notes.md", "w", encoding="utf-8").write(
+              body + "\n\nThe annotated tag carries the full notes.\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"HEADLINE={headline}\n")
+          PY
+
+      - name: The site's code at this tag was deployed by a green Pages run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deployed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/pages.yml/runs?status=success&per_page=30" \
+                       --jq '.workflow_runs[].head_sha')
+          for sha in $deployed; do
+            if git cat-file -e "$sha" 2>/dev/null \
+               && git diff --quiet "$sha" "$GITHUB_SHA" -- web shared site; then
+              echo "Deployed by a green Pages run of $sha"
+              exit 0
+            fi
+          done
+          echo "::error::No green Pages run deployed the site's code at $GITHUB_REF_NAME. Push it to main and let the deploy pass first."
+          exit 1
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 0.x releases are marked pre-release, as every one before this was.
+          case "$VERSION" in 0.*) pre="--prerelease" ;; *) pre="" ;; esac
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME — $HEADLINE" \
+            --notes-file notes.md $pre
