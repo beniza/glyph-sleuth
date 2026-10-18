@@ -1757,23 +1757,39 @@ def glyphs_page(font, chars_built=()):
         return page(f"{name} glyphs", body, kind="glyphs",
                     code=font.get("slug") or slug(name))
 
-    encoded = [g for g in inventory if g["cp"] is not None]
-    built = [g for g in inventory if g["cp"] is None and (g["produced"] or g["consumed"])]
-    orphans = [g for g in inventory if g["orphan"]]
+    # One state per glyph, and every count below is a count of states, so a
+    # facet cannot promise rows its filter will not show. The counts were their
+    # own definitions once: "built" took in glyphs a rule only reads, while
+    # their rows said "unreachable" — a contradiction a click exposed.
+    def state_of(glyph):
+        if glyph["cp"] is not None:
+            return "encoded"
+        if glyph["produced"]:
+            return "built"
+        if glyph["orphan"]:
+            return "orphan"
+        # Read by a rule but produced by none; or .notdef, the fallback.
+        return "used" if glyph["consumed"] else "fallback"
+
+    states = [state_of(g) for g in inventory]
+    built = [g for g, st in zip(inventory, states) if st == "built"]
+    orphans = [g for g, st in zip(inventory, states) if st == "orphan"]
+    encoded = [g for g, st in zip(inventory, states) if st == "encoded"]
 
     rows = []
-    for glyph in inventory:
-        if glyph["cp"] is not None:
+    for glyph, state in zip(inventory, states):
+        if state == "encoded":
             code = f'U+{glyph["cp"]:04X}'
             reach = (f'<a href="{link(f"/char/{glyph["cp"]:04X}/")}" class="mono">{code}</a>'
                      if glyph["cp"] in chars_built else f'<span class="mono">{code}</span>')
-            state = "encoded"
-        elif glyph["produced"]:
+        elif state == "built":
             reach = '<span class="quiet">built by a rule</span>'
-            state = "built"
-        else:
+        elif state == "orphan":
             reach = '<span class="fail">unreachable</span>'
-            state = "orphan"
+        elif state == "used":
+            reach = '<span class="quiet">read by a rule, built by none</span>'
+        else:
+            reach = '<span class="quiet">the fallback glyph</span>'
         chips = " ".join(
             f'<a class="chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
             for tag in glyph["produced"])
@@ -1805,8 +1821,8 @@ def glyphs_page(font, chars_built=()):
            of {counted or len(inventory):,}</p>
       </div>
       <p class="quiet">A font is not its codepoints. {len(built):,} of these
-         {len(inventory):,} glyphs have no codepoint at all — they are the conjuncts, half
-         forms and positional variants the layout rules build — and
+         {len(inventory):,} glyphs have no codepoint and are built by the layout rules —
+         the conjuncts, half forms and positional variants — and
          {len(orphans):,} are reachable by nothing: no codepoint, and no rule that produces
          them. However well drawn, those cannot appear in text.{cap_note}</p>
       <p class="quiet">{drawn_note}</p>

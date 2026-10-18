@@ -1446,6 +1446,28 @@ def test_pages_only_link_characters_that_exist():
     assert "U+0D15" in html
 
 
+def test_a_glyph_facet_counts_the_rows_it_shows():
+    """Each facet's count was its own definition: "built" took in glyphs a rule
+    only reads, while their rows said "unreachable". The deploy's facet test
+    caught 864 promised and 791 shown. A count is now a count of row states."""
+    font = dict(MANJARI, slug="manjari", glyphs=[
+        {"name": ".notdef", "cp": None, "produced": [], "consumed": [], "orphan": False},
+        {"name": "A", "cp": 0x0041, "produced": [], "consumed": [], "orphan": False},
+        {"name": "k_ss", "cp": None, "produced": ["akhn"], "consumed": [], "orphan": False},
+        {"name": "k.in", "cp": None, "produced": [], "consumed": ["pres"], "orphan": False},
+        {"name": "stray", "cp": None, "produced": [], "consumed": [], "orphan": True},
+    ])
+    html = render.glyphs_page(font, chars_built=set())
+    for key in ("all", "encoded", "built", "orphan"):
+        promised = int(re.search(rf'data-facet="{key}" data-count="(\d+)"', html).group(1))
+        rows = len(re.findall(r"<tr data-name", html)) if key == "all" \
+            else html.count(f'data-state="{key}"')
+        assert promised == rows, f"{key}: promised {promised}, rows {rows}"
+    # A glyph a rule only reads is not called unreachable, nor built.
+    assert 'data-name="k.in" data-state="used"' in html
+    assert 'data-name=".notdef" data-state="fallback"' in html
+
+
 def test_feature_page_says_what_it_cannot():
     content = {"stages": ["akhn", "pres"], "features": {
         "akhn": {"name": "Akhand ligatures", "table": "GSUB",
