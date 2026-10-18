@@ -17,7 +17,14 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:8787",
     trace: process.env.CI ? "retain-on-failure" : "off",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Firefox falls back font by font where Chrome falls back by cluster, which
+    // is how a mark on its dotted circle came out with two circles there and one
+    // here. Only the tests tagged @firefox run in it: the rest would double the
+    // deploy's test time to check what Chromium already checks.
+    { name: "firefox", use: { ...devices["Desktop Firefox"] }, grep: /@firefox/ },
+  ],
   webServer: {
     command: "node web/tests/serve.mjs",
     url: "http://127.0.0.1:8787/glyph-sleuth/",

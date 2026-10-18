@@ -147,7 +147,8 @@ export async function start(field, reading, out) {
       const notes = [role, place].filter(Boolean).join(" · ");
       const mark = meta && meta[0][0] === "M";
       return `<tr>
-        <td class="glyph">${stand ? `<span class="faint mono">${esc(stand)}</span>`
+        <td class="glyph"${mark && !stand ? ` data-mark="${cp}"` : ""}>${stand
+          ? `<span class="faint mono">${esc(stand)}</span>`
           : esc(mark ? "◌" + ch : ch)}</td>
         <th scope="row"><a class="mono" href="${BASE}char/${hex(cp)}/">U+${hex(cp)}</a></th>
         <td>${esc(core.charName(cp))}${notes ? `<div class="quiet">${esc(notes)}</div>` : ""}</td>
@@ -224,6 +225,75 @@ export async function start(field, reading, out) {
     }
     return coverFiles.get(start);
   };
+
+  // A mark in the codepoint list is drawn on a dotted circle, and the two have
+  // to come from one font. The page font has neither, so each fell back on its
+  // own: Chrome found one font for the pair, but Firefox drew the circle from
+  // Segoe UI and the mark from Nirmala UI, whose shaper, handed a vowel sign
+  // with nothing before it, added a dotted circle of its own — two on screen.
+  // So each mark cell is drawn by one loadable family that has both, and is
+  // hidden until that face is in hand. Unattributed, like the script page's
+  // chart: the cell shows the character, not a claim about a font.
+  const CIRCLE = 0x25CC;
+  const markFaces = new Map();     // codepoint -> families with it and the circle
+  const loaded = new Map();        // family -> settles true once its face is here
+  const facesFor = (cp) => {
+    if (!markFaces.has(cp)) {
+      const block = core.blockAt(cp);
+      const circle = core.blockAt(CIRCLE);
+      markFaces.set(cp, !block || !circle ? Promise.resolve([])
+        : Promise.all([coverOf(block[0]), coverOf(circle[0])]).then(([marks, shapes]) => {
+          if (!marks || !shapes) return [];
+          const { families: found } = core.coveringAll([cp, CIRCLE],
+            new Map([[block[0], marks], [circle[0], shapes]]));
+          const main = core.blockOf(cp);
+          return found.map((index) => families.families[index]).filter((face) => face.draw)
+            .sort((a, b) => (a.for !== main) - (b.for !== main)
+              || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+        }));
+    }
+    return markFaces.get(cp);
+  };
+  const load = (face, text) => {
+    if (!loaded.has(face.name)) {
+      const arrived = new Promise((settle) => {
+        if (face.css) {
+          const link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = face.css;
+          link.onload = link.onerror = () => settle();
+          document.head.append(link);
+        } else {
+          const style = document.createElement("style");
+          style.textContent = face.rule;
+          document.head.append(style);
+          settle();
+        }
+      });
+      loaded.set(face.name, arrived
+        .then(() => document.fonts.load(`30px "${face.name}"`, text))
+        .then((faces) => faces.length > 0, () => false));
+    }
+    return loaded.get(face.name);
+  };
+  const within = (promise, ms) =>
+    Promise.race([promise, new Promise((settle) => setTimeout(() => settle(false), ms))]);
+  async function drawMarks(root) {
+    await Promise.all([...root.querySelectorAll("td[data-mark]")].map(async (cell) => {
+      const cp = Number(cell.dataset.mark);
+      const text = String.fromCodePoint(CIRCLE, cp);
+      // The first three that cover it, in turn: one that fails to load is
+      // not a reason to show the split drawing.
+      for (const face of (await facesFor(cp)).slice(0, 3)) {
+        if (await within(load(face, text), 4000)) {
+          cell.style.fontFamily = `"${face.name}", serif`;
+          break;
+        }
+      }
+      // Shown whether or not a face arrived: a cell that never appears is worse.
+      cell.dataset.drawn = "";
+    }));
+  }
 
   let drawing = 0;
   let stopWatching = () => {};
@@ -433,6 +503,7 @@ export async function start(field, reading, out) {
       </div>
       <section id="drawn-by"></section>`;
     linkable(out);
+    drawMarks(out);
     drawnBy(out.querySelector("#drawn-by"), subject, codepoints);
   }
 

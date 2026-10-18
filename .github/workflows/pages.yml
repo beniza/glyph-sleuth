@@ -83,7 +83,7 @@ jobs:
       # one kind: a page that passed every unit test and was wrong when someone
       # looked at it.
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox
       - run: npx playwright test
       - uses: actions/upload-artifact@v4
         if: failure()

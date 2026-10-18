@@ -15,6 +15,14 @@ the summary. Commit messages carry the reasons.
   coverage the family page gives. Where they cannot — Google's figure is for the
   whole family, the list for one file — the page says so.
 
+### Fixed
+
+- **A mark in Inspect's codepoint list showed two dotted circles in Firefox.**
+  The cell had no font of its own, so the circle and the mark fell back to
+  different fonts, and the second font's shaper added a circle for a vowel sign
+  with nothing before it. Each mark is now drawn by one family that has both.
+  Firefox runs in the deploy's tests for this.
+
 ## 0.6.1 — 2026-10-18
 
 Fixes: links that went nowhere, filters that showed nothing, a page that asked

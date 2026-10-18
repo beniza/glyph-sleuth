@@ -120,6 +120,24 @@ test.describe("Facets", () => {
   });
 });
 
+test.describe("Marks on their circle", () => {
+  // Inspect draws a mark on a dotted circle. With the page font, which has
+  // neither, Firefox took the circle from one fallback font and the mark from
+  // another, whose shaper added a second circle. One face must draw both.
+  test("Inspect draws a mark and its circle in one face that has both @firefox", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${encodeURIComponent("സിബു")}`);
+    const cell = page.locator("td[data-mark]").first();
+    await expect(cell).toHaveAttribute("data-drawn", "", { timeout: 15_000 });
+    await expect(cell).toBeVisible();
+    const drawn = await cell.evaluate((el) => {
+      const family = el.style.fontFamily.split(",")[0].trim().replace(/^"|"$/g, "");
+      return { family, has: family && document.fonts.check(`30px "${family}"`, el.textContent.trim()) };
+    });
+    expect(drawn.family, "the mark was left to fallback fonts").not.toBe("");
+    expect(drawn.has, `${drawn.family} is not loaded for the circle and the mark`).toBe(true);
+  });
+});
+
 test.describe("Links into a page", () => {
   test("copy link copies this page's address with the section", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
