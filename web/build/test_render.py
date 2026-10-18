@@ -265,7 +265,7 @@ def test_a_script_page_names_everyone_who_writes_it():
 
     # The index shows both names and finds the script by either.
     index = render.scripts_index([odia], [font])
-    assert "Oriya (Odia)" in index and 'data-name="oriya (odia)"' in index
+    assert "Oriya (Odia)" in index and 'data-name="oriya (odia)' in index
 
 
 def test_a_language_without_sample_text_says_why():
@@ -370,6 +370,30 @@ def test_the_changelog_names_the_version_in_package_json():
         newest = re.search(r"^## (\d+\.\d+\.\d+) — ", handle.read(), re.M)
     assert newest and newest.group(1) == version, (newest and newest.group(1), version)
     assert render.package_version() == version
+
+
+def test_a_script_can_be_found_by_a_language_written_in_it():
+    """#86. A reader looking for Chinese found nothing in the scripts index: the
+    rows named scripts, and Chinese is written in Han. Each row still says what
+    it is — a script — and carries the languages written in it, so filtering
+    for one finds it."""
+    han = {"code": "Hani", "name": "Han", "iso_name": "Han (Hanzi, Kanji, Hanja)",
+           "chars": 100, "languages": ["cmn"],
+           "written_in": [{"tag": "ja", "name": "Japanese"}, {"tag": "ko", "name": "Korean"},
+                          {"tag": "yue", "name": "Cantonese"}, {"tag": "zh", "name": "Chinese"}],
+           "blocks": [{"name": "CJK Unified Ideographs", "ranges": [[0x4E00, 0x9FFF]],
+                       "chars": 100}]}
+    indexed = [{"id": "cmn", "name": "Mandarin Chinese", "scripts": ["Hani"]}]
+    html = render.scripts_index([han], [], indexed)
+
+    row = re.search(r'<tr data-name="([^"]*)">(.*?)</tr>', html, re.S)
+    assert row, "no script row"
+    for name in ("chinese", "japanese", "korean", "cantonese", "mandarin chinese"):
+        assert name in row.group(1), name
+    # Still a script row: its title is the script, linked to the script's page.
+    assert f'href="{render.link("/script/Hani/")}">Han (Hanzi, Kanji, Hanja)</a>' in row.group(2)
+    # And it shows why a search for a language matched it, the indexed one first.
+    assert "Mandarin Chinese" in row.group(2) and "more" in row.group(2)
 
 
 def test_a_case_with_no_data_is_left_out():
@@ -1234,6 +1258,7 @@ ALLOWED_SLICES = {
     "hexdigest()[:8]": "a slug's hash suffix, not a list of anything",
     'BUILD["commit"][:7]': "a commit's short hash, linked to the whole one",
     "{commit[:7] or": "a commit's short hash, in the build log",
+    "sample = names[:3]": "a few languages named under a script's row; the count of the rest follows",
     # Each sits directly above "All scripts, with counts" / "All languages".
     'for s in ranked_scripts[:12])': "the home page's featured scripts, not an answer",
     'for l in ranked_languages[:12])': "the home page's featured languages",

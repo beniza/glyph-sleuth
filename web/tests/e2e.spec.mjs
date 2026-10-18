@@ -106,6 +106,14 @@ test.describe("Links into a page", () => {
     expect(shown).toBeLessThan(total);
   });
 
+  test("a script is found by a language written in it", async ({ page }) => {
+    // #86: "Chinese" found nothing, because the rows named scripts.
+    await page.goto(`${BASE}/scripts/?q=chinese`);
+    const shown = page.locator("table.index tbody tr");
+    await expect(shown.first()).toBeVisible();
+    await expect(shown.filter({ has: page.locator('a[href$="/script/Hani/"]') })).toHaveCount(1);
+  });
+
   test("Try it's line is in the address and previews on arrival", async ({ page }) => {
     await page.goto(`${BASE}/font/manjari/?text=${encodeURIComponent("ക്ക")}#try-it`);
     await expect(page.locator('[data-try="out"]')).toBeVisible();

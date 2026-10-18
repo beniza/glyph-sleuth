@@ -3190,15 +3190,29 @@ def lang_page(language, fonts, scripts, chars_built, blocks=(), coverage=None):
                 extra_head=faces)
 
 
-def scripts_index(scripts, fonts):
+def scripts_index(scripts, fonts, languages=()):
+    """#86. A reader looking for Chinese found nothing: the rows named scripts,
+    and Chinese is written in Han. Each row is still a script row, titled with the
+    script, but carries every language written in it for the filter to match, and
+    names the first few — indexed ones first — so a match shows its reason."""
     rows = []
     for script in sorted(scripts, key=lambda s: s["name"].lower()):
         whole = sum(1 for font in fonts
                     if script_coverage(font, script)["covered"] >= script["chars"])
+        indexed = sorted((lang["name"] for lang in languages
+                          if script["code"] in (lang.get("scripts") or [])), key=name_key)
+        others = sorted((lang["name"] for lang in script.get("written_in") or []
+                         if lang["name"] not in indexed), key=name_key)
+        names = indexed + others
+        sample = names[:3]
+        written = (f'<div class="quiet">{esc(", ".join(sample))}'
+                   + (f" and {len(names) - len(sample):,} more" if len(names) > len(sample) else "")
+                   + "</div>") if names else ""
+        searchable = " ".join([script_title(script)] + names).lower()
         rows.append(
-            f'      <tr data-name="{esc(script_title(script).lower())}">'
+            f'      <tr data-name="{esc(searchable)}">'
             f'<th scope="row"><a href="{link("/script/" + script["code"] + "/")}">'
-            f'{esc(script_title(script))}</a></th>'
+            f'{esc(script_title(script))}</a>{written}</th>'
             f'<td class="mono">{esc(script["code"])}</td>'
             f'<td class="mono">{len(script["blocks"])}</td>'
             f'<td class="mono">{script["chars"]:,}</td>'
@@ -3484,7 +3498,7 @@ def main():
     write_many(((f"/script/{script['code']}/",
                  script_page(script, fonts["fonts"], languages, chars_built))
                 for script in scripts), "script pages")
-    write("/scripts/", scripts_index(scripts, fonts["fonts"]))
+    write("/scripts/", scripts_index(scripts, fonts["fonts"], languages))
 
     # Every codepoint any exemplar set needs, and which fonts have them —
     # computed once for all languages rather than re-walking every font's

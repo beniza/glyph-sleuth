@@ -12,6 +12,9 @@ the summary. Commit messages carry the reasons.
   text as `?text=`; the analyser reads `?chars=`, on `index.html`.
 - **`/mockup/` says it is the old design prototype** (#11), with hand-written
   figures, so it is not read as the current site.
+- **A script can be found by a language written in it** (#86). Filtering the
+  scripts index for "Chinese" found nothing, because the rows named scripts;
+  each row now names a few of its languages and matches all of them.
 
 ## 0.6.0 — 2026-10-18
 
