@@ -4,7 +4,10 @@ What changed in each release of Glyph Sleuth, newest first. The annotated
 release tags carry the full notes, including what went wrong on the way; this is
 the summary. Commit messages carry the reasons.
 
-## Unreleased
+## 0.7.0 — 2026-10-19
+
+For choosing a font and sending the choice: a shortlist in Inspect, Try it links
+that keep how the text was set, and a family's glyphs filtered by block.
 
 ### Added
 
