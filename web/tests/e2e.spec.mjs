@@ -68,6 +68,36 @@ test.describe("the nav", () => {
   });
 });
 
+test.describe("Facets", () => {
+  // Every facet button carries the number of rows it should show. The glyphs
+  // page's three facets — encoded, built, unreachable — showed none at all from
+  // the day they were added: the rows carry data-state, and the filter compared
+  // every facet with data-verdict, which only the fonts index has. Clicking each
+  // facet and counting what it shows catches that on any page with facets.
+  for (const path of ["/fonts/", "/font/rachana/glyphs/"]) {
+    test(`${path}: each facet shows the rows its count promises`, async ({ page }) => {
+      await page.goto(`${BASE}${path}`);
+      const facets = page.locator(".facet");
+      const count = await facets.count();
+      expect(count, "no facets here, so this proves nothing").toBeGreaterThan(1);
+      for (let i = 0; i < count; i += 1) {
+        const facet = facets.nth(i);
+        const promised = Number(await facet.getAttribute("data-count"));
+        await facet.click();
+        const shown = await page.locator("table.index tbody tr").count();
+        expect(shown, `"${await facet.textContent()}" promised ${promised}`).toBe(promised);
+      }
+    });
+  }
+
+  test("a facet in the address is applied on arrival", async ({ page }) => {
+    await page.goto(`${BASE}/font/rachana/glyphs/?facet=encoded`);
+    const promised = Number(await page.locator('.facet[data-facet="encoded"]').getAttribute("data-count"));
+    expect(promised).toBeGreaterThan(0);
+    await expect(page.locator("table.index tbody tr")).toHaveCount(promised);
+  });
+});
+
 test.describe("Links into a page", () => {
   test("copy link copies this page's address with the section", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);

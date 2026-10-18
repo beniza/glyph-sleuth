@@ -24,6 +24,9 @@ the summary. Commit messages carry the reasons.
   measured yet", and a reading kept after a failed download looked like one made
   today. The last good reading is kept in both cases, and the font page names the
   day the release could not be reached.
+- **A glyphs page's facets list their glyphs.** "Encoded", "built by a rule" and
+  "unreachable" showed nothing from the day they were added: the filter compared
+  every facet with a font's verdict, which a glyph row does not have.
 
 ## 0.6.0 — 2026-10-18
 

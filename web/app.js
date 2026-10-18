@@ -52,7 +52,10 @@ if (table) {
       case "all": return true;
       case "measured": return row.dataset.tier === "measured";
       case "not measured yet": return row.dataset.tier !== "measured";
-      default: return row.dataset.verdict === facet;
+      // A row's kind: its verdict on the fonts index, its state on a glyphs
+      // page. Matching only the verdict left the glyphs page's encoded, built
+      // and unreachable facets showing nothing from the day they were added.
+      default: return (row.dataset.verdict ?? row.dataset.state) === facet;
     }
   };
 
