@@ -159,6 +159,67 @@ test.describe("Try it in the address", () => {
   });
 });
 
+test.describe("A shortlist in Inspect", () => {
+  // Someone choosing a font types their text, sets it as they will use it,
+  // picks and ranks families, and sends the link. The recipient must see that
+  // shortlist, in that order and setting — and that the rest exist.
+  const text = encodeURIComponent("മലയാളം");
+
+  test("a sent shortlist arrives in its order and setting, with the rest one click away", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${text}&px=40&weight=700&italic=1&pick=rit-rachana,manjari,nosuchfamily`);
+    const rows = page.locator(".shortlist .pick-row");
+    await expect(rows).toHaveCount(2);
+    expect(await rows.evaluateAll((all) => all.map((row) => row.dataset.row)))
+      .toEqual(["rit-rachana", "manjari"]);
+    await expect(page.locator("[data-shortlist]")).toContainText("Picked by whoever sent this link");
+    // A pick this text cannot show is named, not silently dropped.
+    await expect(page.locator("[data-shortlist]")).toContainText("nosuchfamily");
+    // The rest are there, collapsed — never removed.
+    await expect(page.locator("details.others")).not.toHaveAttribute("open", "");
+    await expect(page.locator("details.others summary")).toContainText("families that have this text");
+
+    // Set as sent, in a face the family really has, and nothing faked.
+    const set = await rows.first().locator(".tile-glyph").evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { size: s.fontSize, weight: s.fontWeight, style: s.fontStyle, synthesis: s.fontSynthesis };
+    });
+    expect(set).toMatchObject({ size: "40px", weight: "700", style: "italic" });
+    expect(set.synthesis).toBe("none");
+    // Its name leads to its Try it, with the same text and setting.
+    const href = await rows.first().locator("a.draws").getAttribute("href");
+    expect(href).toContain("/font/rit-rachana/?text=");
+    expect(href).toMatch(/px=40.*weight=700.*italic=1#try-it/);
+  });
+
+  test("reordering and removing are written back to the link", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${text}&pick=rit-rachana,manjari`);
+    await page.locator('.pick-row[data-row="rit-rachana"] [data-move="1"]').click();
+    expect(new URL(page.url()).searchParams.get("pick")).toBe("manjari,rit-rachana");
+    // Once changed, the picks are the reader's own, and the page says so.
+    await expect(page.locator("[data-shortlist]")).toContainText("Your shortlist");
+    await page.locator('.pick-row[data-row="manjari"] [data-drop]').click();
+    expect(new URL(page.url()).searchParams.get("pick")).toBe("rit-rachana");
+  });
+
+  test("a weight a family does not publish is not faked, and is said", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${text}&weight=900&pick=rit-rachana`);
+    const row = page.locator('.pick-row[data-row="rit-rachana"]');
+    await expect(row.locator(".draws-short")).toHaveText("no 900, set at 700");
+    expect(await row.locator(".tile-glyph").evaluate((el) => getComputedStyle(el).fontWeight)).toBe("700");
+  });
+
+  test("a star on a family's tile adds it to the shortlist and the link", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${text}`);
+    await expect(page.locator(".shortlist")).toHaveCount(0);
+    await page.locator('.pick[data-pick="rit-rachana"]').click();
+    await expect(page.locator('.pick-row[data-row="rit-rachana"]')).toBeVisible();
+    await expect(page.locator('.pick[data-pick="rit-rachana"]')).toHaveAttribute("aria-pressed", "true");
+    expect(new URL(page.url()).searchParams.get("pick")).toBe("rit-rachana");
+    await page.locator('[data-set="weight"]').selectOption("700");
+    expect(new URL(page.url()).searchParams.get("weight")).toBe("700");
+  });
+});
+
 test.describe("Marks on their circle", () => {
   // Inspect draws a mark on a dotted circle. With the page font, which has
   // neither, Firefox took the circle from one fallback font and the mark from
@@ -346,6 +407,8 @@ test.describe("Inspect", () => {
       await route.continue();
     });
     await page.goto(`${BASE}/inspect/?t=%E0%B4%9E%E0%B5%8D%E0%B4%9E%E0%B5%8D`);
+    // Faces load as they are scrolled to, so go to it rather than hope it is near.
+    await page.locator('#drawn-by .drawn .tile-glyph[data-slug="manjari"]').scrollIntoViewIfNeeded();
     const smc = page.locator('#drawn-by .tile-glyph[data-face="Manjari"]');
     await smc.waitFor({ timeout: 15_000 });
     // The check runs after promotion; a negative has to be given time to fail.

@@ -555,6 +555,25 @@ def count_in_range(ranges, first, last):
     return total
 
 
+def published_styles(font):
+    """The weights and whether there is an italic: what a family publishes, so
+    what Try it may offer and Inspect may ask for. Anything else, a browser
+    fakes by smearing or slanting the regular — see `try_it`.
+    """
+    faces = font.get("faces") or []
+    weights = sorted({f.rstrip("i") for f in faces if f.rstrip("i").isdigit()}, key=int)
+    italic = any(f.endswith("i") for f in faces)
+
+    # A variable face is one file covering everything between two numbers, so the
+    # choices are the round weights inside its own range — not the two endpoints,
+    # which is all the face list can say.
+    axis = next((a for a in (font.get("axes") or []) if a.get("tag") == "wght"), None)
+    if axis:
+        low, high = int(axis["min"]), int(axis["max"])
+        weights = [str(w) for w in range(100, 1000, 100) if low <= w <= high] or [str(low)]
+    return weights, italic
+
+
 def try_it(font, name):
     """Set your own text in this family, with the switches the font really has.
 
@@ -580,17 +599,7 @@ def try_it(font, name):
     if not can_draw(font):
         return ""
 
-    faces = font.get("faces") or []
-    weights = sorted({f.rstrip("i") for f in faces if f.rstrip("i").isdigit()}, key=int)
-    italic = any(f.endswith("i") for f in faces)
-
-    # A variable face is one file covering everything between two numbers, so the
-    # choices are the round weights inside its own range — not the two endpoints,
-    # which is all the face list can say.
-    axis = next((a for a in (font.get("axes") or []) if a.get("tag") == "wght"), None)
-    if axis:
-        low, high = int(axis["min"]), int(axis["max"])
-        weights = [str(w) for w in range(100, 1000, 100) if low <= w <= high] or [str(low)]
+    weights, italic = published_styles(font)
     features = [t for t in (font.get("features") or []) if t not in ("aalt",)]
 
     controls = ['        <label class="try-size"><span class="quiet">size</span>'
@@ -2045,6 +2054,7 @@ def inspect_coverage(fonts, blocks):
     families = []
     for font in measured:
         css = face_css_of(font)
+        weights, italic = published_styles(font)
         families.append({
             "name": font["name"],
             "slug": font.get("slug") or slug(font["name"]),
@@ -2052,6 +2062,10 @@ def inspect_coverage(fonts, blocks):
             "rule": "" if css else face_rule(font),
             "draw": can_draw(font),
             "for": (font.get("_dominant") or ("", 0, 0))[0],
+            # What a shortlist may set it in; anything else is shown at the
+            # nearest real face and said to be.
+            "weights": [int(w) for w in weights] or [400],
+            "italic": italic,
         })
 
     starts = [block[0] for block in blocks]

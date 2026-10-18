@@ -18,6 +18,14 @@ the summary. Commit messages carry the reasons.
   size, `weight`, `italic=1`, and `off=` for the features switched off — for
   example `?text=…&px=48&weight=700&off=akhn`. A setting the family does not
   offer is ignored.
+- **A shortlist in Inspect, to choose a font and send the choice.** Set the
+  text at a size, weight and italic; star the families you like; rank them by
+  dragging or with ↑ ↓; copy a link. The recipient lands on that shortlist, in
+  that order and setting, with every other family that has the text one click
+  away and never removed. Each family is set in the nearest face it publishes,
+  and says so where that is not what was asked — nothing is emboldened or
+  slanted by the browser. Feature switches stay on each family's Try it, which
+  every name links to with the same text and setting.
 
 ### Fixed
 
@@ -26,6 +34,9 @@ the summary. Commit messages carry the reasons.
   different fonts, and the second font's shaper added a circle for a vowel sign
   with nothing before it. Each mark is now drawn by one family that has both.
   Firefox runs in the deploy's tests for this.
+- **SMC's families were offered in one weight.** SMC hosts its own stylesheet,
+  so no face list came with it: Manjari — Thin, Regular and Bold — had no weight
+  control in Try it. The faces are now read from that stylesheet.
 
 ## 0.6.1 — 2026-10-18
 

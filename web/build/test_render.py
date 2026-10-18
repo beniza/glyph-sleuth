@@ -1515,6 +1515,24 @@ def test_a_block_on_the_family_page_leads_to_its_glyphs():
     assert "does not list this block" in note and "gives 0" not in note
 
 
+def test_inspect_knows_the_faces_each_family_publishes():
+    """A shortlist set at 700 sets each family in the nearest weight it really
+    has, and says so where that is not 700 — so it has to know the weights."""
+    blocks = [[0x0D00, 0x0D7F, "Malayalam"]]
+    fonts = render.prepare_fonts([
+        {"name": "Two", "slug": "two", "tier": "measured", "source": "google",
+         "ranges": [[0x0D00, 0x0D7F]], "faces": ["400", "700", "400i"]},
+        {"name": "Range", "slug": "range", "tier": "measured", "source": "google",
+         "ranges": [[0x0D00, 0x0D7F]], "faces": ["100", "900"],
+         "axes": [{"tag": "wght", "min": 100, "max": 900}]},
+    ], blocks)
+    families, _cover = render.inspect_coverage(fonts, blocks)
+    by_name = {f["name"]: f for f in families["families"]}
+    assert by_name["Two"]["weights"] == [400, 700] and by_name["Two"]["italic"] is True
+    # A variable face is every round weight in its range, as Try it offers.
+    assert by_name["Range"]["weights"] == list(range(100, 1000, 100))
+
+
 def test_feature_page_says_what_it_cannot():
     content = {"stages": ["akhn", "pres"], "features": {
         "akhn": {"name": "Akhand ligatures", "table": "GSUB",
@@ -1702,6 +1720,9 @@ def test_inspect_can_answer_for_every_codepoint_of_a_string():
     assert by_name["Unservable"]["draw"] is False
     assert by_name["Whole"]["draw"] is True
     assert by_name["Whole"]["for"] == "Malayalam"
+    # What a shortlist may set each in: the faces it publishes, and no more.
+    # Knowing of none, the regular alone — never a weight we could not load.
+    assert by_name["Partial"]["weights"] == [400] and by_name["Partial"]["italic"] is False
 
     # Keyed by where the block starts, which blocks.json already says, so the
     # browser needs no second slug function to find the file.

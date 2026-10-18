@@ -295,6 +295,108 @@ export async function start(field, reading, out) {
     }));
   }
 
+  // ------------------------------------------------ how the families are set
+  //
+  // Someone choosing a font types their text, sets it the way they will use it,
+  // picks the families they like and ranks them — and sends that as a link. So
+  // the size, weight, italic and the ranked picks are all in the address, next
+  // to the text, under the names Try it uses: px, weight, italic, pick.
+  //
+  // Feature switches are not here on purpose. They are per font and they are a
+  // debugging tool: akhn off breaks every Malayalam conjunct, which no one
+  // choosing a font wants to send. Each family's name leads to its Try it,
+  // with the same text and setting, where they are.
+  const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+  // px 0 is the layout's own size; weight 0 is each family's own regular,
+  // which for a display family that ships only a bold is that bold — set
+  // without comment, because nobody asked for anything else.
+  const view = { px: 0, weight: 0, italic: false };
+  let picks = [];          // family slugs, in the order they were ranked
+  let fromLink = false;    // arrived with picks: someone sent this shortlist
+  {
+    const given = new URL(location.href).searchParams;
+    const px = Number(given.get("px"));
+    if (px) view.px = Math.min(160, Math.max(12, Math.round(px)));
+    if (WEIGHTS.includes(Number(given.get("weight")))) view.weight = Number(given.get("weight"));
+    view.italic = given.get("italic") === "1";
+    picks = [...new Set((given.get("pick") || "").split(",").filter(Boolean))];
+    fromLink = picks.length > 0;
+  }
+
+  // Replaced, not pushed, like every filter on the site: Back leaves the page.
+  // A default is left out, so a plain link stays plain.
+  const remember = () => {
+    const url = new URL(location.href);
+    const state = {
+      t: field.value,
+      px: view.px ? String(view.px) : "",
+      weight: view.weight ? String(view.weight) : "",
+      italic: view.italic ? "1" : "",
+      pick: picks.join(","),
+    };
+    for (const [key, value] of Object.entries(state)) {
+      value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
+    }
+    history.replaceState(null, "", url);
+  };
+
+  // The face a family really has, nearest the one asked for. Asked for 700, a
+  // family that publishes only 400 is set at 400 and says so: left to itself
+  // the browser smears the regular into a bold, or slants it into an italic,
+  // and shows that under the family's name. `font-synthesis: none` forbids it.
+  const faceOf = (face) => {
+    const weights = face.weights && face.weights.length ? face.weights : [400];
+    const wanted = view.weight || 400;
+    const weight = weights.reduce((best, w) =>
+      (Math.abs(w - wanted) < Math.abs(best - wanted) ? w : best), weights[0]);
+    const italic = view.italic && face.italic;
+    const short = [view.weight && weight !== view.weight ? `no ${view.weight}, set at ${weight}` : "",
+      view.italic && !face.italic ? "no italic" : ""].filter(Boolean).join(" · ");
+    return { weight, italic, short };
+  };
+
+  // The family's own page, at its Try it, with this text set this way.
+  const tryLink = (face) => {
+    const { weight, italic } = faceOf(face);
+    const url = new URL(`${BASE}font/${face.slug}/`, location.href);
+    if (field.value) url.searchParams.set("text", field.value);
+    if (view.px) url.searchParams.set("px", String(view.px));
+    if (weight !== 400) url.searchParams.set("weight", String(weight));
+    if (italic) url.searchParams.set("italic", "1");
+    return `${url.pathname}${url.search}#try-it`;
+  };
+
+  // Apply the setting to every drawing under `root`, and say where a family
+  // could not follow it.
+  const restyle = (root, bySlug) => {
+    for (const span of root.querySelectorAll(".tile-glyph[data-slug]")) {
+      const face = bySlug.get(span.dataset.slug);
+      if (!face) continue;
+      const { weight, italic, short } = faceOf(face);
+      span.style.fontWeight = String(weight);
+      span.style.fontStyle = italic ? "italic" : "normal";
+      span.style.fontSynthesis = "none";
+      span.style.fontSize = view.px ? `${view.px}px` : "";
+      const tile = span.closest(".draws");
+      const note = tile.querySelector(".draws-short");
+      note.textContent = short;
+      note.hidden = !short;
+      tile.href = tryLink(face);
+    }
+    for (const button of root.querySelectorAll("[data-pick]")) {
+      const on = picks.includes(button.dataset.pick);
+      button.setAttribute("aria-pressed", String(on));
+      button.textContent = on ? "★" : "☆";
+    }
+  };
+
+  const setWords = () => [view.px ? `${view.px}px` : "",
+    view.weight ? `weight ${view.weight}` : "", view.italic ? "italic" : ""]
+    .filter(Boolean).join(", ");
+
+  let stopShortlist = () => {};
+  let scrolledToShortlist = false;
+
   let drawing = 0;
   let stopWatching = () => {};
 
@@ -306,6 +408,7 @@ export async function start(field, reading, out) {
   async function drawnBy(panel, subject, codepoints) {
     const turn = ++drawing;
     stopWatching();
+    stopShortlist();
     const cps = codepoints.map((ch) => ch.codePointAt(0));
     const starts = [...new Set(cps.map((cp) => core.blockAt(cp)).filter(Boolean)
       .map((block) => block[0]))];
@@ -364,17 +467,25 @@ export async function start(field, reading, out) {
     // text, so past a few characters the families become rows and the text
     // gets the full width to be read in.
     const long = clusters(subject).length > 3 || subject.length > 8;
+    const bySlug = new Map(drawable.map((face) => [face.slug, face]));
+
     // Every tile asks for its face rather than claiming one: `data-family`, not
     // `data-face`, until lazyfaces.js has the face in hand. Two thousand Latin
     // families are two thousand webfonts, so they arrive as they are scrolled to.
-    const tiles = drawable.map((face) =>
-      `<a class="draws${long ? " draws-row" : ""}" href="${BASE}font/${esc(face.slug)}/">`
+    const familyDrawing = (face, row) =>
+      `<a class="draws${row ? " draws-row" : ""}" href="${esc(tryLink(face))}">`
       + `<span class="draws-name">${esc(face.name)}${face.for === main ? " ·" : ""}</span>`
+      + `<span class="draws-short" hidden></span>`
       + `<span class="tile-glyph" style="font-family:&quot;${esc(face.name)}&quot;,serif"`
-      + ` data-family="${esc(face.name)}"`
+      + ` data-family="${esc(face.name)}" data-slug="${esc(face.slug)}"`
       + (face.css ? ` data-css="${esc(face.css)}"` : "")
       + (face.rule ? ` data-rule="${esc(face.rule)}"` : "")
-      + `>${esc(subject)}</span></a>`).join("");
+      + `>${esc(subject)}</span></a>`;
+    const tiles = drawable.map((face) =>
+      `<div class="draws-cell">${familyDrawing(face, long)}`
+      + `<button type="button" class="pick" data-pick="${esc(face.slug)}" aria-pressed="false"`
+      + ` title="Add to the shortlist" aria-label="Shortlist ${esc(face.name)}">☆</button></div>`)
+      .join("");
 
     const settled = `All ${drawable.length.toLocaleString()} indexed `
       + `${drawable.length === 1 ? "family that has" : "families that have"} every codepoint `
@@ -384,15 +495,177 @@ export async function start(field, reading, out) {
           + "load or re-serve, so they cannot be drawn here."
         : "")
       + unmeasured;
+    const grid = `<div class="${long ? "drawn-rows" : "drawn"}">${tiles}</div>`;
+    // Someone sent a shortlist: it is what they meant to show, so it leads and
+    // the rest wait one click away. Never removed — a link showing three of
+    // forty-two families as though they were all would be its own small lie.
+    const sent = fromLink && picks.some((pick) => bySlug.has(pick));
     panel.innerHTML = `<h2 class="eyebrow" id="families">Drawn by every family that has it</h2>
-      <div class="${long ? "drawn-rows" : "drawn"}">${tiles}</div>
+      <div class="set-in" role="group" aria-label="How every family is set">
+        <label><span class="quiet">size</span><input type="range" min="12" max="160" step="1"
+          data-set="px" value="${view.px || (long ? 34 : 44)}" aria-label="Size">
+          <span class="mono" data-set-value>${view.px ? `${view.px}px` : "auto"}</span></label>
+        <label><span class="quiet">weight</span><select data-set="weight" aria-label="Weight">
+          <option value="0">as published</option>
+          ${WEIGHTS.map((w) => `<option${w === view.weight ? " selected" : ""}>${w}</option>`).join("")}
+          </select></label>
+        <label><input type="checkbox" data-set="italic"${view.italic ? " checked" : ""}>
+          <span>italic</span></label>
+      </div>
+      <p class="quiet set-note">Each family is set in the nearest weight it publishes, and in
+        italic only if it has one; where that is not what was asked, its name says so. Nothing
+        here is emboldened or slanted by the browser. ☆ adds a family to a shortlist you can
+        rank and send.</p>
+      <div data-shortlist></div>
+      ${sent
+        ? `<details class="others"><summary>Show all ${drawable.length.toLocaleString()}
+             ${drawable.length === 1 ? "family" : "families"} that have this text</summary>
+             ${grid}</details>`
+        : grid}
       <p class="quiet"><span data-drawn-note="${esc(settled)}">${esc(settled)}</span>
         The same codepoints, drawn by each family's own face. Having every codepoint is not
         the same as drawing them correctly together — where they differ, the difference is
         the font's: which lookups it carries, and which sequences it was built to handle. A
         dot marks a family drawn for this script rather than one that merely covers it.</p>`;
+
+    const box = panel.querySelector("[data-shortlist]");
+    const indexed = new Set(all.map((face) => face.slug));
+
+    // The shortlist: the picks in their order, drawn as rows so the text is read
+    // whole, each with ↑ ↓ × and a grip to drag by. The buttons are the way that
+    // works everywhere — by keyboard, and on a phone, where dragging does not.
+    const shortlist = () => {
+      stopShortlist();
+      const shown = picks.filter((pick) => bySlug.has(pick)).map((pick) => bySlug.get(pick));
+      const absent = picks.filter((pick) => !bySlug.has(pick));
+      if (!shown.length && !absent.length) {
+        box.innerHTML = "";
+        return;
+      }
+      const words = setWords();
+      const count = `${shown.length} ${shown.length === 1 ? "family" : "families"}`;
+      const said = fromLink
+        ? `Picked by whoever sent this link: ${count}${words ? `, set at ${words}` : ""}, in
+           their order. Every other family that has this text is below.`
+        : `Your shortlist: ${count}${words ? `, set at ${words}` : ""}. Drag a row or use the
+           arrows to rank them; the link keeps the order.`;
+      const rows = shown.map((face, at) =>
+        `<li class="pick-row" draggable="true" data-row="${esc(face.slug)}">`
+        + `<span class="grip" aria-hidden="true" title="Drag to reorder">⠿</span>`
+        + familyDrawing(face, true)
+        + `<span class="pick-moves">`
+        + `<button type="button" data-move="-1"${at === 0 ? " disabled" : ""}`
+        + ` aria-label="Move ${esc(face.name)} up">↑</button>`
+        + `<button type="button" data-move="1"${at === shown.length - 1 ? " disabled" : ""}`
+        + ` aria-label="Move ${esc(face.name)} down">↓</button>`
+        + `<button type="button" data-drop aria-label="Remove ${esc(face.name)}">×</button>`
+        + `</span></li>`).join("");
+      // A pick this text cannot show is named, not dropped silently: the sender
+      // chose it, and the reader should know it was there.
+      const why = (pick) => (indexed.has(pick)
+        ? "has this text but publishes no webfont we can load"
+        : "does not have every codepoint of this text, or is not a family we index");
+      const missing = absent.length
+        ? `<p class="quiet">Not shown: ${absent.map((pick) =>
+          `<span class="mono">${esc(pick)}</span> (${why(pick)})`).join(", ")}.</p>`
+        : "";
+      box.innerHTML = `<h2 class="eyebrow" id="shortlist">Shortlist</h2>
+        <p class="quiet">${said}</p>
+        ${rows ? `<ol class="shortlist">${rows}</ol>` : ""}${missing}
+        <p class="share-row"><button type="button" class="preview" data-share>Copy link to
+          this shortlist</button> <span class="quiet" data-shared role="status"></span></p>`;
+      restyle(box, bySlug);
+      sectionLinks(box);
+      stopShortlist = lazy.watch(box.querySelectorAll("[data-family]"), null);
+    };
+
+    const changed = () => {
+      remember();
+      restyle(panel, bySlug);
+      shortlist();
+    };
+    // Once the reader changes the picks they are theirs, not the sender's.
+    const repicked = () => {
+      fromLink = false;
+      changed();
+    };
+    const move = (from, to) => {
+      if (to < 0 || to >= picks.length || from === to) return;
+      const [pick] = picks.splice(from, 1);
+      picks.splice(to, 0, pick);
+      repicked();
+    };
+
+    panel.addEventListener("click", async (event) => {
+      const target = event.target.closest("button");
+      if (!target) return;
+      const row = target.closest("[data-row]");
+      if (target.dataset.pick) {
+        const pick = target.dataset.pick;
+        picks = picks.includes(pick) ? picks.filter((p) => p !== pick) : [...picks, pick];
+        repicked();
+      } else if (target.dataset.move && row) {
+        const at = picks.indexOf(row.dataset.row);
+        move(at, at + Number(target.dataset.move));
+        box.querySelector(`[data-row="${CSS.escape(row.dataset.row)}"] [data-move="${target.dataset.move}"]`)
+          ?.focus();
+      } else if (target.hasAttribute("data-drop") && row) {
+        picks = picks.filter((p) => p !== row.dataset.row);
+        repicked();
+      } else if (target.hasAttribute("data-share")) {
+        remember();
+        const status = box.querySelector("[data-shared]");
+        // The link lands on the shortlist, not on the top of Inspect.
+        const link = new URL(location.href);
+        link.hash = "shortlist";
+        try {
+          await navigator.clipboard.writeText(link.href);
+          status.textContent = "Copied. It carries the text, the setting and this order.";
+        } catch {
+          status.textContent = "Could not copy — the address bar holds the same link.";
+        }
+      }
+    });
+
+    // Dragging, for a mouse: drop a row on another and it takes that place.
+    let dragged = null;
+    box.addEventListener("dragstart", (event) => {
+      dragged = event.target.closest("[data-row]")?.dataset.row || null;
+      if (dragged) event.dataTransfer.setData("text/plain", dragged);
+    });
+    box.addEventListener("dragover", (event) => {
+      if (dragged && event.target.closest("[data-row]")) event.preventDefault();
+    });
+    box.addEventListener("drop", (event) => {
+      const onto = event.target.closest("[data-row]");
+      if (!dragged || !onto) return;
+      event.preventDefault();
+      move(picks.indexOf(dragged), picks.indexOf(onto.dataset.row));
+      dragged = null;
+    });
+
+    for (const control of panel.querySelectorAll("[data-set]")) {
+      control.addEventListener("input", () => {
+        if (control.dataset.set === "px") {
+          view.px = Number(control.value);
+          panel.querySelector("[data-set-value]").textContent = `${view.px}px`;
+        }
+        if (control.dataset.set === "weight") view.weight = Number(control.value);
+        if (control.dataset.set === "italic") view.italic = control.checked;
+        changed();
+      });
+    }
+
+    restyle(panel, bySlug);
+    shortlist();
     linkable(panel);
-    stopWatching = lazy.watch(panel.querySelectorAll("[data-family]"),
+    // A sent shortlist is what the link is for, and it sits below the codepoint
+    // table: go to it, once, even from a link copied out of the address bar.
+    if (sent && !location.hash && !scrolledToShortlist) {
+      box.querySelector("#shortlist")?.scrollIntoView();
+      scrolledToShortlist = true;
+    }
+    stopWatching = lazy.watch(panel.querySelectorAll(".drawn [data-family], .drawn-rows [data-family]"),
       panel.querySelector("[data-drawn-note]"));
   }
 
@@ -517,10 +790,7 @@ export async function start(field, reading, out) {
   field.addEventListener("input", () => {
     clearTimeout(pending);
     pending = setTimeout(() => {
-      const next = new URL(location.href);
-      field.value ? next.searchParams.set("t", field.value)
-        : next.searchParams.delete("t");
-      history.replaceState(null, "", next);
+      remember();
       show(field.value);
     }, 150);
   });

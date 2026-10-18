@@ -767,6 +767,29 @@ def test_lookup_rules_are_capped():
     assert len(row["rules"]) == gen_index.RULE_SAMPLES  # only a few shown
 
 
+def test_a_foundry_stylesheet_says_which_faces_it_serves():
+    """SMC hosts its own stylesheet, so no face list came with it and Manjari —
+    Thin, Regular and Bold — was offered in one weight. The stylesheet is what
+    the browser loads, so the faces it declares are the ones a page may ask for."""
+    sheet = """
+    @font-face { font-family: "Manjari"; font-style: normal; font-weight: 400;
+      src: url(/m/Manjari-Regular.woff2) format("woff2"); }
+    @font-face { font-family: "Manjari"; font-style: normal; font-weight: 700;
+      src: url(/m/Manjari-Bold.woff2) format("woff2"); }
+    @font-face { font-family: "Manjari"; font-weight: 100;
+      src: url(/m/Manjari-Thin.woff2) format("woff2"); }
+    @font-face { font-family: "Manjari"; font-style: italic; font-weight: 400;
+      src: url(/m/Manjari-Italic.woff2) format("woff2"); }
+    """
+    assert gen_index.faces_from_stylesheet(sheet) == ["100", "400", "700", "400i"]
+    # A variable face declares a range; its two ends, as a release's face list does.
+    ranged = '@font-face { font-family: "V"; font-weight: 100 900; src: url(v.woff2); }'
+    assert gen_index.faces_from_stylesheet(ranged) == ["100", "900"]
+    # No weight declared is the regular, which is what CSS says it means.
+    assert gen_index.faces_from_stylesheet('@font-face { src: url(a.woff2); }') == ["400"]
+    assert gen_index.faces_from_stylesheet("") == []
+
+
 def test_glyph_inventory():
     """Every glyph in the font, and what the layout rules do with it.
 

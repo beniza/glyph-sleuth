@@ -428,6 +428,34 @@ def family_from_stylesheet(sheet):
     return found.group(1).strip() if found else None
 
 
+FONT_FACE = re.compile(r"@font-face\s*\{([^}]*)\}", re.S)
+CSS_WEIGHT = re.compile(r"font-weight:\s*(\d+)(?:\s+(\d+))?")
+CSS_STYLE = re.compile(r"font-style:\s*(\w+)")
+
+
+def faces_from_stylesheet(sheet):
+    """The faces a foundry's own stylesheet declares — "400", "700", "100i".
+
+    SMC hosts its own stylesheet, so the build never had the face list it reads
+    from a Google entry or a release's files, and recorded none: Manjari, which
+    SMC serves in Thin, Regular and Bold, was offered in one weight, and a
+    shortlist at 700 would have said it had no bold. The stylesheet is what the
+    browser loads, so what it declares is what a page may ask for.
+    """
+    faces = []
+    for block in FONT_FACE.findall(sheet or ""):
+        weight = CSS_WEIGHT.search(block)
+        style = CSS_STYLE.search(block)
+        italic = bool(style) and style.group(1) in ("italic", "oblique")
+        # A variable face declares a range; its two ends, as a release's does.
+        for value in ([weight.group(1), weight.group(2)] if weight and weight.group(2)
+                      else [weight.group(1) if weight else "400"]):
+            key = face_key(value, italic)
+            if key not in faces:
+                faces.append(key)
+    return sorted(faces, key=lambda k: (k.endswith("i"), int(k.rstrip("i"))))
+
+
 def foundry_record(name, source, page, css=None, licence="", facts=None):
     """One indexed family from a foundry.
 
@@ -1022,6 +1050,9 @@ def foundry_family(source, project, token=None):
     licence = facts.get("licence", licence)
 
     facts = dict(facts)
+    if source["host"] == "css" and extra:
+        # Read every build from the stylesheet the probe already fetched.
+        facts["faces"] = faces_from_stylesheet(extra) or facts.get("faces") or []
     facts["provenance"] = {"file": label,
                            "release": extra if source["host"] != "css" else css,
                            "read": facts.get("read", TODAY)}

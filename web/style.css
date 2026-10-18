@@ -1020,3 +1020,88 @@ table.tight .quiet { font-size: 12.5px; }
   /* Anchored to the right edge, or the menu itself hangs off the page. */
   .tools-menu { left: auto; right: 0; }
 }
+
+/* Inspect: how every family is set, and the shortlist a reader ranks and sends.
+   The pick button sits on the tile rather than inside it: the tile is a link. */
+.set-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin: 10px 0 4px;
+  font-size: 12px;
+}
+.set-in label { display: flex; align-items: center; gap: 6px; }
+.set-in input[type=range] { width: 130px; }
+.set-in select {
+  font: inherit;
+  padding: 2px 4px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.set-note { font-size: 12px; margin-top: 0; }
+.draws-cell { position: relative; min-width: 0; display: flex; }
+.draws-cell > .draws { flex: 1; }
+.pick {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font: 15px/1 var(--sans);
+  padding: 3px 5px;
+  min-width: 28px;
+  min-height: 28px;
+  color: var(--faint);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.pick:hover, .pick:focus-visible { color: var(--ink); }
+.pick[aria-pressed=true] { color: var(--proof); }
+.drawn-rows .pick { top: 8px; }
+.draws-short {
+  display: block;
+  font-size: 10px;
+  color: var(--alarm);
+  letter-spacing: 0;
+}
+.shortlist {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.pick-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--bone);
+}
+.pick-row .draws-row { border-bottom: none; }
+.grip { color: var(--faint); cursor: grab; padding: 0 2px; user-select: none; }
+.pick-moves { display: flex; gap: 2px; }
+.pick-moves button {
+  font: 13px/1 var(--mono);
+  min-width: 28px;
+  min-height: 28px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.pick-moves button:disabled { color: var(--faint); cursor: default; }
+.share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.others > summary { cursor: pointer; color: var(--proof); margin: 10px 0; }
+@media (max-width: 560px) {
+  .pick-row { grid-template-columns: 1fr auto; }
+  .grip { display: none; }
+}
+/* The note sits under the name; the drawing keeps the second column. */
+.draws-row .draws-short { grid-column: 1; text-align: left; }
+.draws-row .tile-glyph { grid-column: 2; grid-row: 1 / span 2; }
+@media (max-width: 560px) {
+  .draws-row .tile-glyph { grid-column: auto; grid-row: auto; }
+}
