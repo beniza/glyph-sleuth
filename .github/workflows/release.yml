@@ -52,7 +52,9 @@ jobs:
               print(f"::error::CHANGELOG.md has no section for {version}")
               sys.exit(1)
           body = found.group(1).strip()
-          headline = body.splitlines()[0].strip().rstrip(".")
+          # The summary is the first paragraph, however it is wrapped.
+          blank_line = chr(10) * 2
+          headline = " ".join(body.split(blank_line)[0].split()).rstrip(".")
           open("notes.md", "w", encoding="utf-8").write(
               body + "\n\nThe annotated tag carries the full notes.\n")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:

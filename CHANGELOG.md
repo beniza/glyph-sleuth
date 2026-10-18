@@ -4,7 +4,10 @@ What changed in each release of Glyph Sleuth, newest first. The annotated
 release tags carry the full notes, including what went wrong on the way; this is
 the summary. Commit messages carry the reasons.
 
-## Unreleased
+## 0.6.1 — 2026-10-18
+
+Fixes: links that went nowhere, filters that showed nothing, a page that asked
+one host for too much, and measurements that were dropped or passed off as fresh.
 
 ### Fixed
 
