@@ -480,6 +480,9 @@ export function standin(cp) {
 // ------------------------------------------------------- query parsing
 
 const CP_PREFIXED = /^(?:U\+|u\+|0x|0X|\\u|\\U|&#x|&#X)([0-9A-Fa-f]{1,6});?$/;
+// HTML's decimal reference, &#2018; — the explicit way to say decimal. It was
+// read as plain text, which left bare digits in a list as the only way in.
+const CP_DECIMAL = /^&#([0-9]{1,7});?$/;
 const PROP = /^\\?p\{(.+)\}$/;
 const RANGE = /^(?:U\+|0x|)([0-9A-Fa-f]{2,6})\s*(?:\.\.|-|…)\s*(?:U\+|0x|)([0-9A-Fa-f]{2,6})$/i;
 
@@ -500,6 +503,11 @@ export function parse(text, { fonts = [], languages = [], scripts = [] } = {}) {
 
   m = CP_PREFIXED.exec(raw);
   if (m && valid(parseInt(m[1], 16))) return query("char", parseInt(m[1], 16), "codepoint");
+
+  m = CP_DECIMAL.exec(raw);
+  if (m && valid(parseInt(m[1], 10))) {
+    return query("char", parseInt(m[1], 10), "decimal codepoint");
+  }
 
   m = RANGE.exec(raw);
   if (m) {
@@ -550,7 +558,19 @@ export function parse(text, { fonts = [], languages = [], scripts = [] } = {}) {
   const parts = raw.replace(/,/g, " ").split(/\s+/).filter(Boolean);
   if (parts.length > 1) {
     const cps = codepointsFromTokens(parts);
-    if (cps) return query("codepoints", cps, `${cps.length} codepoints`, [query("text", raw, "literal text")]);
+    if (cps) {
+      // A list of bare digits reads as hex, as one bare number does; decimal is
+      // the other real reading of it, so it is offered rather than lost.
+      const alternates = [];
+      if (parts.every((part) => /^[0-9]+$/.test(part))) {
+        const decimal = parts.map((part) => parseInt(part, 10));
+        if (decimal.every(valid)) {
+          alternates.push(query("codepoints", decimal, "decimal codepoints"));
+        }
+      }
+      alternates.push(query("text", raw, "literal text"));
+      return query("codepoints", cps, `${cps.length} codepoints`, alternates);
+    }
   }
 
   if (/^[A-Za-z][A-Za-z \-']*$/.test(raw)) {
@@ -566,9 +586,15 @@ export function codepointsFromTokens(tokens) {
     token = token.trim().replace(/;$/, "");
     if (!token) continue;
     const prefixed = CP_PREFIXED.exec(token);
+    const decimal = CP_DECIMAL.exec(token);
     let cp;
     if (prefixed) cp = parseInt(prefixed[1], 16);
-    else if (/^[0-9]+$/.test(token)) cp = parseInt(token, 10);
+    else if (decimal) cp = parseInt(decimal[1], 10);
+    // Bare digits are hex here as they are alone. They were decimal, so "2018"
+    // was U+2018 and "2018 2" was U+07E2 and U+0002: typing a second number
+    // changed what the first one meant. Letters need two characters, so a word
+    // like "a" or "I" in ordinary text is not taken for a codepoint.
+    else if (/^[0-9]{1,6}$/.test(token)) cp = parseInt(token, 16);
     else if (/^[0-9A-Fa-f]{2,6}$/.test(token)) cp = parseInt(token, 16);
     else return null;
     if (!valid(cp)) return null;

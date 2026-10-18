@@ -147,6 +147,19 @@ test.describe("Inspect", () => {
     await expect(out).toContainText("codepoints");
   });
 
+  test("a second number does not change what the first one means", async ({ page }) => {
+    // "2018" was U+2018 and "2018 2" was U+07E2 and U+0002: in a list, bare
+    // digits were read as decimal. They are hex alone and hex in a list now.
+    await page.goto(`${BASE}/inspect/?t=2018%202`);
+    const out = page.locator("#inspect-out");
+    await expect(out).toContainText("U+2018");
+    await expect(out).toContainText("LEFT SINGLE QUOTATION MARK");
+    await expect(out).not.toContainText("U+07E2");
+    // Decimal is still one step away, in its own notation.
+    await page.goto(`${BASE}/inspect/?t=${encodeURIComponent("&#2018;")}`);
+    await expect(page.locator("#inspect-out")).toContainText("U+07E2");
+  });
+
   test("a long word does not overflow the family panel", async ({ page }) => {
     // The bug: eight tiles of one long Malayalam word painted across each other.
     await page.goto(`${BASE}/inspect/?t=%E0%B4%85%E0%B4%B5%E0%B4%A8%E0%B5%8D%E0%B4%B1%E0%B5%86%20%E0%B4%85%E0%B4%B5%E0%B4%A8%E0%B5%86%E0%B4%B1`);

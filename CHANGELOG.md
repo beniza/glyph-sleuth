@@ -42,6 +42,11 @@ the summary. Commit messages carry the reasons.
   joining refused; a form the font cannot draw is no longer the yardstick; the
   expected form is shaped in the same language; and each verdict records the
   language it was shaped in, and its result without one.
+- **A second number no longer changes what the first one means.** In Inspect and
+  Try it, `2018` was U+2018 and `2018 2` was U+07E2 and U+0002: bare digits were
+  hex alone and decimal in a list. They are hex in both now, with the decimal
+  reading still offered; decimal has its own notation, `&#2018;`, which used to be
+  read as plain text.
 - **A family is judged on its own script.** Malini, a Malayalam family, was listed
   as one that "breaks" for lacking Devanagari.
 - **Two spellings of one text** (ệ against e + dot below + circumflex) are no

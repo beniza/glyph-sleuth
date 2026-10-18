@@ -37,8 +37,29 @@ function test_parse() {
   assert.equal(p("Dingbats").kind, "block");
   assert.equal(p("heavy asterisk").kind, "name");
   assert.equal(p("41 42 43").kind, "codepoints");
-  assert.deepEqual(p("41 42 43").value, [41, 42, 43]);      // digits read as decimal
   assert.deepEqual(p("U+41 U+42").value, [0x41, 0x42]);     // prefixed reads as hex
+
+  // A bare number is hex alone and hex in a list. It used to be hex alone and
+  // decimal in a list, so typing a second number changed what the first one
+  // meant: "2018" was U+2018 ‘, and "2018 2" was U+07E2 ߢ and U+0002.
+  assert.deepEqual(p("2018 2").value, [0x2018, 0x2]);
+  assert.deepEqual(p("41 42 43").value, [0x41, 0x42, 0x43]);
+  assert.deepEqual(p("0D15 2018").value, [0x0d15, 0x2018]);  // no mixing in one list
+  assert.deepEqual(p("2018 2").value, p("U+2018 U+2").value);
+  // Decimal is a real reading of an all-digit list, and stays on offer.
+  const digits = p("41 42 43");
+  assert.equal(digits.label, "3 codepoints");
+  const decimal = digits.alternates.find((a) => a.label === "decimal codepoints");
+  assert.ok(decimal, "the decimal reading of an all-digit list is not offered");
+  assert.deepEqual(decimal.value, [41, 42, 43]);
+  assert.ok(!p("0D15 2018").alternates.some((a) => a.label === "decimal codepoints"));
+
+  // Decimal has its own notation, HTML's: it was read as plain text.
+  assert.equal(p("&#2018;").kind, "char");
+  assert.equal(p("&#2018;").value, 2018);
+  assert.equal(p("&#2018;").label, "decimal codepoint");
+  assert.deepEqual(p("&#2018; &#2;").value, [2018, 2]);
+  assert.deepEqual(p("&#x2018; &#2;").value, [0x2018, 2]);
   assert.equal(p("Hello, world!").kind, "text");
   assert.equal(p("").kind, "empty");
 
