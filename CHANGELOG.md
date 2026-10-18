@@ -10,6 +10,8 @@ the summary. Commit messages carry the reasons.
 
 - **Inspect's link to r12a's String Analyser opened it empty.** It passed the
   text as `?text=`; the analyser reads `?chars=`, on `index.html`.
+- **`/mockup/` says it is the old design prototype** (#11), with hand-written
+  figures, so it is not read as the current site.
 
 ## 0.6.0 — 2026-10-18
 
