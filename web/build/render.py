@@ -1431,10 +1431,15 @@ def font_page(font, blocks):
                  else f' release <span class="mono">{esc(release)}</span>')
         link_text = (f'<a href="{esc(where)}">the release the foundry publishes ↗ — external</a>'
                      if where else "the release the foundry publishes")
+        # #6: a reading kept because the release could not be reached today
+        # looked exactly like one read today.
+        unreached = (f' The release could not be reached on {esc(source["unreached"])}, '
+                     'so this is the last good reading of it.'
+                     if source.get("unreached") else "")
         right.append('      <h2 class="eyebrow" id="provenance">Provenance</h2>\n'
                      '      <p class="quiet">Read from <span class="mono">'
                      f'{esc(source.get("file"))}</span>{named} on {esc(source.get("read"))}, '
-                     f'via {link_text}.<br>'
+                     f'via {link_text}.{unreached}<br>'
                      f'<span class="mono break">{esc(font.get("checksum"))}</span></p>')
 
     # The evidence gets the full width. It was in a third of it, beside two

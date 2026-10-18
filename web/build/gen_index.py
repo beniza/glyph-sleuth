@@ -346,9 +346,17 @@ def measure_google_face(font):
         facts = cached(url)
         if facts is None or not counted_glyphs(facts) or not shaping_current(facts):
             facts = measure_and_shape(fetch(url), url, label, font["ranges"])
+        # #6. Which file we last read, so that a stylesheet failing today can
+        # still find the measurement keyed on that file's URL.
+        remember("last:google:" + font["name"], {"url": url, "label": label})
+        unreached = None
     except Exception as error:
         print(f"  !! {font['name']}: {error}")
-        return font
+        last = cached("last:google:" + font["name"])
+        facts = cached(last["url"]) if last else None
+        if not facts:
+            return font
+        url, label, unreached = last["url"], last.get("label") or "", TODAY
 
     facts = dict(facts)
     facts.pop("ranges", None)          # Google's published coverage is the fuller one.
@@ -356,6 +364,9 @@ def measure_google_face(font):
     font.update(facts)
     font["provenance"] = {"file": label, "release": url,
                           "read": facts.get("read", TODAY)}
+    if unreached:
+        # The last good reading, said to be one.
+        font["provenance"]["unreached"] = unreached
     return font
 
 
@@ -930,11 +941,25 @@ def foundry_family(source, project, token=None):
     css = f"{source['base']}/fonts/{project}.css" if source["host"] == "css" else None
     fallback_name = project.split("/")[-1].replace("font-", "").replace("-", " ").title()
 
+    # #6. Which release we last read, so that a lookup failing today — a moved
+    # URL, a host down — can still find the measurement it was keyed on.
+    last_key = f"last:{source['id']}:{project}"
     try:
         key, extra, faces = release_probe(source, project, token)
     except Exception as error:
         print(f"  !! {project}: {error}")
-        return foundry_record(fallback_name, source["id"], page, css=css)
+        last = cached(last_key)
+        facts = cached(last["key"]) if last else None
+        if not facts:
+            return foundry_record(fallback_name, source["id"], page, css=css)
+        # The last good reading, said to be one: the font page names the day the
+        # release could not be reached beside the day the file was read.
+        facts = dict(facts)
+        facts["provenance"] = {"file": last.get("label") or project,
+                               "release": last.get("release") or "",
+                               "read": facts.get("read", TODAY), "unreached": TODAY}
+        return foundry_record(facts.get("family") or fallback_name, source["id"], page,
+                              css=css, licence=facts.get("licence", ""), facts=facts)
 
     if source["host"] == "css" and extra:
         fallback_name = family_from_stylesheet(extra) or fallback_name
@@ -943,6 +968,8 @@ def foundry_family(source, project, token=None):
 
     key = f"{source['id']}:{project}:{key}"
     label = os.path.basename(urllib.parse.urlsplit(key).path) or project
+    remember(last_key, {"key": key, "label": label,
+                        "release": extra if source["host"] != "css" else css})
     licence = ""
     # The probe was cheap; the download only happens on a cache miss — or when
     # the cache remembers a webfont that is no longer on disk.
@@ -982,12 +1009,16 @@ def foundry_family(source, project, token=None):
             if not webfont_present(facts):
                 facts["webfont"] = None
                 facts["webfonts"] = {}
+            # #6: and said to be the last good reading, not today's.
+            facts["unreached"] = TODAY
     licence = facts.get("licence", licence)
 
     facts = dict(facts)
     facts["provenance"] = {"file": label,
                            "release": extra if source["host"] != "css" else css,
                            "read": facts.get("read", TODAY)}
+    if facts.pop("unreached", None):
+        facts["provenance"]["unreached"] = TODAY
 
     return foundry_record(facts.get("family") or fallback_name, source["id"], page,
                           css=css, licence=licence, facts=facts)

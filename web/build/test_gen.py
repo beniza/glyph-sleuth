@@ -10,6 +10,7 @@ import json
 import os
 import urllib.error
 import sys
+import tempfile
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1167,6 +1168,52 @@ def test_a_latin_sequence_out_of_reach_is_not_tested_rather_than_failed():
     assert "yoruba" not in results                      # needs a dot below it lacks
     for row in results.values():
         assert ".notdef" not in row["hb"]["note"]
+
+
+def stored(key, facts):
+    """Put facts in the cache as an earlier build left them, read date intact."""
+    path = os.path.join(gen_index.CACHE, gen_index.cache_key(key) + ".json")
+    with io.open(path, "w", encoding="utf-8") as handle:
+        json.dump(facts, handle)
+
+
+def test_a_release_out_of_reach_keeps_its_last_reading_and_says_so():
+    """#6. The font policy promises that a moved URL keeps the last good record
+    and marks it stale. A failed download kept the record already, but nothing
+    marked it, and a release lookup that failed — a moved URL, a host down —
+    dropped the family to "not measured yet": the cache is keyed on the release
+    that lookup finds, so the last good reading could not be found at all."""
+    saved = (gen_index.CACHE, gen_index.release_probe, gen_index.fetch_text, gen_index.TODAY)
+    def unreachable(*_args, **_kwargs):
+        raise OSError("host unreachable")
+    try:
+        gen_index.CACHE = tempfile.mkdtemp()
+        gen_index.TODAY = "2026-10-18"
+        reading = {"ranges": [[0x0D00, 0x0D7F]], "read": "2026-08-17", "features": ["akhn"],
+                   "shaping": gen_index.SHAPING, "family": "RIT Lasya"}
+
+        # A foundry family whose release lookup fails today.
+        source = {"id": "rit", "host": "gitlab", "page": "https://example.org/{project}"}
+        stored("rit:font-lasya:https://example.org/Lasya-1.0.zip", reading)
+        stored("last:rit:font-lasya", {"key": "rit:font-lasya:https://example.org/Lasya-1.0.zip"})
+        gen_index.release_probe = unreachable
+        record = gen_index.foundry_family(source, "font-lasya")
+        assert record["tier"] == "measured", "the last good reading was thrown away"
+        assert record["provenance"]["read"] == "2026-08-17"
+        assert record["provenance"]["unreached"] == "2026-10-18"
+        # Never reached and never read: still a stub, as before.
+        assert gen_index.foundry_family(source, "font-never")["tier"] == "stub"
+
+        # A Google family whose stylesheet cannot be fetched today.
+        stored("https://fonts.gstatic.com/s/manjari/v14/Manjari.ttf", dict(reading, family="Manjari"))
+        stored("last:google:Manjari", {"url": "https://fonts.gstatic.com/s/manjari/v14/Manjari.ttf"})
+        gen_index.fetch_text = unreachable
+        font = gen_index.measure_google_face({"name": "Manjari", "css": "https://x/css2?family=Manjari",
+                                              "ranges": [[0x0D00, 0x0D7F]], "tier": "measured"})
+        assert font["features"] == ["akhn"]
+        assert font["provenance"]["unreached"] == "2026-10-18"
+    finally:
+        gen_index.CACHE, gen_index.release_probe, gen_index.fetch_text, gen_index.TODAY = saved
 
 
 def test_devanagari_sequences():

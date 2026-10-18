@@ -416,6 +416,18 @@ def test_a_character_page_asks_a_foundry_for_few_stylesheets_up_front():
     assert html.count("data-face=") == render.DRAWN_LIMIT > 0
 
 
+def test_a_reading_from_a_release_out_of_reach_says_so():
+    """#6. A record kept from a release we could not reach today looked exactly
+    like one read today. The page says which it is."""
+    stale = dict(MANJARI, provenance=dict(MANJARI["provenance"], unreached="2026-10-18"))
+    html = render.font_page(stale, BLOCKS)
+    read = re.sub(r"\s+", " ", html)
+    assert "could not be reached on 2026-10-18" in read
+    assert "last good reading" in read
+    # A record read today says nothing of the kind.
+    assert "could not be reached" not in render.font_page(MANJARI, BLOCKS)
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

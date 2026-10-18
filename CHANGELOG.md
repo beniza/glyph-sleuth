@@ -19,6 +19,11 @@ the summary. Commit messages carry the reasons.
   24 faces eagerly — twelve stylesheets and a dozen woff2 files from one host for
   `/char/0D15/`, queued behind the browser's per-host limit. It loads 8, and every
   other family still has its tile, drawn as it is scrolled to.
+- **A release out of reach keeps its last reading, and says so** (#6). A family
+  whose release lookup failed — a moved URL, a host down — dropped to "not
+  measured yet", and a reading kept after a failed download looked like one made
+  today. The last good reading is kept in both cases, and the font page names the
+  day the release could not be reached.
 
 ## 0.6.0 — 2026-10-18
 
