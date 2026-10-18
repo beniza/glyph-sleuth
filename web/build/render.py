@@ -2086,10 +2086,12 @@ def lookups_page(font):
 # scroll, so this is not a cap on the answer — it is the batch a reader with
 # JavaScript off gets drawn.
 #
-# Worth revisiting: at 24 this asks one foundry host for a dozen stylesheets and
-# a dozen woff2 files before the page settles. That is measured and filed, not
-# guessed — but it is a separate change from anything here.
-DRAWN_LIMIT = 24
+# #93: it was 24, and /char/0D15/ asked smc.org.in for twelve stylesheets and a
+# dozen woff2 files before it settled; at about six connections per host those
+# queued, and on a slow day the page took tens of seconds. Eight show that
+# families differ as well as 24 do. Self-hosting SMC's faces would go further,
+# but that is a change to the font policy (D2), not to this number.
+DRAWN_LIMIT = 8
 
 # How many family cards a language page sets. Each loads a face.
 CARDS_LIMIT = 36
@@ -2119,7 +2121,7 @@ def chart_face(candidates, selectors, loaded=False):
     setting = f'  <style>{selectors} {{ font-family: "{esc(face["name"])}", serif; }}</style>'
     if loaded:
         # The page already fetched this family for something else — the character
-        # page loads two dozen for its tiles — so asking for it again is a second
+        # page loads DRAWN_LIMIT for its tiles — so asking for it again is a second
         # request for bytes already in hand. Just point at it.
         return setting
     css = face_css_of(face)

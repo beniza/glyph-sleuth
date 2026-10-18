@@ -396,6 +396,26 @@ def test_a_script_can_be_found_by_a_language_written_in_it():
     assert "Mandarin Chinese" in row.group(2) and "more" in row.group(2)
 
 
+def test_a_character_page_asks_a_foundry_for_few_stylesheets_up_front():
+    """#93. /char/0D15/ asked one foundry host for twelve stylesheets and a dozen
+    woff2 files before it settled: 24 faces loaded eagerly, twelve of them SMC's.
+    Browsers allow about six connections per host, so on a slow day the page took
+    tens of seconds. Eight faces show that families differ as well as 24 do, and
+    every other family is still on the page, loading as it is scrolled to."""
+    smc = [{"name": f"SMC Face {n:02}", "slug": f"smc-face-{n:02}", "source": "smc",
+            "css": f"https://smc.org.in/fonts/face{n:02}.css", "tier": "measured",
+            "licence": "OFL", "ranges": [[0x0D00, 0x0D7F]]} for n in range(30)]
+    html = render.char_page(0x0D15, "MALAYALAM LETTER KA", BLOCKS[1], smc, {0x0D15})
+    head = html[:html.index("</head>")]
+    stylesheets = re.findall(r'<link rel="stylesheet" href="https://smc\.org\.in/', head)
+    assert len(stylesheets) <= 8, f"{len(stylesheets)} foundry stylesheets before the page settles"
+    assert len(stylesheets) == render.DRAWN_LIMIT
+    # Nothing is dropped: every family has a tile, the rest drawn on scroll.
+    assert html.count('class="draws"') == 30
+    # With JavaScript off, some faces are still drawn.
+    assert html.count("data-face=") == render.DRAWN_LIMIT > 0
+
+
 def test_a_case_with_no_data_is_left_out():
     html = render.home([], scripts=[], languages=[], blocks=sorted(FULL_BLOCKS))
     assert "Same text, different results" not in html

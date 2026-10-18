@@ -520,13 +520,15 @@ test.describe("faces arrive as you scroll", () => {
     await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
 
     await openWithFaces(page, "/char/0041/");
+    // The faces in the markup, before any scrolling: whatever DRAWN_LIMIT is.
+    const eager = await page.locator(".tile-glyph[data-face]").count();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(2500);
 
     const promoted = await page.locator(".tile-glyph[data-face]").count();
     const marked = await page.locator(".tile-glyph.fallback").count();
-    expect(promoted, "nothing was promoted, so this proves nothing").toBeGreaterThan(24);
+    expect(promoted, "nothing was promoted, so this proves nothing").toBeGreaterThan(eager);
     expect(marked, "a face that never arrived was presented as a drawing")
       .toBeGreaterThan(0);
     // And the panel says so once, not once per tile.

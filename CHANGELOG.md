@@ -15,6 +15,10 @@ the summary. Commit messages carry the reasons.
 - **A script can be found by a language written in it** (#86). Filtering the
   scripts index for "Chinese" found nothing, because the rows named scripts;
   each row now names a few of its languages and matches all of them.
+- **A character page asks a foundry for fewer files up front** (#93). It loaded
+  24 faces eagerly — twelve stylesheets and a dozen woff2 files from one host for
+  `/char/0D15/`, queued behind the browser's per-host limit. It loads 8, and every
+  other family still has its tile, drawn as it is scrolled to.
 
 ## 0.6.0 — 2026-10-18
 
