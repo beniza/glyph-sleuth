@@ -29,7 +29,9 @@ one host for too much, and measurements that were dropped or passed off as fresh
   day the release could not be reached.
 - **A glyphs page's facets list their glyphs.** "Encoded", "built by a rule" and
   "unreachable" showed nothing from the day they were added: the filter compared
-  every facet with a font's verdict, which a glyph row does not have.
+  every facet with a font's verdict, which a glyph row does not have. Each
+  facet's count is now the number of rows it shows, and a glyph a rule reads but
+  none builds is no longer labelled "unreachable".
 
 ## 0.6.0 — 2026-10-18
 
