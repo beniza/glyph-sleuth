@@ -80,6 +80,11 @@ if (table) {
     body.replaceChildren(fragment);   // clears what is there, then inserts once
 
     if (showing) showing.textContent = shown.length.toLocaleString();
+    // A glyphs page says how the block's rows add up to the family page's
+    // coverage of it; only the note for the chosen block shows.
+    document.querySelectorAll("[data-block-note]").forEach((note) => {
+      note.hidden = note.dataset.blockNote !== (blockPick?.value || "");
+    });
     if (empty) empty.hidden = shown.length > 0;
     table.hidden = shown.length === 0;
     remember();

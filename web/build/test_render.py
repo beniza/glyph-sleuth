@@ -1468,6 +1468,53 @@ def test_a_glyph_facet_counts_the_rows_it_shows():
     assert 'data-name=".notdef" data-state="fallback"' in html
 
 
+def test_a_block_on_the_family_page_leads_to_its_glyphs():
+    """The coverage table counts codepoints, the glyphs page lists glyphs, and
+    one glyph can draw several codepoints. Each block links to the glyph list
+    filtered to it, and the filtered list says how it adds up to that count."""
+    blocks = [(0x0000, 0x007F, "Basic Latin"), (0x0080, 0x00FF, "Latin-1 Supplement"),
+              (0x2000, 0x206F, "General Punctuation")]
+    glyphs = [
+        {"name": "space", "cp": 0x0020, "also": [0x00A0], "produced": [], "consumed": [],
+         "orphan": False},
+        {"name": "A", "cp": 0x0041, "produced": [], "consumed": [], "orphan": False},
+        {"name": "hyphen", "cp": 0x2010, "also": [0x2011], "produced": [], "consumed": [],
+         "orphan": False},
+        {"name": "A.sc", "cp": None, "produced": ["smcp"], "consumed": [], "orphan": False},
+    ]
+    font = dict(MANJARI, slug="manjari", source="smc", glyphs=glyphs,
+                ranges=[[0x20, 0x20], [0x41, 0x41], [0xA0, 0xA0], [0x2010, 0x2011]])
+
+    family = render.font_page(font, blocks)
+    assert f'href="{render.link("/font/manjari/glyphs/")}?block=general-punctuation"' in family
+
+    html = render.glyphs_page(font, chars_built=set(), blocks=blocks)
+    # The no-break space is found under its own block, through the glyph it shares.
+    assert html.count("latin-1-supplement") >= 2
+    assert 'data-name="space" data-state="encoded" data-blocks="basic-latin latin-1-supplement"' in html
+    # Two codepoints in one block, one glyph: the note says why the numbers differ.
+    note = re.search(r'data-block-note="general-punctuation" hidden>([^<]*)', html).group(1)
+    assert "1 glyph draws the 2 codepoints" in note and "more than one" in note
+    # Its count agrees with the family page, so there is no mismatch to explain.
+    assert "family page gives" not in note
+    # A built glyph has no block, and the note says where it went.
+    assert "built by a rule" in note
+    assert "U+2010" in html and "U+2011" in html
+
+    # A Google family's coverage is the family's, the list one file's: said so.
+    google = dict(font, source="google", ranges=[[0x20, 0x20], [0x41, 0x5A], [0xA0, 0xA0],
+                                                [0x2010, 0x2011]],
+                  provenance={"file": "Manjari-Regular.ttf"})
+    note = re.search(r'data-block-note="basic-latin" hidden>([^<]*)',
+                     render.glyphs_page(google, set(), blocks)).group(1)
+    assert "family page gives 27" in note and "Google’s" in note
+    # A block the family page leaves out is not said to have a figure of 0 there.
+    unlisted = dict(google, ranges=[[0x20, 0x20], [0x41, 0x5A], [0xA0, 0xA0]])
+    note = re.search(r'data-block-note="general-punctuation" hidden>([^<]*)',
+                     render.glyphs_page(unlisted, set(), blocks)).group(1)
+    assert "does not list this block" in note and "gives 0" not in note
+
+
 def test_feature_page_says_what_it_cannot():
     content = {"stages": ["akhn", "pres"], "features": {
         "akhn": {"name": "Akhand ligatures", "table": "GSUB",

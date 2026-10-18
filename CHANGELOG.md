@@ -4,6 +4,17 @@ What changed in each release of Glyph Sleuth, newest first. The annotated
 release tags carry the full notes, including what went wrong on the way; this is
 the summary. Commit messages carry the reasons.
 
+## Unreleased
+
+### Added
+
+- **A block in a family's coverage table leads to its glyphs.** Each block links
+  to the glyphs page filtered to it, which has a block filter of its own. Each
+  glyph now records every codepoint it draws, not only the first (space and
+  no-break space are usually one glyph), so a block's glyphs add up to the
+  coverage the family page gives. Where they cannot — Google's figure is for the
+  whole family, the list for one file — the page says so.
+
 ## 0.6.1 — 2026-10-18
 
 Fixes: links that went nowhere, filters that showed nothing, a page that asked

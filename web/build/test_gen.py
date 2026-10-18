@@ -223,7 +223,8 @@ def test_a_failed_download_keeps_a_webfont_that_is_still_on_disk():
                                     "licence": "OFL-1.1", "read": "2026-08-01",
                                     "webfont": here.replace(os.sep, "/"),
                                     "webfonts": {"400": here.replace(os.sep, "/")},
-                                    "glyph_count": 1, "glyphs": [{"name": "a"}]}
+                                    "glyph_count": 1, "glyphs": [{"name": "a"}],
+                                    "glyphs_version": gen_index.GLYPHS}
     try:
         record = gen_index.foundry_family(source, "Kept")
     finally:
@@ -404,7 +405,11 @@ def test_a_measurement_taken_before_the_total_is_a_cache_miss():
     # with nothing to compare it against, so the page cannot disclose a shortfall
     # it cannot see. Only families with a glyph list re-measure.
     assert not gen_index.counted_glyphs({"glyphs": [{"name": "a"}]})
-    assert gen_index.counted_glyphs({"glyphs": [{"name": "a"}], "glyph_count": 900})
+    assert gen_index.counted_glyphs({"glyphs": [{"name": "a"}], "glyph_count": 900,
+                                     "glyphs_version": gen_index.GLYPHS})
+    # A list read before every codepoint of a glyph was kept is re-read too: a
+    # block's glyphs would not add up to the font's coverage of it.
+    assert not gen_index.counted_glyphs({"glyphs": [{"name": "a"}], "glyph_count": 900})
     # Nothing to re-measure for a family we never read a glyph list from.
     assert gen_index.counted_glyphs({"ranges": []})
     assert gen_index.counted_glyphs({})
@@ -542,7 +547,7 @@ def test_parsed_fonts_are_not_kept():
 
 def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
                 extra_glyphs=(), family="Test Face", style="Regular",
-                weight=400, italic=False):
+                weight=400, italic=False, shared=None):
     """A real font, built in memory, so the parser is tested against the thing
     it actually parses rather than a stub of it."""
     from fontTools.fontBuilder import FontBuilder
@@ -552,7 +557,8 @@ def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
     names = [".notdef"] + [f"g{cp:04X}" for cp in codepoints] + list(extra_glyphs)
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(names)
-    builder.setupCharacterMap({cp: f"g{cp:04X}" for cp in codepoints})
+    # `shared` maps more codepoints onto glyphs that already have one.
+    builder.setupCharacterMap({**{cp: f"g{cp:04X}" for cp in codepoints}, **(shared or {})})
     empty = TTGlyphPen(None).glyph()
     builder.setupGlyf({name: empty for name in names})
     builder.setupHorizontalMetrics({name: (500, 0) for name in names})
@@ -793,6 +799,19 @@ def test_glyph_inventory():
     assert ".notdef" not in [g["name"] for g in glyphs if g.get("orphan")]
     assert by_name["orphan"]["orphan"] is True
     assert by_name["g0D15"]["orphan"] is False
+
+
+def test_a_glyph_keeps_every_codepoint_it_draws():
+    """Space and no-break space are one glyph in most fonts. Keeping only the
+    first codepoint put the second in no block at all, so a block's glyph list
+    could not add up to the coverage the font page gives for it."""
+    blob = sample_font(codepoints=(0x0020, 0x2010), shared={0x00A0: "g0020", 0x2011: "g2010"})
+    glyphs, _total = gen_index.glyphs(blob)
+    by_name = {g["name"]: g for g in glyphs}
+    assert by_name["g0020"]["cp"] == 0x0020 and by_name["g0020"]["also"] == [0x00A0]
+    assert by_name["g2010"]["cp"] == 0x2010 and by_name["g2010"]["also"] == [0x2011]
+    # Only a glyph that draws more than one carries the field.
+    assert "also" not in by_name[".notdef"]
 
 
 def test_every_built_glyph_carries_a_recipe():

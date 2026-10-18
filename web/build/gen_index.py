@@ -656,8 +656,15 @@ def webfont_present(facts):
     return os.path.exists(os.path.join(ROOT, "web", *web.split("/")))
 
 
+# What a glyph list records. 2: every codepoint a glyph draws, not only the
+# first, so a block's glyphs add up to the font's coverage of it. Raise it when
+# `glyphs()` records something an older reading lacks; the families re-read.
+GLYPHS = 2
+
+
 def counted_glyphs(facts):
-    """Does a cached measurement know how many glyphs the font really had?
+    """Does a cached measurement know how many glyphs the font really had —
+    and does its list record what this version of `glyphs()` records?
 
     Same shape and same reason as `webfont_present`: the inventory was capped
     at 4,000 long before the total was recorded, so a warm cache holds a short
@@ -667,7 +674,7 @@ def counted_glyphs(facts):
     facts = facts or {}
     if not facts.get("glyphs"):
         return True
-    return "glyph_count" in facts
+    return "glyph_count" in facts and facts.get("glyphs_version") == GLYPHS
 
 
 def is_font_url(url):
@@ -837,6 +844,7 @@ def measure(blob):
     # Every glyph, and what the rules do with it — the page that shows a
     # font is more than its codepoints.
     facts["glyphs"], facts["glyph_count"] = glyphs(blob)
+    facts["glyphs_version"] = GLYPHS
 
     name = font["name"]
     facts["family"] = str(name.getBestFamilyName() or "")
@@ -1267,8 +1275,10 @@ def glyphs(blob, limit=4000):
     total = len(every)
     order = every[:limit]
     reverse = {}
-    for cp, name in font.getBestCmap().items():
+    every_cp = collections.defaultdict(list)
+    for cp, name in sorted(font.getBestCmap().items()):
         reverse.setdefault(name, cp)
+        every_cp[name].append(cp)
     font.close()
 
     # From *every* rule, not the handful the page samples. Deriving roles from
@@ -1287,6 +1297,11 @@ def glyphs(blob, limit=4000):
                  "produced": sorted(produced[name]),
                  "consumed": sorted(consumed[name]),
                  "orphan": orphan}
+        # One glyph can draw several codepoints — space and no-break space, the
+        # hyphens. `cp` is the lowest; the rest are kept so a block's glyph list
+        # adds up to the codepoints the font covers in it.
+        if len(every_cp[name]) > 1:
+            entry["also"] = every_cp[name][1:]
         # Only an unencoded glyph needs a recipe: an encoded one is reachable
         # by typing its character.
         if cp is None and name in recipe:

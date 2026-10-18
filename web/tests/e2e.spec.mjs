@@ -90,6 +90,28 @@ test.describe("Facets", () => {
     });
   }
 
+  test("a block in the family's coverage table leads to its glyphs, and they add up", async ({ page }) => {
+    // The table counts codepoints and the glyphs page lists glyphs, which agree
+    // only because each glyph row names every codepoint it draws. Rachana's
+    // coverage and glyph list are read from the same file, so they must match.
+    await page.goto(`${BASE}/font/rachana/`);
+    const row = page.locator("tr", { has: page.locator('a[href$="glyphs/?block=malayalam"]') });
+    const [covered] = (await row.locator("td.mono").nth(1).textContent()).split("/").map(Number);
+    const [first, last] = (await row.locator("td.mono").first().textContent())
+      .split("–").map((code) => parseInt(code.replace("U+", ""), 16));
+    await row.locator("a").click();
+    await expect(page).toHaveURL(/glyphs\/\?block=malayalam/);
+
+    const rows = page.locator("table.index tbody tr");
+    const shown = await rows.count();
+    expect(shown).toBeGreaterThan(0);
+    await expect(page.locator('[data-block-note="malayalam"]')).toBeVisible();
+    const codes = await rows.locator("td:nth-child(3) .mono").allTextContents();
+    const inBlock = codes.map((code) => parseInt(code.replace("U+", ""), 16))
+      .filter((cp) => cp >= first && cp <= last);
+    expect(inBlock.length, "the block's glyphs do not add up to its coverage").toBe(covered);
+  });
+
   test("a facet in the address is applied on arrival", async ({ page }) => {
     await page.goto(`${BASE}/font/rachana/glyphs/?facet=encoded`);
     const promised = Number(await page.locator('.facet[data-facet="encoded"]').getAttribute("data-count"));

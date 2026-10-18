@@ -9,6 +9,7 @@ The design is the prototype's, recreated in a real stylesheet rather than the
 wall of inline styles its template format produced. Tokens, type scale and copy
 come from docs/prototype/README.md, which is final.
 """
+import bisect
 import collections
 import hashlib
 import html as html_module
@@ -724,13 +725,19 @@ def verdict_cell(value, applicable=True):
 
 
 def coverage_rows(font, blocks):
-    """What the face covers, block by block — the blocks it actually touches."""
+    """What the face covers, block by block — the blocks it actually touches.
+
+    Where the family has a glyph list, each block leads to it, filtered to the
+    glyphs that draw that block's codepoints."""
     rows = []
+    glyphs = link(f"/font/{font.get('slug') or slug(font['name'])}/glyphs/")
     for first, last, name in blocks:
         covered = count_in_range(font.get("ranges") or [], first, last)
         if not covered:
             continue
-        rows.append(f'      <tr><th scope="row">{esc(name)}</th>'
+        label = (f'<a href="{glyphs}?block={esc(slug(name))}">{esc(name)}</a>'
+                 if font.get("glyphs") else esc(name))
+        rows.append(f'      <tr><th scope="row">{label}</th>'
                     f'<td class="mono">U+{first:04X}–{last:04X}</td>'
                     f'<td class="mono">{covered}/{last - first + 1}</td></tr>')
     return rows
@@ -1721,7 +1728,68 @@ def unloadable_cell(glyph, why, chars_built=()):
             + esc(why) + '">not loadable</span>')
 
 
-def glyphs_page(font, chars_built=()):
+def glyph_codepoints(glyph):
+    """Every codepoint a glyph draws: one glyph can serve several."""
+    return [] if glyph.get("cp") is None else [glyph["cp"], *glyph.get("also", [])]
+
+
+def block_notes(font, inventory, states, blocks):
+    """The glyph list, block by block: which rows each block filter shows, and
+    a sentence saying how they add up to the coverage the family page gives.
+
+    Returns (row index -> block slugs, the <option>s, the notes). The coverage
+    figure and the list can differ for reasons the page has to say: Google's
+    figure is for the whole family and the list is one file, and the list can
+    stop short of the font.
+    """
+    firsts = [first for first, _last, _name in blocks]
+    in_block = collections.defaultdict(set)      # block -> row indices
+    cps_in = collections.Counter()               # block -> codepoints in the list
+    row_blocks = collections.defaultdict(list)
+    for index, glyph in enumerate(inventory):
+        for cp in glyph_codepoints(glyph):
+            at = bisect.bisect_right(firsts, cp) - 1
+            if at < 0 or cp > blocks[at][1]:
+                continue
+            name = blocks[at][2]
+            cps_in[name] += 1
+            if index not in in_block[name]:
+                in_block[name].add(index)
+                row_blocks[index].append(slug(name))
+
+    shown = len(inventory)
+    built = states.count("built")
+    options, notes = [], []
+    for first, last, name in blocks:
+        if name not in in_block:
+            continue
+        rows, cps = len(in_block[name]), cps_in[name]
+        covered = count_in_range(font.get("ranges") or [], first, last)
+        options.append(f'          <option value="{esc(slug(name))}">{esc(name)} ({rows:,})</option>')
+        said = (f"{rows:,} {'glyph draws' if rows == 1 else 'glyphs draw'} the {cps:,}"
+                f" codepoint{'' if cps == 1 else 's'} this list has in {name}")
+        said += "." if rows == cps else ", because a glyph can draw more than one codepoint."
+        if cps != covered:
+            # A block the family page leaves out because its figure is zero.
+            said += (f" The family page gives {covered:,} for this block: " if covered else
+                     " The family page does not list this block: ")
+            if font.get("source") == "google":
+                # Google's file names are hashes, which would say nothing here.
+                said += ("its figure is Google’s, published for the whole family, and this "
+                         "list is the one file we read.")
+            elif shown < (font.get("glyph_count") or shown):
+                said += f"this list stops at the first {shown:,} glyphs of the font."
+            else:
+                said += "the two were read differently, and this page cannot say why."
+        if built:
+            said += (" Glyphs the layout builds have no codepoint, so they are in"
+                     " no block; “built by a rule” lists them.")
+        notes.append(f'      <p class="quiet" data-block-note="{esc(slug(name))}" hidden>'
+                     f"{esc(said)}</p>")
+    return row_blocks, options, notes
+
+
+def glyphs_page(font, chars_built=(), blocks=()):
     """Every glyph in the family, and what the layout does with each one."""
     inventory = font.get("glyphs") or []
     name = font["name"]
@@ -1775,13 +1843,15 @@ def glyphs_page(font, chars_built=()):
     built = [g for g, st in zip(inventory, states) if st == "built"]
     orphans = [g for g, st in zip(inventory, states) if st == "orphan"]
     encoded = [g for g, st in zip(inventory, states) if st == "encoded"]
+    row_blocks, block_options, notes = block_notes(font, inventory, states, blocks)
 
     rows = []
-    for glyph, state in zip(inventory, states):
+    for index, (glyph, state) in enumerate(zip(inventory, states)):
         if state == "encoded":
-            code = f'U+{glyph["cp"]:04X}'
-            reach = (f'<a href="{link(f"/char/{glyph["cp"]:04X}/")}" class="mono">{code}</a>'
-                     if glyph["cp"] in chars_built else f'<span class="mono">{code}</span>')
+            reach = " ".join(
+                f'<a href="{link(f"/char/{cp:04X}/")}" class="mono">U+{cp:04X}</a>'
+                if cp in chars_built else f'<span class="mono">U+{cp:04X}</span>'
+                for cp in glyph_codepoints(glyph))
         elif state == "built":
             reach = '<span class="quiet">built by a rule</span>'
         elif state == "orphan":
@@ -1797,7 +1867,9 @@ def glyphs_page(font, chars_built=()):
             f'<a class="chip quiet-chip" href="{link("/feature/" + tag + "/")}">{esc(tag)}</a>'
             for tag in glyph["consumed"])
         rows.append(
-            f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}">'
+            f'      <tr data-name="{esc(glyph["name"].lower())}" data-state="{state}"'
+            + (f' data-blocks="{esc(" ".join(row_blocks[index]))}"' if row_blocks[index] else "")
+            + ">"
             + f'<td>{glyph_cell(glyph, chars_built) if drawn else unloadable_cell(glyph, why, chars_built)}</td>'
             + f'<th scope="row" class="mono">{esc(glyph["name"])}</th>'
             f"<td>{reach}</td>"
@@ -1813,6 +1885,14 @@ def glyphs_page(font, chars_built=()):
         f' data-count="{count}"><span>{esc(label)}</span>'
         f'<span class="count mono">{count:,}</span></button>'
         for key, label, count in facets)
+
+    # The block a glyph's codepoints fall in, so the family page's coverage
+    # table can lead here filtered to one block.
+    block_pick = ('        <label class="pick"><span>block</span>' + chr(10)
+                  + '          <select name="block">' + chr(10)
+                  + '          <option value="">any</option>' + chr(10)
+                  + chr(10).join(block_options) + chr(10) + "          </select></label>"
+                  if block_options else "")
 
     body = f"""    <section class="entity-head">
       <div class="head-row">
@@ -1835,7 +1915,9 @@ def glyphs_page(font, chars_built=()):
         <div class="facets">
 {chips_html}
         </div>
+{block_pick}
       </div>
+{chr(10).join(notes)}
       <table class="index glyph-table">
         <thead><tr><th>Glyph</th><th>Name</th><th>Reached by</th><th>Produced by</th>
           <th>Consumed by</th></tr></thead>
@@ -3474,7 +3556,7 @@ def main():
             if font.get("tables"):
                 yield (f"/font/{font['slug']}/lookups/", lookups_page(font))
             if font.get("glyphs"):
-                yield (f"/font/{font['slug']}/glyphs/", glyphs_page(font, chars_built))
+                yield (f"/font/{font['slug']}/glyphs/", glyphs_page(font, chars_built, blocks))
             # A family the foundry and Google name differently lives at the
             # foundry's name, because the font's own tables outrank a
             # distributor's rename — that is the argument this whole site makes.

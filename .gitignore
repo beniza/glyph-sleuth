@@ -5,6 +5,7 @@
 # Without them the build stops and says so, which is correct behaviour, not a bug.
 web/data/
 site/data/
+site/version.json
 site/index.html
 site/style.css
 site/app.js
