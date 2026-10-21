@@ -1267,13 +1267,20 @@ def test_a_release_out_of_reach_keeps_its_last_reading_and_says_so():
         assert gen_index.foundry_family(source, "font-never")["tier"] == "stub"
 
         # A Google family whose stylesheet cannot be fetched today.
-        stored("https://fonts.gstatic.com/s/manjari/v14/Manjari.ttf", dict(reading, family="Manjari"))
+        # Its file is a static instance, read with no axes of its own.
+        stored("https://fonts.gstatic.com/s/manjari/v14/Manjari.ttf",
+               dict(reading, family="Manjari", axes=[]))
         stored("last:google:Manjari", {"url": "https://fonts.gstatic.com/s/manjari/v14/Manjari.ttf"})
         gen_index.fetch_text = unreachable
+        published = [{"tag": "wght", "min": 100, "max": 700, "default": 400}]
         font = gen_index.measure_google_face({"name": "Manjari", "css": "https://x/css2?family=Manjari",
-                                              "ranges": [[0x0D00, 0x0D7F]], "tier": "measured"})
+                                              "ranges": [[0x0D00, 0x0D7F]], "tier": "measured",
+                                              "axes": published})
         assert font["features"] == ["akhn"]
         assert font["provenance"]["unreached"] == "2026-10-18"
+        # The static file's empty axes do not replace the ones Google publishes:
+        # they did, and every Google variable family asked for fixed faces.
+        assert font["axes"] == published
     finally:
         gen_index.CACHE, gen_index.release_probe, gen_index.fetch_text, gen_index.TODAY = saved
 

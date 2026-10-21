@@ -368,6 +368,12 @@ def measure_google_face(font):
     facts = dict(facts)
     facts.pop("ranges", None)          # Google's published coverage is the fuller one.
     facts.pop("family", None)
+    # The file read is a static instance, so it has no axes of its own; its empty
+    # list replaced the axes Google publishes for the family, and every Google
+    # variable family went on asking for fixed faces. Only a file that has axes
+    # says what they are.
+    if not facts.get("axes"):
+        facts.pop("axes", None)
     font.update(facts)
     font["provenance"] = {"file": label, "release": url,
                           "read": facts.get("read", TODAY)}
