@@ -6,6 +6,17 @@ the summary. Commit messages carry the reasons.
 
 ## Unreleased
 
+### Added
+
+- **Match visual size in Inspect.** A font size is the size of a box, not of the
+  letters in it: at one size Nupuram drew twice Karumbi's height. Matching scales
+  each family so the median height of its letters in your text is the same, as
+  your browser measures it from the face it loaded, and each says the size that
+  took — "37px to match". In the link as `match=1`.
+- **A shortlisted family can have its own size**, typed on its row and kept in
+  the link: `pick=manjari:58px`. Links from 0.7.0, a bare list of names, still
+  read as they did.
+
 ### Fixed
 
 - **A shortlist row could not be dragged on a phone.** It used the browser's own

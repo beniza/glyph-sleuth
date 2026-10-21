@@ -1063,9 +1063,10 @@ table.tight .quiet { font-size: 12.5px; }
 .draws-short {
   display: block;
   font-size: 10px;
-  color: var(--alarm);
+  color: var(--muted);
   letter-spacing: 0;
 }
+.draws-short .cannot { color: var(--alarm); }
 .shortlist {
   list-style: none;
   margin: 8px 0;
@@ -1117,4 +1118,20 @@ table.tight .quiet { font-size: 12.5px; }
 .draws-row .tile-glyph { grid-column: 2; grid-row: 1 / span 2; }
 @media (max-width: 560px) {
   .draws-row .tile-glyph { grid-column: auto; grid-row: auto; }
+}
+/* A pick's own size and style, beside its move buttons. */
+.row-own { display: flex; gap: 4px; margin-right: 6px; }
+.row-own select, .row-own input {
+  font: 12px var(--sans);
+  padding: 2px 4px;
+  min-height: 28px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.row-own select { max-width: 11em; }
+.row-own input { width: 4.5em; }
+@media (max-width: 560px) {
+  .pick-moves { flex-wrap: wrap; justify-content: flex-end; }
+  .row-own { width: 100%; justify-content: flex-end; margin-right: 0; }
 }

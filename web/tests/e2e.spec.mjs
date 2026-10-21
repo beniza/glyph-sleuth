@@ -225,6 +225,47 @@ test.describe("A shortlist in Inspect", () => {
     await context.close();
   });
 
+  test("matching sets each family so its letters stand as tall as the others", async ({ page }) => {
+    // At one font size Nupuram looked twice Karumbi's height: a size is the
+    // em box, not the letters in it. Matched, the ink heights agree.
+    await page.goto(`${BASE}/inspect/?t=${text}&px=40&match=1&pick=nupuram,karumbi`);
+    const rows = page.locator(".shortlist .pick-row");
+    await expect(rows.nth(0).locator(".draws-short")).toContainText("to match", { timeout: 15_000 });
+    await expect(rows.nth(1).locator(".draws-short")).toContainText("to match", { timeout: 15_000 });
+    const tall = await rows.locator(".tile-glyph").evaluateAll((spans) => spans.map((span) => {
+      const style = getComputedStyle(span);
+      const ruler = document.createElement("canvas").getContext("2d");
+      ruler.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      // The median ink height of the text's clusters: what matching promises.
+      const tall = [...new Intl.Segmenter(undefined, { granularity: "grapheme" })
+        .segment(span.textContent)].map(({ segment }) => {
+        const box = ruler.measureText(segment);
+        return box.actualBoundingBoxAscent + box.actualBoundingBoxDescent;
+      }).filter((h) => h > 0).sort((x, y) => x - y);
+      return tall[tall.length >> 1];
+    }));
+    const [a, b] = tall;
+    expect(Math.abs(a - b) / Math.max(a, b), `ink heights ${a} and ${b}`).toBeLessThan(0.15);
+    // And the sizes it took differ, which is the point.
+    const sizes = await rows.locator(".tile-glyph").evaluateAll((spans) =>
+      spans.map((span) => getComputedStyle(span).fontSize));
+    expect(sizes[0]).not.toBe(sizes[1]);
+  });
+
+  test("a pick's own size is kept in the link and said on the row", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${text}&pick=rit-rachana,manjari`);
+    const own = page.locator('.pick-row[data-row="manjari"] [data-own="px"]');
+    await own.fill("58");
+    await own.dispatchEvent("change");
+    expect(new URL(page.url()).searchParams.get("pick")).toBe("rit-rachana,manjari:58px");
+    const row = page.locator('.pick-row[data-row="manjari"]');
+    await expect(row.locator(".draws-short")).toHaveText("58px, set by hand");
+    expect(await row.locator(".tile-glyph").evaluate((el) => getComputedStyle(el).fontSize)).toBe("58px");
+    // And a link carrying it arrives with it.
+    await page.goto(`${BASE}/inspect/?t=${text}&pick=manjari:44px`);
+    await expect(page.locator('[data-own="px"]')).toHaveValue("44");
+  });
+
   test("a weight a family does not publish is not faked, and is said", async ({ page }) => {
     await page.goto(`${BASE}/inspect/?t=${text}&weight=900&pick=rit-rachana`);
     const row = page.locator('.pick-row[data-row="rit-rachana"]');

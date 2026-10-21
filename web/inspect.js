@@ -310,18 +310,44 @@ export async function start(field, reading, out) {
   // px 0 is the layout's own size; weight 0 is each family's own regular,
   // which for a display family that ships only a bold is that bold — set
   // without comment, because nobody asked for anything else.
-  const view = { px: 0, weight: 0, italic: false };
+  const view = { px: 0, weight: 0, italic: false, match: false };
   let picks = [];          // family slugs, in the order they were ranked
   let fromLink = false;    // arrived with picks: someone sent this shortlist
+  // What one pick is set at, over the setting for all: its own size, and the
+  // style it is set in — axis values, which is what a named style is. In the
+  // address as `slug:58px:wdth=75:SOFT=0`; a bare slug, which is all 0.7.0
+  // wrote, still reads as one.
+  const tune = new Map();
+  const AXIS = /^([A-Za-z0-9]{4})=(-?\d+(?:\.\d+)?)$/;
   {
     const given = new URL(location.href).searchParams;
     const px = Number(given.get("px"));
     if (px) view.px = Math.min(160, Math.max(12, Math.round(px)));
     if (WEIGHTS.includes(Number(given.get("weight")))) view.weight = Number(given.get("weight"));
     view.italic = given.get("italic") === "1";
-    picks = [...new Set((given.get("pick") || "").split(",").filter(Boolean))];
+    view.match = given.get("match") === "1";
+    for (const item of (given.get("pick") || "").split(",").filter(Boolean)) {
+      const [pick, ...parts] = item.split(":");
+      if (!pick || picks.includes(pick)) continue;
+      picks.push(pick);
+      const own = { px: 0, axes: {} };
+      for (const part of parts) {
+        const size = /^(\d+)px$/.exec(part);
+        const axis = AXIS.exec(part);
+        if (size) own.px = Math.min(400, Math.max(8, Number(size[1])));
+        else if (axis) own.axes[axis[1]] = Number(axis[2]);
+      }
+      tune.set(pick, own);
+    }
     fromLink = picks.length > 0;
   }
+  const tuned = (pick) => tune.get(pick) || { px: 0, axes: {} };
+  const pickItem = (pick) => {
+    const own = tuned(pick);
+    return [pick, own.px ? `${own.px}px` : "",
+      ...Object.entries(own.axes).map(([tag, value]) => `${tag}=${value}`)]
+      .filter(Boolean).join(":");
+  };
 
   // Replaced, not pushed, like every filter on the site: Back leaves the page.
   // A default is left out, so a plain link stays plain.
@@ -332,7 +358,8 @@ export async function start(field, reading, out) {
       px: view.px ? String(view.px) : "",
       weight: view.weight ? String(view.weight) : "",
       italic: view.italic ? "1" : "",
-      pick: picks.join(","),
+      match: view.match ? "1" : "",
+      pick: picks.map(pickItem).join(","),
     };
     for (const [key, value] of Object.entries(state)) {
       value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
@@ -355,33 +382,125 @@ export async function start(field, reading, out) {
     return { weight, italic, short };
   };
 
+  // The styles one pick can be set in: the named styles of a variable font, read
+  // from its own file; or, where only the axes are known (Google publishes those
+  // and no names), the widths CSS itself names, within the range the font has.
+  // Never a name the font does not give and CSS does not define.
+  const WIDTHS = [["condensed", 75], ["semi-condensed", 87.5], ["normal", 100],
+    ["semi-expanded", 112.5], ["expanded", 125]];
+  const stylesOf = (face) => {
+    if (face.styles && face.styles.length) return face.styles;
+    const wdth = (face.axes || []).find((axis) => axis.tag === "wdth");
+    if (!wdth) return [];
+    return WIDTHS.filter(([, value]) => value >= wdth.min && value <= wdth.max)
+      .map(([name, value]) => ({ name, coords: { wdth: value } }));
+  };
+  const sameCoords = (a, b) => Object.keys(a).length === Object.keys(b).length
+    && Object.entries(a).every(([tag, value]) => b[tag] === value);
+
+  // How tall a family draws this text: the median ink height of its clusters,
+  // per unit of font size, measured by the browser from the face it loaded.
+  // Font size is the em box, not the letters — Nupuram fills its em and Karumbi
+  // does not — so matching on this is what makes two families look one size.
+  // Unknown until the face is in hand; a fallback face is never measured.
+  const ruler = document.createElement("canvas").getContext("2d");
+  const heights = new Map();       // face and text -> height per px, or 0: cannot be ruled
+  let measuring = "";
+  const rule = (spec) => {
+    ruler.font = spec;
+    const tall = clusters(measuring).filter((part) => part.trim())
+      .map((part) => {
+        const box = ruler.measureText(part);
+        return box.actualBoundingBoxAscent + box.actualBoundingBoxDescent;
+      })
+      .filter((height) => height > 0).sort((a, b) => a - b);
+    return tall.length ? tall[tall.length >> 1] / 100 : 0;
+  };
+  // Undefined while the face is still on its way. The face is asked for by
+  // name and measured only once the browser says it is here: measured any
+  // sooner, the canvas rules the fallback, and every family came out one size.
+  const heightOf = (span, family, again) => {
+    if (span.classList.contains("fallback") || !span.dataset.face) return undefined;
+    const style = getComputedStyle(span);
+    const spec = `${style.fontStyle} ${style.fontWeight} 100px "${family}"`;
+    const key = `${spec}|${measuring}`;
+    if (heights.has(key)) return heights.get(key);
+    heights.set(key, undefined);
+    document.fonts.load(spec, measuring)
+      .then((faces) => heights.set(key, faces.length ? rule(spec) : 0), () => heights.set(key, 0))
+      .then(again);
+    return undefined;
+  };
+
   // The family's own page, at its Try it, with this text set this way.
-  const tryLink = (face) => {
+  const tryLink = (face, size = 0, axes = {}) => {
     const { weight, italic } = faceOf(face);
     const url = new URL(`${BASE}font/${face.slug}/`, location.href);
     if (field.value) url.searchParams.set("text", field.value);
-    if (view.px) url.searchParams.set("px", String(view.px));
-    if (weight !== 400) url.searchParams.set("weight", String(weight));
+    if (size || view.px) url.searchParams.set("px", String(size || view.px));
+    const ownWeight = axes.wght || weight;
+    if (ownWeight !== 400) url.searchParams.set("weight", String(ownWeight));
     if (italic) url.searchParams.set("italic", "1");
+    const rest = Object.entries(axes).filter(([tag]) => tag !== "wght");
+    if (rest.length) url.searchParams.set("var", rest.map(([t, v]) => `${t}:${v}`).join(","));
     return `${url.pathname}${url.search}#try-it`;
   };
 
   // Apply the setting to every drawing under `root`, and say where a family
   // could not follow it.
+  const restyleOne = (span, face) => {
+    const inShortlist = Boolean(span.closest(".shortlist"));
+    const own = inShortlist ? tuned(face.slug) : { px: 0, axes: {} };
+    const { weight, italic, short } = faceOf(face);
+    // A style chosen for this pick sets its own weight; the note about the
+    // weight asked of all no longer applies to it.
+    const axes = { ...own.axes };
+    const ownWeight = axes.wght;
+    delete axes.wght;
+    span.style.fontWeight = String(ownWeight || weight);
+    span.style.fontStyle = italic ? "italic" : "normal";
+    span.style.fontSynthesis = "none";
+    span.style.fontVariationSettings = Object.keys(axes).length
+      ? Object.entries(axes).map(([tag, value]) => `"${tag}" ${value}`).join(", ") : "";
+
+    // The size: this pick's own, or matched, or the one set for all.
+    span.style.fontSize = "";
+    const base = view.px || parseFloat(getComputedStyle(span).fontSize);
+    let size = view.px || 0;
+    let said = "";
+    if (own.px) {
+      size = own.px;
+      said = `${own.px}px, set by hand`;
+    } else if (view.match) {
+      const height = heightOf(span, face.name, () => restyleOne(span, face));
+      if (height) {
+        size = Math.round((base * 0.5) / height);
+        said = `${size}px to match`;
+      } else {
+        // Not matched, and said: its size is the one set for all.
+        said = height === 0 ? "could not be measured" : "measuring…";
+      }
+    }
+    span.style.fontSize = size ? `${size}px` : "";
+
+    const tile = span.closest(".draws");
+    const note = tile.querySelector(".draws-short");
+    // What the family cannot do is a warning; the size it took is information.
+    const warning = ownWeight ? "" : short;
+    note.replaceChildren(...[[warning, "cannot"], [said, "took"]].filter(([text]) => text)
+      .flatMap(([text, kind], index) => {
+        const part = document.createElement("span");
+        part.className = kind;
+        part.textContent = text;
+        return index ? [" · ", part] : [part];
+      }));
+    note.hidden = !warning && !said;
+    tile.href = tryLink(face, size, own.axes);
+  };
   const restyle = (root, bySlug) => {
     for (const span of root.querySelectorAll(".tile-glyph[data-slug]")) {
       const face = bySlug.get(span.dataset.slug);
-      if (!face) continue;
-      const { weight, italic, short } = faceOf(face);
-      span.style.fontWeight = String(weight);
-      span.style.fontStyle = italic ? "italic" : "normal";
-      span.style.fontSynthesis = "none";
-      span.style.fontSize = view.px ? `${view.px}px` : "";
-      const tile = span.closest(".draws");
-      const note = tile.querySelector(".draws-short");
-      note.textContent = short;
-      note.hidden = !short;
-      tile.href = tryLink(face);
+      if (face) restyleOne(span, face);
     }
     for (const button of root.querySelectorAll("[data-pick]")) {
       const on = picks.includes(button.dataset.pick);
@@ -391,8 +510,27 @@ export async function start(field, reading, out) {
   };
 
   const setWords = () => [view.px ? `${view.px}px` : "",
-    view.weight ? `weight ${view.weight}` : "", view.italic ? "italic" : ""]
+    view.weight ? `weight ${view.weight}` : "", view.italic ? "italic" : "",
+    view.match ? "sizes matched" : ""]
     .filter(Boolean).join(", ");
+
+  // A row's own size, and its style where the family has more than one.
+  const rowControls = (face) => {
+    const own = tuned(face.slug);
+    const styles = stylesOf(face);
+    const at = styles.findIndex((style) => sameCoords(style.coords, own.axes));
+    const select = styles.length
+      ? `<select data-own="style" aria-label="Style for ${esc(face.name)}">`
+        + `<option value="">as set for all</option>`
+        + styles.map((style, index) => `<option value="${index}"${index === at ? " selected" : ""}>`
+          + `${esc(style.name)}</option>`).join("")
+        + (Object.keys(own.axes).length && at < 0 ? `<option selected disabled>custom</option>` : "")
+        + `</select>`
+      : "";
+    return `<span class="row-own">${select}`
+      + `<input type="number" data-own="px" min="8" max="400" step="1" inputmode="numeric"`
+      + ` value="${own.px || ""}" placeholder="size" aria-label="Size for ${esc(face.name)}"></span>`;
+  };
 
   let stopShortlist = () => {};
   let scrolledToShortlist = false;
@@ -468,6 +606,7 @@ export async function start(field, reading, out) {
     // gets the full width to be read in.
     const long = clusters(subject).length > 3 || subject.length > 8;
     const bySlug = new Map(drawable.map((face) => [face.slug, face]));
+    measuring = subject;
 
     // Every tile asks for its face rather than claiming one: `data-family`, not
     // `data-face`, until lazyfaces.js has the face in hand. Two thousand Latin
@@ -511,11 +650,17 @@ export async function start(field, reading, out) {
           </select></label>
         <label><input type="checkbox" data-set="italic"${view.italic ? " checked" : ""}>
           <span>italic</span></label>
+        <label title="Scale each family so its letters stand as tall as each other's"><input
+          type="checkbox" data-set="match"${view.match ? " checked" : ""}>
+          <span>match visual size</span></label>
       </div>
       <p class="quiet set-note">Each family is set in the nearest weight it publishes, and in
         italic only if it has one; where that is not what was asked, its name says so. Nothing
-        here is emboldened or slanted by the browser. ☆ adds a family to a shortlist you can
-        rank and send.</p>
+        here is emboldened or slanted by the browser. A font size is the size of a box, not of
+        the letters in it, so one family can look twice another's at the same number; matching
+        scales each so the median height of its letters in your text is half the size set, as
+        your browser measures it, and its name says the size that took. ☆ adds a family to a
+        shortlist you can rank and send.</p>
       <div data-shortlist></div>
       ${sent
         ? `<details class="others"><summary>Show all ${drawable.length.toLocaleString()}
@@ -554,6 +699,7 @@ export async function start(field, reading, out) {
         + `<span class="grip" aria-hidden="true" title="Drag to reorder">⠿</span>`
         + familyDrawing(face, true)
         + `<span class="pick-moves">`
+        + rowControls(face)
         + `<button type="button" data-move="-1"${at === 0 ? " disabled" : ""}`
         + ` aria-label="Move ${esc(face.name)} up">↑</button>`
         + `<button type="button" data-move="1"${at === shown.length - 1 ? " disabled" : ""}`
@@ -584,6 +730,36 @@ export async function start(field, reading, out) {
       restyle(panel, bySlug);
       shortlist();
     };
+
+    // Measured once its face is in hand: the lazy loader marks a drawing with
+    // `data-face` when the face has arrived, and that is when it can be ruled.
+    const arrived = new MutationObserver((records) => {
+      if (!view.match && !tune.size) return;
+      for (const record of records) {
+        const face = bySlug.get(record.target.dataset.slug);
+        if (face) restyleOne(record.target, face);
+      }
+    });
+    arrived.observe(panel, { subtree: true, attributes: true, attributeFilter: ["data-face", "class"] });
+
+    // A pick's own size and style change that row alone, so focus stays put.
+    panel.addEventListener("change", (event) => {
+      const control = event.target.closest("[data-own]");
+      const row = control?.closest("[data-row]");
+      if (!row) return;
+      const own = { ...tuned(row.dataset.row) };
+      if (control.dataset.own === "px") {
+        own.px = control.value ? Math.min(400, Math.max(8, Math.round(Number(control.value)))) : 0;
+      } else {
+        const chosen = stylesOf(bySlug.get(row.dataset.row))[Number(control.value)];
+        own.axes = chosen ? { ...chosen.coords } : {};
+      }
+      tune.set(row.dataset.row, own);
+      remember();
+      for (const span of row.querySelectorAll(".tile-glyph[data-slug]")) {
+        restyleOne(span, bySlug.get(span.dataset.slug));
+      }
+    });
     // Once the reader changes the picks they are theirs, not the sender's.
     const repicked = () => {
       fromLink = false;
@@ -690,6 +866,7 @@ export async function start(field, reading, out) {
         }
         if (control.dataset.set === "weight") view.weight = Number(control.value);
         if (control.dataset.set === "italic") view.italic = control.checked;
+        if (control.dataset.set === "match") view.match = control.checked;
         changed();
       });
     }
