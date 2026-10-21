@@ -21,6 +21,8 @@ if (panel) {
   const sizeValue = panel.querySelector('[data-try="size-value"]');
   const weight = panel.querySelector('[data-try="weight"]');
   const italic = panel.querySelector('[data-try="italic"]');
+  const style = panel.querySelector('[data-try="style"]');
+  const axes = [...panel.querySelectorAll("[data-axis]")];
   const family = panel.dataset.face;
 
   let ranges = null;
@@ -66,6 +68,11 @@ if (panel) {
       .filter((box) => !box.checked)
       .map((box) => `"${box.dataset.feature}" 0`);
     if (off.length) rules.push(`font-feature-settings: ${off.join(", ")}`);
+    // Every axis away from its default, set on the font itself: width, slant,
+    // and a font's own, which CSS has no property for.
+    const moved = axes.filter((axis) => axis.value !== axis.dataset.default)
+      .map((axis) => `"${axis.dataset.axis}" ${axis.value}`);
+    if (moved.length) rules.push(`font-variation-settings: ${moved.join(", ")}`);
     return rules.join("; ");
   };
 
@@ -83,9 +90,12 @@ if (panel) {
     const state = {
       text: field.value,
       px: size.value === size.defaultValue ? "" : size.value,
-      weight: weight && weight.selectedIndex > 0 ? weight.value : "",
+      // The weight the menu starts on is the default, whichever option that is.
+      weight: weight && !weight.selectedOptions[0]?.defaultSelected ? weight.value : "",
       italic: italic?.checked ? "1" : "",
       off: off.join(","),
+      var: axes.filter((axis) => axis.value !== axis.dataset.default)
+        .map((axis) => `${axis.dataset.axis}:${axis.value}`).join(","),
     };
     for (const [key, value] of Object.entries(state)) {
       value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
@@ -105,6 +115,32 @@ if (panel) {
   if (italic && given.get("italic") === "1") italic.checked = true;
   const off = new Set((given.get("off") || "").split(",").filter(Boolean));
   for (const box of switches()) if (off.has(box.dataset.feature)) box.checked = false;
+  // Axes, each held to the font's own range; an axis it lacks is ignored.
+  for (const part of (given.get("var") || "").split(",").filter(Boolean)) {
+    const [tag, value] = part.split(":");
+    const axis = axes.find((each) => each.dataset.axis === tag);
+    if (axis && value !== "" && Number.isFinite(Number(value))) {
+      axis.value = String(Math.min(Number(axis.max), Math.max(Number(axis.min), Number(value))));
+    }
+  }
+
+  // The style menu names what the sliders are at, or says "custom": it is a way
+  // to set them, never a claim of its own.
+  const coordsOf = (option) => JSON.parse(option.dataset.coords || "{}");
+  const showAxes = () => {
+    for (const axis of axes) axis.parentElement.querySelector("[data-axis-value]").textContent = axis.value;
+  };
+  const nameStyle = () => {
+    if (!style) return;
+    const now = Object.fromEntries(axes.map((axis) => [axis.dataset.axis, Number(axis.value)]));
+    now.wght = Number(weight?.value || 400);
+    const match = [...style.options].find((option) => option.value
+      && Object.entries(coordsOf(option)).every(([tag, value]) => now[tag] === undefined || now[tag] === value));
+    style.value = match ? match.value : "";
+  };
+  showAxes();
+  nameStyle();
+
   // A link that switched features off shows which: they are the point of it.
   if (switches().some((box) => !box.checked)) panel.querySelector(".try-features").open = true;
 
@@ -182,7 +218,36 @@ if (panel) {
     remember();
   });
   for (const control of panel.querySelectorAll("select, [type=checkbox]")) {
-    control.addEventListener("change", () => (out.hidden ? remember() : render()));
+    if (control === style) continue;
+    control.addEventListener("change", () => {
+      nameStyle();
+      return out.hidden ? remember() : render();
+    });
+  }
+  // Choosing a style sets the weight and every axis it names.
+  style?.addEventListener("change", () => {
+    const option = style.selectedOptions[0];
+    if (!option || !option.value) return;
+    for (const [tag, value] of Object.entries(coordsOf(option))) {
+      if (tag === "wght" && weight) {
+        if (![...weight.options].some((each) => Number(each.value) === value)) {
+          weight.add(new Option(String(value), String(value)));
+        }
+        weight.value = String(value);
+      }
+      const axis = axes.find((each) => each.dataset.axis === tag);
+      if (axis) axis.value = String(value);
+    }
+    showAxes();
+    return out.hidden ? remember() : render();
+  });
+  for (const axis of axes) {
+    axis.addEventListener("input", () => {
+      showAxes();
+      nameStyle();
+      if (!out.hidden) out.setAttribute("style", styles());
+      remember();
+    });
   }
 
   // Arriving with a line to try previews it at once: that is what the link was for.

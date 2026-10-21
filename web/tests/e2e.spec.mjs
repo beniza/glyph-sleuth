@@ -149,6 +149,31 @@ test.describe("Try it in the address", () => {
     expect(url.searchParams.get("px")).toBe("48");
   });
 
+  test("a variable font's named styles and axes are offered, and kept", async ({ page }) => {
+    // Nupuram is 33 named styles over four axes, and only weight and italic
+    // were offered. Choosing one sets the font, and the link.
+    const text = encodeURIComponent("മലയാളം");
+    await page.goto(`${BASE}/font/nupuram/?text=${text}#try-it`);
+    const out = page.locator('[data-try="out"]');
+    await expect(out).toBeVisible();
+    await page.locator('[data-try="style"]').selectOption({ label: "Condensed Bold" });
+    const set = await out.evaluate((node) => {
+      const s = getComputedStyle(node);
+      return { weight: s.fontWeight, variation: s.fontVariationSettings };
+    });
+    expect(set.weight).toBe("700");
+    expect(set.variation).toContain('"wdth" 75');
+    const url = new URL(page.url());
+    expect(url.searchParams.get("weight")).toBe("700");
+    expect(url.searchParams.get("var")).toBe("wdth:75");
+
+    // A link carrying a style arrives in it, and the menu names it.
+    await page.goto(`${BASE}/font/nupuram/?text=${text}&var=SOFT:0#try-it`);
+    await expect(page.locator('[data-try="style"] option:checked')).toHaveText("Sharp");
+    expect(await page.locator('[data-try="out"]').evaluate((n) => getComputedStyle(n).fontVariationSettings))
+      .toContain('"SOFT" 0');
+  });
+
   test("a setting the family does not offer is ignored, not invented", async ({ page }) => {
     await page.goto(`${BASE}/font/rit-rachana/?text=a&px=5000&weight=950&off=zzzz`);
     const out = page.locator('[data-try="out"]');
@@ -264,6 +289,17 @@ test.describe("A shortlist in Inspect", () => {
     // And a link carrying it arrives with it.
     await page.goto(`${BASE}/inspect/?t=${text}&pick=manjari:44px`);
     await expect(page.locator('[data-own="px"]')).toHaveValue("44");
+  });
+
+  test("a shortlisted family can be set in one of its own styles", async ({ page }) => {
+    await page.goto(`${BASE}/inspect/?t=${text}&pick=nupuram,manjari`);
+    const style = page.locator('.pick-row[data-row="nupuram"] [data-own="style"]');
+    await style.selectOption({ label: "Sharp" });
+    expect(new URL(page.url()).searchParams.get("pick")).toMatch(/^nupuram:.*SOFT=0.*,manjari$/);
+    const glyph = page.locator('.pick-row[data-row="nupuram"] .tile-glyph');
+    expect(await glyph.evaluate((el) => getComputedStyle(el).fontVariationSettings)).toContain('"SOFT" 0');
+    // A family with no styles of its own offers none.
+    await expect(page.locator('.pick-row[data-row="manjari"] [data-own="style"]')).toHaveCount(0);
   });
 
   test("a weight a family does not publish is not faked, and is said", async ({ page }) => {

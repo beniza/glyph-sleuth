@@ -867,7 +867,7 @@ def test_google_is_asked_for_the_weights_the_control_offers():
     assert ":wght@400;500;800" in css
     page = render.font_page(many, BLOCKS)
     for weight in ("400", "500", "800"):
-        assert f'<option value="{weight}">' in page
+        assert f'<option value="{weight}"' in page
     # One face is no choice, so there is no control and no axis in the request.
     one = dict(MANJARI, source="google", name="ABeeZee", css=None, faces=["400"])
     assert "wght@" not in render.face_css_of(one)
@@ -1134,7 +1134,7 @@ def test_a_variable_face_is_offered_across_its_axis():
     assert "font-weight: 100 900" in rule
     page = render.font_page(variable, BLOCKS)
     for weight in ("100", "400", "900"):
-        assert f'<option value="{weight}">' in page
+        assert f'<option value="{weight}"' in page
 
 
 def test_try_it_is_absent_where_we_cannot_draw_the_family():
@@ -1531,6 +1531,43 @@ def test_inspect_knows_the_faces_each_family_publishes():
     assert by_name["Two"]["weights"] == [400, 700] and by_name["Two"]["italic"] is True
     # A variable face is every round weight in its range, as Try it offers.
     assert by_name["Range"]["weights"] == list(range(100, 1000, 100))
+
+
+def test_a_google_variable_family_is_asked_for_its_ranges():
+    """Asked for fixed weights, Google serves fixed faces, and a width between
+    them is the browser guessing. A variable family is asked for every axis over
+    its range, lowercase tags first, as the CSS2 API requires."""
+    font = {"name": "Anek Malayalam", "source": "google", "faces": ["400", "700"],
+            "axes": [{"tag": "wght", "min": 100.0, "max": 800.0, "default": 400.0},
+                     {"tag": "GRAD", "min": -50.0, "max": 100.0, "default": 0.0},
+                     {"tag": "wdth", "min": 75.0, "max": 125.0, "default": 100.0}]}
+    assert render.google_axes(font) == ":wdth,wght,GRAD@75..125,100..800,-50..100"
+    with_italic = dict(font, faces=["400", "400i"])
+    assert render.google_axes(with_italic).startswith(":ital,wdth,wght,GRAD@0,75..125")
+    # A static family is asked for the faces it has, as before.
+    assert render.google_axes({"faces": ["400", "700"]}) == ":wght@400;700"
+
+
+def test_a_variable_family_offers_its_styles_and_axes():
+    """Try it, and Inspect's shortlist, offer the styles the font names and a
+    slider for each axis beyond weight — Nupuram's width and softness."""
+    font = dict(MANJARI, slug="manjari", source="smc", css="https://smc.org.in/fonts/x.css",
+                faces=["100", "900"],
+                axes=[{"tag": "wght", "min": 100, "max": 900, "default": 400},
+                      {"tag": "wdth", "min": 75, "max": 125, "default": 100},
+                      {"tag": "SOFT", "min": 0, "max": 100, "default": 50}],
+                instances=[{"name": "Sharp", "coords": {"wght": 400, "wdth": 100, "SOFT": 0}}])
+    html = render.try_it(font, "Manjari")
+    assert '<option value="0" data-coords=' in html and ">Sharp</option>" in html
+    assert 'data-axis="wdth" min="75" max="125"' in html
+    assert 'data-axis="SOFT"' in html and 'data-axis="wght"' not in html
+    assert ">width</span>" in html
+    families, _cover = render.inspect_coverage(
+        render.prepare_fonts([dict(font, tier="measured", ranges=[[0x0D00, 0x0D7F]])],
+                             [[0x0D00, 0x0D7F, "Malayalam"]]), [[0x0D00, 0x0D7F, "Malayalam"]])
+    entry = families["families"][0]
+    assert [a["tag"] for a in entry["axes"]] == ["wdth", "SOFT"]
+    assert entry["styles"][0]["name"] == "Sharp"
 
 
 def test_feature_page_says_what_it_cannot():

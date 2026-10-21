@@ -547,7 +547,7 @@ def test_parsed_fonts_are_not_kept():
 
 def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
                 extra_glyphs=(), family="Test Face", style="Regular",
-                weight=400, italic=False, shared=None):
+                weight=400, italic=False, shared=None, instances=()):
     """A real font, built in memory, so the parser is tested against the thing
     it actually parses rather than a stub of it."""
     from fontTools.fontBuilder import FontBuilder
@@ -568,7 +568,7 @@ def sample_font(codepoints=(0x0D15, 0x0D16, 0x0D7B), fea=None, axes=None,
     builder.setupOS2(usWeightClass=weight, fsSelection=0x01 if italic else 0x40)
     builder.setupPost()
     if axes:
-        builder.setupFvar(axes, [])
+        builder.setupFvar(axes, list(instances))
     if fea:
         addOpenTypeFeaturesFromString(builder.font, fea)
     blob = io.BytesIO()
@@ -662,6 +662,26 @@ def test_measure_opentype():
 def test_measure_variable():
     facts = gen_index.measure(sample_font(axes=[("wght", 400, 400, 700, "Weight")]))
     assert facts["axes"] == [{"tag": "wght", "min": 400, "default": 400, "max": 700}]
+
+
+def test_a_variable_font_names_its_styles():
+    """Nupuram is thirty-three named styles in one file, and the site offered a
+    weight and an italic switch. The styles are read from the font, with the
+    axis values each one is, so a page offers what the font names."""
+    blob = sample_font(
+        axes=[("wght", 100, 400, 900, "Weight"), ("SOFT", 0, 50, 100, "Softness")],
+        instances=[{"location": {"wght": 400, "SOFT": 0}, "stylename": "Sharp"},
+                   {"location": {"wght": 700, "SOFT": 50}, "stylename": "Bold"}])
+    facts = gen_index.measure(blob)
+    assert facts["instances"] == [{"name": "Sharp", "coords": {"wght": 400, "SOFT": 0}},
+                                  {"name": "Bold", "coords": {"wght": 700, "SOFT": 50}}]
+    # A static face has none, recorded as none, so its cache is never re-read.
+    assert gen_index.measure(sample_font())["instances"] == []
+    # A variable font read before styles were recorded is read again; a static
+    # one is not, since it had nothing to miss.
+    assert not gen_index.styles_read({"axes": [{"tag": "wght"}]})
+    assert gen_index.styles_read({"axes": [{"tag": "wght"}], "instances": []})
+    assert gen_index.styles_read({"ranges": []})
 
 
 def test_measure_provenance():

@@ -16,8 +16,19 @@ the summary. Commit messages carry the reasons.
 - **A shortlisted family can have its own size**, typed on its row and kept in
   the link: `pick=manjari:58px`. Links from 0.7.0, a bare list of names, still
   read as they did.
+- **A variable font's styles and axes.** Nupuram is thirty-three named styles in
+  one file — Condensed Bold, Sharp, SuperSoft — over weight, width, slant and
+  softness, and only weight and italic were offered. Try it now has a style menu
+  of the styles the font names and a slider for each axis it has, in the link as
+  `var=wdth:75,SOFT:0`; a shortlisted family can be set in one of its styles.
+  Google's variable families are asked for their full axis ranges, and offer the
+  widths CSS names within them, since Google publishes no style names.
 
 ### Fixed
+
+- **Try it previewed a variable font at its thinnest.** The weight menu started
+  on its first option, 100, so Nupuram was shown in Thin; it starts on the
+  font's default weight now.
 
 - **A shortlist row could not be dragged on a phone.** It used the browser's own
   drag-and-drop, which no mobile browser starts from a touch, and the grip was

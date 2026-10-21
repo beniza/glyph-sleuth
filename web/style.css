@@ -886,14 +886,14 @@ table.tight .quiet { font-size: 12.5px; }
   gap: 10px 14px;
   margin: 10px 0;
 }
-.try-size, .try-weight, .try-italic {
+.try-size, .try-weight, .try-italic, .try-style, .try-axis {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
 }
-.try-size input[type=range] { width: 110px; }
-.try-weight select {
+.try-size input[type=range], .try-axis input[type=range] { width: 110px; }
+.try-weight select, .try-style select {
   font: inherit;
   padding: 2px 4px;
   background: var(--panel);

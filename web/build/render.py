@@ -555,6 +555,18 @@ def count_in_range(ranges, first, last):
     return total
 
 
+# What the registered axes are called; a font's own axes go by their tag.
+AXIS_NAMES = {"wdth": "width", "slnt": "slant", "opsz": "optical size", "ital": "italic"}
+
+
+def variation_axes(font):
+    """The axes a page may set beyond weight and italic, which have their own
+    controls: width, slant, optical size, and a font's own (Nupuram's SOFT)."""
+    return [{"tag": a["tag"], "min": a["min"], "max": a["max"],
+             "default": a.get("default", a["min"])}
+            for a in font.get("axes") or [] if a.get("tag") not in ("wght", "ital")]
+
+
 def published_styles(font):
     """The weights and whether there is an italic: what a family publishes, so
     what Try it may offer and Inspect may ask for. Anything else, a browser
@@ -607,12 +619,40 @@ def try_it(font, name):
                 'data-try="size" aria-label="Preview size">'
                 '<span class="mono" data-try="size-value">14px</span></label>']
     if len(weights) > 1:
-        options = "".join(f'<option value="{esc(w)}">{esc(w)}</option>' for w in weights)
+        # Starting on the regular, not on the first option: a variable font's
+        # menu runs from 100, and Try it previewed Nupuram in Thin.
+        axis = next((a for a in (font.get("axes") or []) if a.get("tag") == "wght"), None)
+        axis_default = str(int(axis["default"])) if axis and axis.get("default") else ""
+        start = next((w for w in (axis_default, "400") if w in weights), weights[0])
+        options = "".join(f'<option value="{esc(w)}"{" selected" if w == start else ""}>'
+                          f'{esc(w)}</option>' for w in weights)
         controls.append('        <label class="try-weight"><span class="quiet">weight</span>'
                         f'<select data-try="weight">{options}</select></label>')
     if italic:
         controls.append('        <label class="try-italic">'
                         '<input type="checkbox" data-try="italic"><span>italic</span></label>')
+
+    # A variable font's named styles, and a slider for each axis it has beyond
+    # weight — read from the font, so Nupuram offers Sharp and SuperSoft because
+    # it names them, and its width because it has one.
+    styles = font.get("instances") or []
+    if styles:
+        options = "".join(
+            f'<option value="{index}" data-coords="{esc(json.dumps(style["coords"]))}">'
+            f'{esc(style["name"])}</option>' for index, style in enumerate(styles))
+        controls.append('        <label class="try-style"><span class="quiet">style</span>'
+                        f'<select data-try="style"><option value="">custom</option>{options}'
+                        '</select></label>')
+    for axis in variation_axes(font):
+        low, high, default = axis["min"], axis["max"], axis["default"]
+        step = "1" if high - low >= 20 else "0.1"
+        controls.append(
+            f'        <label class="try-axis"><span class="quiet">'
+            f'{esc(AXIS_NAMES.get(axis["tag"], axis["tag"]))}</span>'
+            f'<input type="range" data-axis="{esc(axis["tag"])}" min="{low:g}" max="{high:g}"'
+            f' step="{step}" value="{default:g}" data-default="{default:g}"'
+            f' aria-label="{esc(AXIS_NAMES.get(axis["tag"], axis["tag"]))}">'
+            f'<span class="mono" data-axis-value>{default:g}</span></label>')
 
     # Every feature the font's own tables declare, off meaning "as the font
     # ships it" rather than "off": unchecking is what shows you the rule.
@@ -1010,6 +1050,19 @@ def google_axes(font):
     control can only offer faces that will arrive.
     """
     faces = font.get("faces") or []
+    italic = any(f.endswith("i") for f in faces)
+    # A variable family: ask for every axis over its whole range, or Google
+    # serves fixed faces and a width or a weight between them is the browser
+    # guessing. Google wants the lowercase tags first, each group alphabetical.
+    axes = sorted((a for a in font.get("axes") or [] if a.get("tag") and a["tag"] != "ital"),
+                  key=lambda a: (a["tag"] != a["tag"].lower(), a["tag"]))
+    if axes:
+        number = lambda v: f"{v:g}"
+        ranges = ",".join(f"{number(a['min'])}..{number(a['max'])}" for a in axes)
+        tags = ",".join(a["tag"] for a in axes)
+        if italic:
+            return f":ital,{tags}@0,{ranges};1,{ranges}"
+        return f":{tags}@{ranges}"
     pairs = sorted({(1 if f.endswith("i") else 0, int(f.rstrip("i")))
                     for f in faces if f.rstrip("i").isdigit()})
     if len(pairs) < 2:
@@ -2066,6 +2119,10 @@ def inspect_coverage(fonts, blocks):
             # nearest real face and said to be.
             "weights": [int(w) for w in weights] or [400],
             "italic": italic,
+            # A variable font's axes and the styles it names, so a shortlisted
+            # family can be set as Condensed Bold, or Sharp, and nothing else.
+            **({"axes": variation_axes(font)} if variation_axes(font) else {}),
+            **({"styles": font["instances"]} if font.get("instances") else {}),
         })
 
     starts = [block[0] for block in blocks]

@@ -139,7 +139,7 @@ def remember(url, facts):
 def measure_and_shape(blob, url, label, ranges=None):
     """Everything we read from one font file, cached against that file's URL."""
     hit = cached(url)
-    if hit is not None and counted_glyphs(hit) and shaping_current(hit):
+    if hit is not None and counted_glyphs(hit) and shaping_current(hit) and styles_read(hit):
         return hit
     facts = measure(blob)
     for script in SHAPED_SCRIPTS:
@@ -298,6 +298,12 @@ def google_record(meta, detail):
         "designers": meta.get("designers") or [],
         # Weights and styles, so a specimen can be set in more than one face.
         "faces": [f.replace(name, "").strip() or "Regular" for f in (detail.get("fonts") or {})],
+        # A variable family's axes, as Google publishes them. The file we measure
+        # is a static instance, so its own fvar never shows them; and the
+        # stylesheet has to ask for the ranges, or Google serves fixed faces.
+        "axes": [{"tag": a["tag"], "min": a["min"], "max": a["max"],
+                  "default": a.get("defaultValue", a["min"])}
+                 for a in detail.get("axes") or [] if a.get("tag")],
         "url": GF_SPECIMEN.format(slug=slug),
         "css": f"https://fonts.googleapis.com/css2?family={slug}",
         "tier": "measured",
@@ -344,7 +350,8 @@ def measure_google_face(font):
         # Ask the cache before the network: the stylesheet is a few hundred bytes
         # and names the exact file, so a cache hit costs one cheap fetch.
         facts = cached(url)
-        if facts is None or not counted_glyphs(facts) or not shaping_current(facts):
+        if (facts is None or not counted_glyphs(facts) or not shaping_current(facts)
+                or not styles_read(facts)):
             facts = measure_and_shape(fetch(url), url, label, font["ranges"])
         # #6. Which file we last read, so that a stylesheet failing today can
         # still find the measurement keyed on that file's URL.
@@ -690,6 +697,31 @@ def webfont_present(facts):
 GLYPHS = 2
 
 
+def named_styles(font):
+    """[{name, coords}] for every named instance in `fvar`, or []."""
+    if "fvar" not in font:
+        return []
+    names = font["name"]
+    styles = []
+    for instance in font["fvar"].instances:
+        name = names.getDebugName(instance.subfamilyNameID)
+        if not name:
+            continue
+        coords = {tag: round(value, 2) for tag, value in instance.coordinates.items()}
+        styles.append({"name": name, "coords": coords})
+    return styles
+
+
+def styles_read(facts):
+    """Has a cached reading of a variable font recorded its named styles?
+
+    Same shape as `counted_glyphs`: only the families that need it re-read, and
+    a static face never does — it has no styles to have missed.
+    """
+    facts = facts or {}
+    return not facts.get("axes") or "instances" in facts
+
+
 def counted_glyphs(facts):
     """Does a cached measurement know how many glyphs the font really had —
     and does its list record what this version of `glyphs()` records?
@@ -866,6 +898,12 @@ def measure(blob):
         facts["axes"] = [{"tag": axis.axisTag, "min": axis.minValue,
                           "default": axis.defaultValue, "max": axis.maxValue}
                          for axis in font["fvar"].axes]
+    # The styles a variable font names — Condensed Bold, Sharp, SuperSoft — as
+    # the font's own name table spells them, with the axis values each one is.
+    # Nupuram is thirty-three of them in one file, and the site offered a weight
+    # and an italic switch. Recorded empty for a static face, so a warm cache can
+    # tell "has none" from "was read before these were".
+    facts["instances"] = named_styles(font)
 
     # The working behind the counts, for the shaping tables page.
     facts["tables"] = lookups(blob)
@@ -1011,7 +1049,7 @@ def foundry_family(source, project, token=None):
     # the cache remembers a webfont that is no longer on disk.
     facts = cached(key)
     if (facts is None or not webfont_present(facts) or not counted_glyphs(facts)
-            or not shaping_current(facts)):
+            or not shaping_current(facts) or not styles_read(facts)):
         try:
             found, members = faces()
             if not found:
