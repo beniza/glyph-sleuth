@@ -1081,7 +1081,21 @@ table.tight .quiet { font-size: 12.5px; }
   background: var(--bone);
 }
 .pick-row .draws-row { border-bottom: none; }
-.grip { color: var(--faint); cursor: grab; padding: 0 2px; user-select: none; }
+/* The grip is what a finger drags, so it is a full-height target, and it asks
+   the browser not to scroll the page when the drag starts on it. */
+.grip {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  color: var(--faint);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.pick-row.dragging { background: var(--panel); outline: 1px solid var(--proof); }
+.pick-row.dragging .grip { cursor: grabbing; color: var(--proof); }
 .pick-moves { display: flex; gap: 2px; }
 .pick-moves button {
   font: 13px/1 var(--mono);
@@ -1096,8 +1110,7 @@ table.tight .quiet { font-size: 12.5px; }
 .share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .others > summary { cursor: pointer; color: var(--proof); margin: 10px 0; }
 @media (max-width: 560px) {
-  .pick-row { grid-template-columns: 1fr auto; }
-  .grip { display: none; }
+  .pick-row { gap: 6px; }
 }
 /* The note sits under the name; the drawing keeps the second column. */
 .draws-row .draws-short { grid-column: 1; text-align: left; }

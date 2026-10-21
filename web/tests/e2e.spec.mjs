@@ -201,6 +201,30 @@ test.describe("A shortlist in Inspect", () => {
     expect(new URL(page.url()).searchParams.get("pick")).toBe("rit-rachana");
   });
 
+  test("a row can be dragged into place with a finger", async ({ browser }) => {
+    // The browser's own drag-and-drop never starts from a touch, so on a phone
+    // the grip did nothing. Real touch events, in a phone-sized window.
+    const context = await browser.newContext({ viewport: { width: 380, height: 800 },
+      hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/inspect/?t=${text}&pick=rit-rachana,manjari,gayathri`);
+    const grip = page.locator('.pick-row[data-row="rit-rachana"] .grip');
+    await expect(grip).toBeVisible();
+    await grip.scrollIntoViewIfNeeded();
+    const from = await grip.boundingBox();
+    const last = await page.locator('.pick-row[data-row="gayathri"]').boundingBox();
+    const x = from.x + from.width / 2;
+    const cdp = await context.newCDPSession(page);
+    const touch = (type, y) => cdp.send("Input.dispatchTouchEvent", {
+      type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+    await touch("touchStart", from.y + from.height / 2);
+    for (let y = from.y; y <= last.y + last.height - 4; y += 12) await touch("touchMove", y);
+    await touch("touchEnd");
+    await expect.poll(() => new URL(page.url()).searchParams.get("pick"))
+      .toBe("manjari,gayathri,rit-rachana");
+    await context.close();
+  });
+
   test("a weight a family does not publish is not faked, and is said", async ({ page }) => {
     await page.goto(`${BASE}/inspect/?t=${text}&weight=900&pick=rit-rachana`);
     const row = page.locator('.pick-row[data-row="rit-rachana"]');

@@ -550,7 +550,7 @@ export async function start(field, reading, out) {
         : `Your shortlist: ${count}${words ? `, set at ${words}` : ""}. Drag a row or use the
            arrows to rank them; the link keeps the order.`;
       const rows = shown.map((face, at) =>
-        `<li class="pick-row" draggable="true" data-row="${esc(face.slug)}">`
+        `<li class="pick-row" data-row="${esc(face.slug)}">`
         + `<span class="grip" aria-hidden="true" title="Drag to reorder">⠿</span>`
         + familyDrawing(face, true)
         + `<span class="pick-moves">`
@@ -627,21 +627,59 @@ export async function start(field, reading, out) {
       }
     });
 
-    // Dragging, for a mouse: drop a row on another and it takes that place.
-    let dragged = null;
-    box.addEventListener("dragstart", (event) => {
-      dragged = event.target.closest("[data-row]")?.dataset.row || null;
-      if (dragged) event.dataTransfer.setData("text/plain", dragged);
-    });
-    box.addEventListener("dragover", (event) => {
-      if (dragged && event.target.closest("[data-row]")) event.preventDefault();
-    });
-    box.addEventListener("drop", (event) => {
-      const onto = event.target.closest("[data-row]");
-      if (!dragged || !onto) return;
+    // Dragging by the grip, with pointer events: one path for a mouse, a finger
+    // and a pen. This used the browser's own drag-and-drop, which no mobile
+    // browser starts from a touch — so on a phone the grip did nothing, and was
+    // hidden besides. The row moves under the pointer as it goes, and the order
+    // it is left in is the order kept.
+    box.addEventListener("pointerdown", (event) => {
+      const grip = event.target.closest(".grip");
+      const row = grip?.closest("[data-row]");
+      if (!row || event.button > 0) return;
       event.preventDefault();
-      move(picks.indexOf(dragged), picks.indexOf(onto.dataset.row));
-      dragged = null;
+      // Listened for on the document, not captured on the grip: moving the row
+      // moves the grip with it, and a moved element loses its pointer capture,
+      // which left the drag deaf after its first step.
+      const pointer = event.pointerId;
+      row.classList.add("dragging");
+      const list = row.parentElement;
+      const before = [...list.children].map((item) => item.dataset.row).join(",");
+      let scrolling = 0;
+      const follow = (y) => {
+        // The first other row whose middle is below the pointer takes it in front.
+        const next = [...list.children].find((item) => item !== row
+          && y < item.getBoundingClientRect().top + item.getBoundingClientRect().height / 2);
+        if (next) {
+          if (next !== row.nextElementSibling) list.insertBefore(row, next);
+        } else if (list.lastElementChild !== row) {
+          list.append(row);
+        }
+      };
+      const onMove = (e) => {
+        if (e.pointerId !== pointer) return;
+        e.preventDefault();
+        follow(e.clientY);
+        // Near an edge of the screen, scroll, so a long list can be crossed.
+        const edge = 48;
+        scrolling = e.clientY < edge ? -8 : e.clientY > innerHeight - edge ? 8 : 0;
+      };
+      const tick = setInterval(() => { if (scrolling) scrollBy(0, scrolling); }, 16);
+      const onUp = (e) => {
+        if (e.pointerId !== pointer) return;
+        clearInterval(tick);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        row.classList.remove("dragging");
+        const after = [...list.children].map((item) => item.dataset.row);
+        if (after.join(",") === before) return;
+        // Picks the text cannot show are not rows; they keep their place at the end.
+        picks = [...after, ...picks.filter((pick) => !after.includes(pick))];
+        repicked();
+      };
+      document.addEventListener("pointermove", onMove, { passive: false });
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
     });
 
     for (const control of panel.querySelectorAll("[data-set]")) {

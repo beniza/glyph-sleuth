@@ -4,6 +4,15 @@ What changed in each release of Glyph Sleuth, newest first. The annotated
 release tags carry the full notes, including what went wrong on the way; this is
 the summary. Commit messages carry the reasons.
 
+## Unreleased
+
+### Fixed
+
+- **A shortlist row could not be dragged on a phone.** It used the browser's own
+  drag-and-drop, which no mobile browser starts from a touch, and the grip was
+  hidden at phone width. Rows are dragged by the grip with pointer events now —
+  mouse, finger or pen — and ↑ ↓ remain for the keyboard.
+
 ## 0.7.0 — 2026-10-19
 
 For choosing a font and sending the choice: a shortlist in Inspect, Try it links
