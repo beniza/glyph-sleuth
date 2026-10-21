@@ -57,7 +57,10 @@ export function watch(tiles, note) {
       }
       const css = tile.dataset.css;
       if (css && css.includes("fonts.googleapis.com")) {
-        google.push(family);
+        // The family as its own stylesheet asks for it — with its weights or
+        // axis ranges. Batched by bare name, every Google family arrived as its
+        // regular alone, and a width or weight asked of it was never drawn.
+        google.push({ family, spec: new URL(css).searchParams.get("family") || family });
       } else if (css) {
         asked.set(family, sheet(css));
       } else if (tile.dataset.rule) {
@@ -71,9 +74,11 @@ export function watch(tiles, note) {
 
     for (let at = 0; at < google.length; at += BATCH) {
       const batch = google.slice(at, at + BATCH);
-      const query = batch.map((f) => `family=${f.replace(/ /g, "+")}`).join("&");
+      const query = batch.map(({ spec }) => `family=${encodeURIComponent(spec)
+        .replace(/%20/g, "+").replace(/%3A/g, ":").replace(/%2C/g, ",").replace(/%40/g, "@")
+        .replace(/%3B/g, ";")}`).join("&");
       const arrived = sheet(`https://fonts.googleapis.com/css2?${query}&display=swap`);
-      for (const family of batch) asked.set(family, arrived);
+      for (const { family } of batch) asked.set(family, arrived);
       waits.push(arrived);
     }
 

@@ -302,6 +302,17 @@ test.describe("A shortlist in Inspect", () => {
     await expect(page.locator('.pick-row[data-row="manjari"] [data-own="style"]')).toHaveCount(0);
   });
 
+  test("a Google family's bold arrives when the shortlist asks for 700", async ({ page }) => {
+    // Inspect batches Google families into one request, and built it from bare
+    // names, so every one arrived as its regular alone — set at 700, with
+    // synthesis off, it was drawn at 400 under a setting that said 700.
+    await page.goto(`${BASE}/inspect/?t=Hamburgefonts&weight=700&pick=abhaya-libre`);
+    await page.locator('.pick-row[data-row="abhaya-libre"] .tile-glyph[data-face]').waitFor({ timeout: 20_000 });
+    await expect.poll(() => page.evaluate(() => [...document.fonts].some((face) =>
+      face.family.replace(/"/g, "") === "Abhaya Libre" && face.weight === "700"
+      && face.status === "loaded")), { timeout: 15_000 }).toBe(true);
+  });
+
   test("a weight a family does not publish is not faked, and is said", async ({ page }) => {
     await page.goto(`${BASE}/inspect/?t=${text}&weight=900&pick=rit-rachana`);
     const row = page.locator('.pick-row[data-row="rit-rachana"]');

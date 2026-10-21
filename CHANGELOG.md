@@ -26,6 +26,11 @@ the summary. Commit messages carry the reasons.
 
 ### Fixed
 
+- **Inspect drew every Google family in its regular.** The faces load in
+  batches, and the batch named each family bare, so Google sent the regular
+  alone: a shortlist at 700 showed Google families at 400 under a setting that
+  said 700, and a width was never drawn. Each is asked for as its own stylesheet
+  asks — its weights, or its axis ranges.
 - **Try it previewed a variable font at its thinnest.** The weight menu started
   on its first option, 100, so Nupuram was shown in Thin; it starts on the
   font's default weight now.
