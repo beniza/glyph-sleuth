@@ -1433,9 +1433,18 @@ def test_trace_shows_which_lookup_fired():
     blob = sample_font(codepoints=(0x0D15, 0x0D4D), fea=fea, extra_glyphs=("lig",))
     steps = gen_index.trace(blob, "0D15 0D4D 0D15", ["akhn"])
 
-    # It starts from what the cmap gave, before any lookup ran.
+    # It starts from what the cmap gave, before any lookup ran: the font's
+    # glyphs, not the text's codepoints read as glyph ids. HarfBuzz's first
+    # messages come before the cmap, and every trace on the site opened with
+    # Unicode values named as whatever glyph sat at that index.
     assert steps[0]["step"] == "after cmap"
-    assert len(steps[0]["glyphs"]) == 3
+    assert steps[0]["glyphs"] == ["g0D15", "g0D4D", "g0D15"]
+    fired_first = next(s for s in steps if s.get("feature"))
+    assert fired_first["before"] == ["g0D15", "g0D4D", "g0D15"]
+
+    # A codepoint the font lacks maps to .notdef there, not to a glyph that
+    # happens to sit at its number.
+    assert gen_index.trace(blob, "0D15 0937", [])[0]["glyphs"] == ["g0D15", ".notdef"]
 
     # And there is a step, naming the feature, where the run actually changed.
     fired = [s for s in steps if s.get("feature") == "akhn"]
@@ -1452,6 +1461,18 @@ def test_trace_shows_which_lookup_fired():
     quiet = gen_index.trace(blob, "0D15", [])
     assert quiet[0]["step"] == "after cmap"
     assert len(quiet) == 1
+
+
+def test_trace_shows_the_dotted_circle_it_names():
+    # The step was recorded when HarfBuzz *started* inserting dotted circles,
+    # so the step that names the circle showed the run without one.
+    fea = "languagesystem mlm2 dflt;\nfeature akhn { script mlm2; sub g0D15 g0D4D g0D15 by lig; } akhn;"
+    blob = sample_font(codepoints=(0x0D15, 0x0D4D, 0x0D46, 0x25CC), fea=fea,
+                       extra_glyphs=("lig",))
+    steps = gen_index.trace(blob, "0D46", [])
+    circle = [s for s in steps if "dotted circle" in s["step"]]
+    assert circle, [s["step"] for s in steps]
+    assert "g25CC" in circle[0]["glyphs"]
 
 
 def test_hb_shape_command():

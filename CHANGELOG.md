@@ -32,6 +32,11 @@ the summary. Commit messages carry the reasons.
   failed all seven Devanagari sequences on `.notdef`, and they were counted
   against its clean total. A family is shaped for a script now when it can
   write a word of it; it is still opened and read as before.
+- **Every trace began with the wrong glyphs.** Its "after cmap" step was taken
+  before the cmap ran, so the text's codepoints were named as whatever glyph
+  sat at that number — U+0915 as glyph 2325 — and the first lookup took the
+  credit for the cmap. The step that names an inserted dotted circle showed the
+  run before the circle went in, too.
 - **Inspect drew every Google family in its regular.** The faces load in
   batches, and the batch named each family bare, so Google sent the regular
   alone: a shortlist at 700 showed Google families at 400 under a setting that

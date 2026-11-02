@@ -1557,8 +1557,9 @@ def as_sfnt(blob):
 # reach a family that was already measured: 2 is #96, the conjunct check; 3
 # adds Latin, and the ink check for accents that collide or stand beside their
 # letter; 4 records each verdict untagged as well; 5 adds feature examples;
-# 6 shapes a script only for a family that can write a word of it.
-SHAPING = 6
+# 6 shapes a script only for a family that can write a word of it; 7 starts
+# each trace from the glyphs the cmap gave rather than the text's codepoints.
+SHAPING = 7
 
 ZWJ, ZWNJ = 0x200D, 0x200C
 
@@ -1965,18 +1966,22 @@ def trace(blob, codes, features=None, language="ml"):
 
     def message(text):
         nonlocal previous
-        current = names()
         if previous is None:
-            steps.append({"step": "after cmap", "glyphs": current})
-            previous = current
+            # Until GSUB starts the buffer holds the text's codepoints, not
+            # glyph ids: named then, U+0915 read as whatever glyph is number
+            # 2325, and the first lookup took the credit for the cmap.
+            if text.startswith("start table GSUB"):
+                previous = names()
+                steps.append({"step": "after cmap", "glyphs": previous})
             return True
+        current = names()
         found = LOOKUP_END.match(text)
         if found and current != previous:
             steps.append({"step": text, "feature": found.group(2),
                           "lookup": int(found.group(1)),
                           "before": previous, "glyphs": current})
             previous = current
-        elif "dotted-circle" in text and "skipped" not in text:
+        elif text.startswith("end inserting dotted-circles") and current != previous:
             steps.append({"step": "the shaper inserted a dotted circle — it could not "
                                   "make sense of the cluster", "glyphs": current})
             previous = current
