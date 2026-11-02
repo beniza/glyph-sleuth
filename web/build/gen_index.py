@@ -331,7 +331,10 @@ def worth_parsing(font):
     and slow, and tiers 2 and 3 say nothing about a face the script never
     reaches.
     """
-    return any(reaches(font.get("ranges") or [], script) for script in SHAPED_SCRIPTS)
+    ranges = font.get("ranges") or []
+    return any(reaches(ranges, script)
+               or (script not in UNTESTED_WHEN_UNCOVERED and touches(ranges, script))
+               for script in SHAPED_SCRIPTS)
 
 
 def measure_google_face(font):
@@ -1455,18 +1458,26 @@ SHAPED_SCRIPTS = {
 UNTESTED_WHEN_UNCOVERED = {"Latn"}
 
 
+def touches(ranges, script):
+    """Does this family have any codepoint in the script's blocks?
+
+    Enough to be worth opening, not to be shaped: Nupuram carries the two
+    Devanagari stress marks and no Devanagari letter.
+    """
+    return any(countInRange(ranges or [], first, last)
+               for first, last in SHAPED_SCRIPTS[script])
+
+
 def reaches(ranges, script):
     """Should this family be shaped for this script?
 
-    By block for the scripts whose sequences define what a family for them must
-    do. By sequence for the rest: a family reaches one when it has every
-    character of it, or of its composed form.
+    When it can write a word of it: every character of one of the script's
+    sequences, or of its composed form. Any codepoint in the block used to do
+    for Malayalam and Devanagari, and a Malayalam family with two Devanagari
+    stress marks was shown failing all of Devanagari. Which sequences it is then
+    judged on is shape_all's question.
     """
     import unicodedata
-
-    if script not in UNTESTED_WHEN_UNCOVERED:
-        return any(countInRange(ranges or [], first, last)
-                   for first, last in SHAPED_SCRIPTS[script])
 
     def has(cp):
         return countInRange(ranges or [], cp, cp) > 0
@@ -1545,8 +1556,9 @@ def as_sfnt(blob):
 # The cache keys on the file's URL, so without this a fixed check would never
 # reach a family that was already measured: 2 is #96, the conjunct check; 3
 # adds Latin, and the ink check for accents that collide or stand beside their
-# letter; 4 records each verdict untagged as well; 5 adds feature examples.
-SHAPING = 5
+# letter; 4 records each verdict untagged as well; 5 adds feature examples;
+# 6 shapes a script only for a family that can write a word of it.
+SHAPING = 6
 
 ZWJ, ZWNJ = 0x200D, 0x200C
 

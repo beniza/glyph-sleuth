@@ -26,6 +26,12 @@ the summary. Commit messages carry the reasons.
 
 ### Fixed
 
+- **A family was shown failing a script it never claims.** Any codepoint in a
+  script's blocks was enough to be shaped for it, so Nupuram — a Malayalam
+  family carrying the two Devanagari stress marks and no Devanagari letter —
+  failed all seven Devanagari sequences on `.notdef`, and they were counted
+  against its clean total. A family is shaped for a script now when it can
+  write a word of it; it is still opened and read as before.
 - **Inspect drew every Google family in its regular.** The faces load in
   batches, and the batch named each family bare, so Google sent the regular
   alone: a shortlist at 700 showed Google families at 400 under a setting that

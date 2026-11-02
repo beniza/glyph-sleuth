@@ -941,6 +941,9 @@ def test_only_relevant_families_are_parsed():
     latin_only = {"ranges": [[0x0020, 0x007E]]}
     assert gen_index.worth_parsing(malayalam)
     assert not gen_index.worth_parsing(latin_only)
+    # Opening is wider than shaping: a family with a few Devanagari marks is
+    # still read for its tables, though it is not shaped as Devanagari.
+    assert gen_index.worth_parsing({"ranges": [[0x0951, 0x0952]]})
 
 
 def test_shape_verdicts():
@@ -1218,9 +1221,25 @@ def test_latin_is_measured_where_a_family_can_reach_it():
     assert not gen_index.reaches(basic, "Latn")
     assert gen_index.reaches(basic + [[0x301, 0x302]], "Latn")         # the marks
     assert gen_index.reaches(basic + [[0x1EBF, 0x1EBF]], "Latn")       # ế composed
-    # Malayalam and Devanagari keep the block gate: those sequences are what a
-    # family for the script is for.
     assert gen_index.reaches([[0x0D00, 0x0D7F]], "Mlym")
+
+
+def test_a_family_is_shaped_for_a_script_only_when_it_can_write_a_word_of_it():
+    """Nupuram is a Malayalam family that carries the two Devanagari stress
+    marks, U+0951 and U+0952, and nothing else of Devanagari. Any codepoint in
+    the block used to be enough to be shaped as Devanagari, so it was handed
+    every Devanagari sequence, drew .notdef for each and was shown failing all
+    seven: a script it never claims, counted against its clean total."""
+    stress_marks = [[0x0951, 0x0952], [0x0D00, 0x0D7F]]
+    assert not gen_index.reaches(stress_marks, "Deva")
+    assert gen_index.reaches(stress_marks, "Mlym")
+
+    # A family that can write a word of the script is still judged on all of
+    # them: for Devanagari a missing conjunct is the failure, not "not offered".
+    partial = (0x0915, 0x0924, 0x0930, 0x093C, 0x093F, 0x094D)    # no ssa, no ha
+    assert gen_index.reaches([[cp, cp] for cp in partial], "Deva")
+    results = gen_index.shape_all(sample_font(codepoints=partial), "test.ttf", "Deva")
+    assert results["kssa"]["hb"]["verdict"] == "fail"
 
 
 def test_a_latin_sequence_out_of_reach_is_not_tested_rather_than_failed():
